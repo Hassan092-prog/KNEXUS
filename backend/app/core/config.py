@@ -14,9 +14,9 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "knexus_admin"
     POSTGRES_PASSWORD: str = "knexus_password"
     POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
-    DATABASE_URL: str = "postgresql+asyncpg://knexus_admin:knexus_password@localhost:5432/knexus"
-    DATABASE_SYNC_URL: str = "postgresql://knexus_admin:knexus_password@localhost:5432/knexus"
+    POSTGRES_PORT: int = 5435
+    DATABASE_URL: str = "postgresql+asyncpg://knexus_admin:knexus_password@localhost:5435/knexus"
+    DATABASE_SYNC_URL: str = "postgresql://knexus_admin:knexus_password@localhost:5435/knexus"
 
     # Ollama LLM
     OLLAMA_BASE_URL: str = "http://localhost:11434"

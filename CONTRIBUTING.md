@@ -68,7 +68,7 @@ Verify the container is running:
 ```bash
 docker ps
 ```
-*(You should see `knexus-postgres` running on port `5432`).*
+*(You should see `knexus-postgres` running mapped to port `5435`).*
 
 ---
 

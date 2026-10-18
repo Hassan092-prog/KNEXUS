@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: knexus-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5435}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-knexus}
       POSTGRES_USER: ${POSTGRES_USER:-knexus_admin}

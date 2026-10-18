@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: knexus-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-knexus}
+      POSTGRES_USER: ${POSTGRES_USER:-knexus_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-knexus_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-knexus_admin} -d ${POSTGRES_DB:-knexus}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Local Ollama service (Optional: uncomment if you prefer running Ollama via Docker instead of bare metal)
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: knexus-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+
+volumes:
+  postgres_data:
+    driver: local
+  # ollama_data:
+  #   driver: local

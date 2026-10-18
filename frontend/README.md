@@ -1,5 +1,7 @@
 # KNEXUS Frontend
 
+**Current state (18 October 2026):** this README is the only tracked frontend file. There is no `package.json`, application source, dev server, or build command yet. The screens below are planned.
+
 This directory is designated for the user-facing interface built with **React**, **TypeScript**, and **Vite**.
 
 ## Planned Capabilities

@@ -1,4 +1,7 @@
 # Architecture Document
+
+> **Implementation status - 18 October 2026:** This document describes the target design and acceptance criteria. Only the backend scaffold, dependency health route, and PostgreSQL/pgvector bootstrap are implemented. See [REPOSITORY_REVIEW.md](REPOSITORY_REVIEW.md) for current behavior and known gaps. Code examples, proposed directories, tests, and migrations below are not evidence of completed work.
+
 ## KNEXUS: Knowledge Network for EXploration and Unified Services
 **Version:** 1.0 | **Status:** Active | **Last Updated:** October 2026
 
@@ -8,13 +11,19 @@
 
 KNEXUS is a multi-layered AI knowledge platform. Its architecture is designed around three core principles:
 
-1. **Privacy-first:** All AI inference runs locally via Ollama — no data leaves the machine.
+1. **Privacy-first:** All AI inference runs locally via Ollama — document content is intended to stay within the configured local deployment. Initial package/model downloads require network access; provider URLs and network exposure must be reviewed.
 2. **Security-by-design:** RBAC and multi-tenancy are enforced at the database layer, not the UI.
 3. **Separation of concerns:** Each subsystem (Ingestion, Retrieval, Generation, Governance) is independently testable and replaceable.
 
 ---
 
-## 2. High-Level Architecture
+## Current runtime
+
+The implemented path is client -> FastAPI -> health handler -> PostgreSQL probes and Ollama `/api/tags`. CORS and cached settings are configured; no JWT middleware, RAG services, model loading, or schema creation runs on startup. Startup logs a message and shutdown disposes the database engine. Compose starts PostgreSQL only.
+
+The diagrams and expanded directory tree below are **proposed**. Actual tracked source files are listed in [REPOSITORY_REVIEW.md](REPOSITORY_REVIEW.md).
+
+## 2. High-Level Architecture (target)
 
 ```mermaid
 graph TB
@@ -78,7 +87,7 @@ sequenceDiagram
     API-->>User: 202 Accepted {task_id}
     ING->>PARSE: Extract text + metadata (pdfplumber / python-docx)
     PARSE-->>ING: Raw text + metadata
-    ING->>CHUNK: Recursive character split (512 tokens, 50 overlap)
+    ING->>CHUNK: Recursive character split (240 tokens, 32 overlap)
     CHUNK-->>ING: List of chunk objects
     ING->>EMBED: Encode chunks → vectors (all-MiniLM-L6-v2)
     EMBED-->>ING: Embedding vectors [384-dim]
@@ -215,7 +224,7 @@ erDiagram
         string payload_hash
         string status
         timestamp expires_at
-        timestamp executed_at
+        timestamp updated_at
     }
 
     ORGANIZATIONS ||--o{ USERS : "has"
@@ -229,7 +238,7 @@ erDiagram
 
 ---
 
-## 5. Directory Structure
+## 5. Proposed Directory Structure
 
 ```text
 KNEXUS/
@@ -314,7 +323,7 @@ KNEXUS/
 
 ---
 
-## 6. Integration Points
+## 6. Planned Integration Points
 
 ### 6.1 Frontend ↔ Backend
 
@@ -343,21 +352,21 @@ KNEXUS/
 
 ---
 
-## 7. Deployment Architecture (Local/Development)
+## 7. Target Deployment Architecture (Local/Development)
 
 ```mermaid
 graph LR
     subgraph Docker["Docker (docker-compose)"]
-        PG["knexus-postgres:5435\nPostgreSQL 16 + pgvector"]
+        PG["knexus-postgres:5432\nPostgreSQL 16 + pgvector"]
     end
 
     subgraph Local["Local Machine"]
-        BE["FastAPI Backend\nuvicorn :8010"]
+        BE["FastAPI Backend\nuvicorn :8000"]
         FE["React Dev Server\nvite :5173"]
         OLL["Ollama Service\n:11434"]
     end
 
-    FE -->|"localhost:8010"| BE
+    FE -->|"localhost:8000"| BE
     BE -->|"localhost:5435"| PG
     BE -->|"localhost:11434"| OLL
 ```

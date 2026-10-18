@@ -1,4 +1,7 @@
 # Evaluation & Testing Strategy
+
+> **Implementation status - 18 October 2026:** This document describes the target design and acceptance criteria. Only the backend scaffold, dependency health route, and PostgreSQL/pgvector bootstrap are implemented. See [REPOSITORY_REVIEW.md](REPOSITORY_REVIEW.md) for current behavior and known gaps. Code examples, proposed directories, tests, and migrations below are not evidence of completed work.
+
 ## KNEXUS: Knowledge Network for EXploration and Unified Services
 **Version:** 1.0 | **Status:** Active | **Last Updated:** October 2026
 
@@ -18,7 +21,7 @@ KNEXUS evaluation spans three dimensions:
 
 ### 2.1 Primary: EnterpriseRAG-Bench
 
-**Source:** HuggingFace — `enterprise-rag-bench`
+**Source:** [Official repository](https://github.com/onyx-dot-app/EnterpriseRAG-Bench) and [Hugging Face dataset](https://huggingface.co/datasets/onyx-dot-app/EnterpriseRAG-Bench). Record the imported revision and license in the future manifest.
 
 Simulates a fictional company ("Redwood Inference") with realistic enterprise data:
 
@@ -39,11 +42,13 @@ Simulates a fictional company ("Redwood Inference") with realistic enterprise da
 | Semantic inference | 125 | Answers require paraphrasing or inference |
 | Intra-document reasoning | 40 | Multi-section answers from one document |
 | Project-related | 40 | Questions tied to project-specific context |
-| Constrained | 30 | Role-filtered — answer depends on access level |
+| Constrained | 30 | Qualifiers disambiguate evidence; RBAC labels are added separately |
 | Conflicting information | 20 | Two documents give contradictory answers |
 | Completeness | 20 | Full answer requires multiple documents |
+| Miscellaneous | 20 | Informal, off-topic, or loosely organized records |
 | High-level synthesis | 10 | Abstract summary questions |
 | Information-not-found | 20 | Correct answer is "Evidence not found" (abstention) |
+| **Total** | **500** | Published category breakdown |
 
 ### 2.3 KNEXUS Synthetic Security Fixtures
 
@@ -63,7 +68,7 @@ Custom-designed test fixtures covering:
 | Metric | Formula | Target |
 |---|---|---|
 | **Recall@K** | Relevant chunks retrieved / Total relevant chunks | ≥ 0.70 @ K=5 |
-| **Precision@K** | Relevant chunks retrieved / K chunks retrieved | ≥ 0.65 @ K=5 |
+| **Precision@K** | Relevant chunks retrieved / K chunks retrieved | >= 0.70 @ K=5 |
 | **MRR (Mean Reciprocal Rank)** | Average of 1/rank of first relevant chunk | ≥ 0.75 |
 | **Abstention Accuracy** | Correct abstentions / Total abstention-expected queries | ≥ 0.90 |
 
@@ -73,7 +78,7 @@ Custom-designed test fixtures covering:
 |---|---|---|
 | **Citation Accuracy** | % of citations that map to a real, correct source chunk | ≥ 0.85 |
 | **Faithfulness** | % of answer claims grounded in retrieved context (human/LLM judge) | ≥ 0.80 |
-| **Answer Relevance** | ROUGE-L score against gold answers | ≥ 0.55 |
+| **Answer lexical overlap (proxy)** | ROUGE-L against gold answers; supplement with human correctness/support review | ≥ 0.55 |
 | **Hallucination Rate** | % of answers containing claims not in context | ≤ 0.10 |
 
 ### 3.3 End-to-End Metrics
@@ -85,6 +90,14 @@ Custom-designed test fixtures covering:
 | RBAC enforcement | 100% (zero leakage in security fixture suite) |
 
 ---
+
+### Dataset and scoring boundaries
+
+The category counts sum to 500; KNEXUS fixtures are additional. Source counts above are historical figures from the bundled PDF, not a pinned download inventory. Upstream publishes approximate volumes; record exact counts from the imported revision.
+
+A curated 1,000-2,000-record subset cannot be assumed to contain evidence for all questions. Build a source-ID coverage manifest, retain distractors, and report subset and full-corpus scores separately. Split development/tuning and held-out questions before choosing thresholds or prompts. Distinguish gold document IDs from chunk IDs; deduplicate retrieved documents for document-level metrics. Skip retrieval recall/MRR where no gold documents exist (High Level and Info Not Found), reporting denominators explicitly. Add permission-aware labels separately; Constrained questions are not an RBAC benchmark.
+
+Report false abstentions on answerable questions as well as correct abstentions on missing evidence. Version dataset, model, tokenizer/chunker, prompt, embedding dimension, retrieval parameters, and hardware/load with each result. A similarity threshold of 0.35 is an uncalibrated starting proposal.
 
 ## 4. Test Pyramid
 
@@ -105,20 +118,24 @@ Custom-designed test fixtures covering:
 
 ---
 
+## Current validation versus planned tests
+
+No test files, benchmark harness, CI workflow, load script, or fixtures are committed. Snippets below are illustrative and need implementations/imports/fixtures before execution. `pytest`, `pytest-asyncio`, and `httpx` are declared dependencies; Ruff, Locust, ROUGE/RAGAS, and coverage tooling are not. The draft CI workflow also needs tool installation, database readiness/extension initialization, configuration, and actual tests before enabling it.
+
 ## 5. Unit Tests
 
 ### 5.1 Ingestion Service
 ```python
 # tests/unit/test_chunker.py
 def test_recursive_chunker_respects_max_tokens():
-    chunker = RecursiveChunker(chunk_size=512, overlap=50)
+    chunker = RecursiveChunker(chunk_size=240, overlap=32)
     text = "..." * 1000
     chunks = chunker.split(text)
-    assert all(len(c.split()) <= 512 for c in chunks)
+    assert all(len(embedding_tokenizer.encode(c)) <= 256 for c in chunks)  # Includes special tokens
 
 def test_chunker_overlap_is_applied():
     chunks = chunker.split(long_text)
-    # Verify last 50 tokens of chunk[0] appear at start of chunk[1]
+    # Verify last 32 tokens of chunk[0] appear at start of chunk[1]
     ...
 
 def test_pdf_parser_extracts_metadata():
@@ -241,7 +258,8 @@ async def test_cross_tenant_isolation(async_client):
 ```python
 """
 KNEXUS 500-Question Benchmark Evaluation Harness
-Run with: python -m pytest tests/evaluation/ -v --benchmark
+Proposed invocation once implemented: python -m pytest tests/evaluation/ -v
+No --benchmark option/plugin is currently configured.
 """
 
 BENCHMARK_QA_PATH = "data/evaluation/knexus_500q_benchmark.json"
@@ -268,14 +286,14 @@ async def test_rag_benchmark_full():
     print_report(metrics)
 
     # Hard assertions
-    assert metrics["precision_at_5"] >= 0.65
+    assert metrics["precision_at_5"] >= 0.70
     assert metrics["recall_at_5"] >= 0.70
     assert metrics["abstention_accuracy"] >= 0.90
 ```
 
 ### 7.2 Evaluation Report Format
 
-After running the benchmark, generate a structured report:
+After implementing and running the benchmark, generate a structured report. **The numbers below are illustrative placeholders, not measured KNEXUS results:**
 
 ```markdown
 ## KNEXUS RAG Evaluation Report
@@ -283,7 +301,7 @@ After running the benchmark, generate a structured report:
 
 | Metric | Score | Target | Status |
 |---|---|---|---|
-| Precision@5 | 0.72 | ≥ 0.65 | ✅ |
+| Precision@5 | 0.72 | >= 0.70 | ✅ |
 | Recall@5 | 0.74 | ≥ 0.70 | ✅ |
 | MRR | 0.81 | ≥ 0.75 | ✅ |
 | Citation Accuracy | 0.88 | ≥ 0.85 | ✅ |
@@ -303,7 +321,7 @@ After running the benchmark, generate a structured report:
 ### Latency Testing
 ```bash
 # Using locust for load testing
-locust -f tests/load/locustfile.py --host http://localhost:8010 --users 20 --spawn-rate 5
+locust -f tests/load/locustfile.py --host http://localhost:8000 --users 20 --spawn-rate 5
 ```
 
 ```python

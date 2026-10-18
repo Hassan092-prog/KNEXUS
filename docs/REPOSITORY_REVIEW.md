@@ -1,0 +1,107 @@
+# KNEXUS repository and documentation review
+
+**Review date:** 18 October 2026. **Scope:** all 37 tracked files in the starting checkout, including every source/configuration file, all Markdown documents, Office documents/templates, PDFs, and research-paper references. Workspace inspection, extraction, edits, and runtime checks were performed on `hassan@192.168.1.92` over SSH. The starting working tree was clean.
+
+## Assessment
+
+KNEXUS is a **foundation scaffold**, with much more extensive design documentation than implementation. It is not yet a working RAG assistant or a secure multi-tenant application. The documentation now distinguishes current behavior from planned requirements. This review changes documentation only; code findings below remain implementation work.
+
+## Current implementation and file coverage
+
+| Files | What was reviewed / actual behavior |
+|---|---|
+| `backend/app/__init__.py` | Package version 0.1.0 |
+| `backend/app/main.py` | FastAPI setup, local CORS allowlist, docs/OpenAPI paths, root response, startup logging and shutdown engine disposal |
+| `backend/app/api/v1/router.py` | Includes only the health router |
+| `backend/app/api/v1/endpoints/health.py` | SQL connectivity/vector probes and Ollama `/api/tags`; no generation |
+| `backend/app/core/config.py` | Cached Pydantic settings; `.env` relative to process working directory; independent URL/POSTGRES defaults |
+| `backend/app/core/database.py` | Async engine, session dependency, empty declarative base; no models or table creation |
+| `backend/requirements.txt` | Framework/database/ML/document/auth/test dependencies declared with minimum versions; no lockfile; Ruff/Locust/evaluation libraries absent |
+| `docker-compose.yml`, `docker/init.sql` | PostgreSQL 16 with vector extension and persistent volume; Ollama commented out; API/frontend services absent; init creates extension only |
+| `.env.example`, `.gitignore` | Development defaults and standard exclusions; auth/model settings do not implement those features; no dedicated raw-dataset ignore rules |
+| `README.md`, `CONTRIBUTING.md` | Rewritten current capabilities and root-based POSIX/PowerShell setup |
+| `frontend/README.md`, `data/README.md` | Clarified that proposed application/data directories and fixtures are absent |
+| `docs/INDEX.md` | Complete linked inventory and document precedence |
+| `docs/PRD.md`, `TRD.md`, `ARCHITECTURE.md` | Target requirements, technical baseline, proposed tree/diagrams; added current-state boundaries and corrected conflicts |
+| `docs/API_SPEC.md`, `DATABASE_SCHEMA.md`, `SECURITY_MODEL.md` | Current routes/DB/security behavior separated from proposed contracts and controls |
+| `docs/EVALUATION_STRATEGY.md`, `KNEXUS_Project_Plan.md`, `KNEXUS_Team_Git_Workflow_Guide.md` | Corrected benchmark accounting, planning/academic conflicts, and branch workflow |
+
+No ingestion, embedding inference, search, answer generation, JWT validation, tenant/role policy, approval engine, business audit log, frontend source/package manifest, migration files, tests, or CI workflow is tracked. SQLAlchemy metadata is empty. Installed packages are not feature implementations.
+
+## Prioritized implementation findings
+
+| Priority | Finding and evidence | Required next action |
+|---|---|---|
+| High | `health.py` returns HTTP 200 for dependency failure. Missing vector/offline Ollama can leave `status=healthy`. Confirmed with controlled failure probes. | Define required dependencies; add separate liveness/readiness behavior and appropriate failure status codes. Test each dependency state. |
+| High | `health.py` includes raw database exception text in a public response. SQL echo follows `DEBUG=True`. | Return bounded generic diagnostics, keep redacted detail in server logs, and disable SQL echo outside development. |
+| High | No auth/RBAC/tenant enforcement exists. Compose publishes PostgreSQL on all host interfaces, using the bootstrap administrator by default. | Keep the current scaffold local with synthetic data; implement identity and tenant checks with initial data APIs, use a least-privilege runtime role, and decide explicit network bindings. |
+| High (design) | Draft DDL has independent tenant/parent foreign keys; duplicated `org_id` does not prove parent ownership. Embedding ACLs can become stale. | Add composite ownership constraints, synchronized permission changes, and parent-document checks before exposing retrieval. |
+| High (design) | Hash-only action examples did not establish atomic claims, replay protection, or exact action binding. | Specify immutable action envelopes, atomic transitions, execution-time authorization, idempotency, and verification before tool execution. |
+| Medium | `Settings` uses `env_file=".env"`; old setup changed into `backend/` but copied the root file. | Documentation now launches from root with `--app-dir backend`. A future code change could resolve the env path explicitly. |
+| Medium | `DATABASE_URL` is a separate literal default; changing `POSTGRES_*` alone does not update it. | Explicitly update the URL today; consider constructing/validating it in settings later. |
+| Medium | Backend startup does not verify database/model readiness. DB probes have no explicit handler-level deadline. | Define connection/query timeouts and readiness policy; do not interpret the Ollama HTTP timeout as an end-to-end bound. |
+| Medium | Requirements are lower bounds, not pinned dependencies; no automated checks exist. | Establish a tested dependency lock and meaningful tests/CI with actual tooling installed. |
+| Medium (design) | No sessions/history/sandbox-action persistence is defined in the current seven-table DDL proposal. | Decide these schemas before implementing refresh revocation, streaming history, or governed writes. |
+
+## Documentation corrections made
+
+- Removed claims that RAG, autonomous agents, UI, observability, or production readiness are delivered today. Added status notices to every core design document.
+- Standardized the documented API launch port to **8000**, PostgreSQL host port **5435** / container port **5432**, and Python team baseline **3.12**.
+- Fixed root `.env` setup/launch commands, included PowerShell equivalents, and explained cached settings, explicit database URLs, existing-volume behavior, and optional Ollama.
+- Listed implemented routes before proposed contracts; documented HTTP-200 health limitations and absent authentication. Corrected proposed JSON examples, proposal status filters, hash representation, and role inheritance consistency.
+- Reconciled the TRD error contract with API_SPEC and labeled the alternative response envelope as an unselected proposal. Corrected the example Ruff configuration location/table format.
+- Replaced the proposed 512/50-token chunk setting with a **240-token / 32-token overlap starting budget** for MiniLM, with tokenizer-based validation. Documented dimension migration requirements. This is a design correction, not a configured chunker or measured optimum.
+- Restored **20 Miscellaneous** questions so the evaluation categories total **500**. Corrected Constrained-category meaning; added subset/source coverage, held-out evaluation, document/chunk scoring boundaries, and false-abstention reporting.
+- Aligned planned precision@5 to **0.70**, first-token targets to **p50 <= 5s / p95 <= 8s**, and full-response p95 to **12s**. These are acceptance targets, not results.
+- Marked sample benchmark results and tests/CI snippets as illustrative. Removed the unsupported `--benchmark` invocation and the claim that dependencies are pinned.
+- Reconciled contribution guides around feature branches and PRs, with optional member branches. Removed guarantees about merge conflicts and fast-forward frequency.
+- Corrected the RAG paper publication year, noted academic eligibility concerns, and made security enforcement a prerequisite for initial ingestion/retrieval rather than an optional later layer.
+
+## Academic and binary document review
+
+Text-bearing PDFs were extracted with `pdftotext`; DOCX/PPTX text and slide notes were inspected from their XML. Legacy DOCs were converted in temporary directories solely for text inspection. The scanned notice was rendered and visually read. Original binary files were preserved. This is a content/consistency review, not a full visual-layout certification of every Office artifact or independent replication of research results.
+
+| Artifact | Findings / disposition |
+|---|---|
+| `Guidelines and NOtices/Project Guidelines.pptx` | Requires base paper in a reputed journal on/after 2021 and at least ten surveyed papers not earlier than 2021. Also describes ten-minute base-paper and fifteen-minute final seminars. Preserve original requirements. |
+| `Guidelines and NOtices/major project review notice.pdf` | Scanned notice dated **3 October 2026** lists eight content sections, one-page abstract plus base/two supporting paper hardcopies, and no rescheduling. It does not establish the actual seminar date. Eight sections do not require exactly eight slides. |
+| `Templates/Major Project Abstract Template-2026-2027.doc` | Original blank institutional form; placeholders are intentional. Preserve it. |
+| `Templates/PROJECT PPT TEMPLATE.pptx` | Original slide template with placeholders and comparison-table layouts. Preserve it. |
+| `docs/Abstract/Major Project Abstract 2026-2027.doc`, `docs/Abstract/Abstract.pdf` | Proposal text is consistent with the planned platform. Course, branch, team number/size, student details, guide details, and signatures remain incomplete. Fill verified details and regenerate the PDF together before submission. |
+| `docs/PPT/KNEXUS Team 3.pptx` | Ten-slide proposal covers the eight required topics, with architecture and contents slides. Surveys three papers only. Uses PyMuPDF while backend requirements/TRD select pdfplumber; reconcile parser choice in the next deck revision. Claims describe proposed capabilities, not completed implementation. |
+| `docs/KNEXUS_Dataset_Selection_and_Evaluation_Strategy.pdf` | Correctly includes Miscellaneous and cautions against treating a corpus as an RBAC/action benchmark. Counts are a historical research snapshot. Use the corrected Markdown strategy and pin an imported revision before formal scoring. |
+| `docs/OpsPilot_AI_Final_Startup_Blueprint.docx` | Broader startup/background proposal: eight-week schedule, different role names/memberships, organization-prefixed API, PDF/TXT/Markdown ingestion, and PyMuPDF differ from KNEXUS designs. It explicitly excludes incident management from the MVP. Treat it as background; do not silently mix its routes/schema with KNEXUS API_SPEC. |
+| `docs/Research Papers/Base_Paper.pdf` | Lewis et al., RAG, **NeurIPS 2020**. Bundled arXiv v4 is dated April 2021; that is a revision date. Foundation for retrieval/generation, not evidence that KNEXUS has permissions or governed actions. |
+| `docs/Research Papers/research_paper_1.pdf` | Toolformer, Schick et al., 2023. Research background for learned tool use, not an authorization/approval design or enterprise corpus. |
+| `docs/Research Papers/research_paper_2.pdf` | AgentCDM, Zhao et al., 2025 preprint. Structured collaborative decision-making background; does not establish an enterprise RAG/citation/security evaluation. |
+
+**Academic decision still needed:** the current base paper's year and conference venue conflict with the bundled journal/2021+ guideline. The deck already cites it correctly as 2020. Obtain a guide/coordinator ruling or select a qualifying base paper, retaining Lewis et al. as foundational background. Do not relabel a revision year as publication year. Expand the literature survey to meet the ten-paper requirement with qualifying references. The actual Review-I date and authorization for exceptions are not established by this repository.
+
+## Validation performed
+
+Using the existing Python 3.12 backend virtual environment:
+
+- Parsed all tracked Python source files for syntax errors.
+- Ran the FastAPI lifespan and HTTPX ASGI probes: root, Swagger, ReDoc, and generated OpenAPI returned 200. OpenAPI application paths are exactly `/` and `/api/v1/health`.
+- Confirmed representative proposed auth/query/document/action routes return 404.
+- Ran the real read-only health query against the existing PostgreSQL container: database connected, vector installed, Ollama offline. Aggregate status was still healthy, as the source predicts.
+- Overrode the database and Ollama dependencies in memory to confirm missing-vector/offline behavior and HTTP-200/degraded/raw-exception behavior on database failure. No persistent test files or application changes were made.
+- Checked Compose configuration with `docker compose config --quiet`; the existing PostgreSQL service reported healthy. No services or data volumes were created, stopped, or reset.
+- Checked Markdown relative links, JSON example syntax, control characters, benchmark category arithmetic, and patch whitespace with `git diff --check`.
+
+No fresh dependency installation, Windows runtime launch, frontend build, retrieval benchmark, load test, security guarantee, or academic compliance signoff is claimed. Those capabilities are absent or outside this documentation review.
+
+## Primary references checked
+
+- [EnterpriseRAG-Bench upstream repository](https://github.com/onyx-dot-app/EnterpriseRAG-Bench): 500 questions across ten categories; Constrained and Miscellaneous definitions. Exact import counts still need a pinned manifest.
+- [MiniLM model card](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2): 384-dimensional embeddings and default truncation above 256 wordpieces.
+- [NeurIPS RAG publication](https://papers.nips.cc/paper/2020/hash/6b493230205f780e1bc26945df7481e5-Abstract.html): publication year 2020.
+- [Ollama Llama 3.2 model listing](https://ollama.com/library/llama3.2): default 3B model; the prior 8B Llama 3.2 description was incorrect.
+
+## Recommended implementation order
+
+1. Fix health/readiness/error handling, configuration consistency, and dependency reproducibility; establish basic test/CI coverage.
+2. Implement identity, tenant ownership constraints, least-privilege database access, and negative authorization tests alongside initial ingestion.
+3. Deliver one PDF/DOCX ingestion -> indexed chunks -> authorized retrieval -> cited answer/abstention path, with a small labeled corpus.
+4. Add one sandbox action with atomic single-use approval, idempotent execution, verification, and audit records.
+5. Build the UI against generated contracts, expand held-out evaluation, and update academic artifacts with measured results and verified submission details.

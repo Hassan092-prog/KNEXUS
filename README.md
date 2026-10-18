@@ -1,58 +1,59 @@
 # KNEXUS: Knowledge Network for EXploration and Unified Services
 
-KNEXUS is an intelligent, agent-driven knowledge management and retrieval platform designed to unify enterprise and academic documentation, unstructured data, and multi-source workflows into an interactive, high-accuracy conversational exploration engine.
+KNEXUS is an academic project for a local enterprise knowledge assistant with cited answers, permission-aware retrieval, and human-approved sandbox actions.
 
----
+## Current implementation
 
-## 🌟 Key Features
+As reviewed on **18 October 2026**, this repository contains a **FastAPI backend scaffold**, an async SQLAlchemy connection/session layer, a dependency health endpoint, and Docker Compose for PostgreSQL 16 with pgvector.
 
-- **Hybrid Retrieval-Augmented Generation (RAG):** Combines dense vector embeddings (pgvector) with sparse lexical search (BM25) and reciprocal rank fusion (RRF) for optimal context retrieval.
-- **Local & Private LLM Inference:** Powered by Ollama / open-weights models (e.g., Llama 3 / Mistral) ensuring data privacy, low latency, and zero per-token cloud costs.
-- **Agentic Workflows:** Autonomous reasoning agents capable of document routing, tool execution, multi-step problem solving, and structured reporting.
-- **Interactive Modern Interface:** Reactive web dashboard built for low-latency queries, document visualization, and citation-backed answer exploration.
-- **Production-Ready Observability:** Structured logging, metrics, latency tracking, and evaluation pipelines (RAGAS).
+Document ingestion, embeddings, retrieval, LLM answer generation, authentication/RBAC, approvals, audit storage, and the React interface are **planned and not implemented**. Installing their dependencies does not enable these features. There are no committed automated tests, migrations, frontend package manifest, or CI workflows yet.
 
----
+See the [repository review](docs/REPOSITORY_REVIEW.md) for file coverage, findings, validation, and remaining work. The design documents describe the target system, not the current API.
 
-## 🏗️ System Architecture & Tech Stack
+## Quick start
 
-| Layer | Technology |
-|---|---|
-| **Frontend** | React, TypeScript, Vite, Modern CSS |
-| **Backend API** | Python, FastAPI, Uvicorn, Pydantic |
-| **Vector DB & Storage** | PostgreSQL with `pgvector`, SQLAlchemy / asyncpg |
-| **AI / Embeddings** | Ollama, HuggingFace Sentence Transformers, LangChain / LlamaIndex |
-| **DevOps & Tooling** | Docker, Git, Ruff, Pytest |
+Use Python 3.12, Git, and Docker with Compose. Run these commands from the repository root in a POSIX shell:
 
----
-
-## 📁 Repository Structure
-
-```text
-KNEXUS/
-├── docs/                      # Project plan, design docs, specifications & research papers
-├── Guidelines and NOtices/    # University/Major project guidelines and evaluation notices
-├── Templates/                 # Report, presentation, and abstract templates
-├── .gitignore                 # Version control exclusions
-└── README.md                  # Project overview and setup documentation
+```bash
+cp .env.example .env
+python3.12 -m venv backend/venv
+backend/venv/bin/python -m pip install -r backend/requirements.txt
+docker compose up -d postgres
+backend/venv/bin/python -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
 ```
 
-*(Source code directories `frontend/`, `backend/`, and `infra/` will be organized in subsequent phases according to the project roadmap).*
+The root working directory matters: settings read `.env` relative to the process working directory. [CONTRIBUTING.md](CONTRIBUTING.md) includes PowerShell commands, verification, configuration details, and troubleshooting. Do not overwrite an existing `.env` when repeating setup.
 
----
+- API landing response: <http://localhost:8000/>
+- Health: <http://localhost:8000/api/v1/health>
+- Swagger: <http://localhost:8000/docs>
+- ReDoc: <http://localhost:8000/redoc>
+- OpenAPI: <http://localhost:8000/api/v1/openapi.json>
 
-## 🗺️ Roadmap & Phased Execution
+Ollama is optional for the scaffold. To make its health probe report online, run Ollama separately; Compose currently starts only PostgreSQL. No model is used for generation yet.
 
-Detailed project breakdown and division across phases:
-- **Phase 1: Foundation & Ingestion Engine** — Environment setup, document parsers, database schema & pgvector setup.
-- **Phase 2: Hybrid Search & RAG Core** — Dense/sparse embeddings, reranker pipeline, and FastAPI RAG endpoints.
-- **Phase 3: Agentic Reasoning & Frontend UI** — Conversational frontend interface, agent tool-use, and session management.
-- **Phase 4: Evaluation, Hardening & Final Submission** — RAGAS benchmark metrics, presentation slides, report compilation, and deployment packaging.
+The health endpoint returns HTTP 200 even when dependencies fail. Its aggregate `status` becomes `degraded` only on a database exception; inspect the individual fields too. No authentication is enforced. Treat this as a local development scaffold.
 
-For the complete task division, refer to [`docs/KNEXUS_Project_Plan.md`](docs/KNEXUS_Project_Plan.md).
+## Repository layout
 
----
+```text
+backend/app/                 FastAPI routes, settings, async database plumbing
+backend/requirements.txt     Dependencies (minimum versions, not a lockfile)
+frontend/README.md           Planned React/TypeScript/Vite interface
+data/README.md               Planned datasets and fixtures
+docker/init.sql              Enables vector on first database initialization
+docker-compose.yml           PostgreSQL service and persistent named volume
+docs/                        Designs, roadmap, academic artifacts, research
+Guidelines and NOtices/      University requirements and scanned notice
+Templates/                   Original abstract and presentation templates
+```
 
-## 👥 Contributors
+## Planned capabilities
 
-- **Major Project Team (2026–2027)**
+The MVP targets PDF/DOCX ingestion, dense retrieval with pgvector, local Ollama answers, validated citations and abstention, tenant/role filtering, one governed sandbox action, and audit logging. Hybrid BM25/dense retrieval, reranking, streaming, and additional integrations follow the core path.
+
+The [project plan](docs/KNEXUS_Project_Plan.md) defines phases 0-4 and team responsibilities. Start with the [documentation index](docs/INDEX.md) for the full reading order and reference-material status.
+
+## Contributors
+
+Major Project Team 3, MJCET CSE (AI&ML), academic year 2026-2027.

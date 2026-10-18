@@ -1,4 +1,7 @@
 # PRD — Product Requirements Document
+
+> **Implementation status - 18 October 2026:** This document describes the target design and acceptance criteria. Only the backend scaffold, dependency health route, and PostgreSQL/pgvector bootstrap are implemented. See [REPOSITORY_REVIEW.md](REPOSITORY_REVIEW.md) for current behavior and known gaps. Code examples, proposed directories, tests, and migrations below are not evidence of completed work.
+
 ## KNEXUS: Knowledge Network for EXploration and Unified Services
 **Version:** 1.0 | **Status:** Active | **Last Updated:** October 2026
 
@@ -20,7 +23,7 @@ The system runs entirely on-premise with locally-hosted LLMs (via Ollama), makin
 |---|---|---|
 | **Knowledge Scatter** | Company information lives across Google Drive, Notion, email, SOPs, manuals, Slack archives | Manual search, tribal knowledge |
 | **Hallucination Risk** | Generic AI tools (ChatGPT, Copilot) fabricate information with false confidence | Fact-checking every AI response |
-| **Access Control Gaps** | No AI tool enforces role-based document access at the retrieval level | Sharing only safe docs publicly |
+| **Access Control Gaps** | General-purpose assistants may lack organization-specific document permissions | Sharing only safe docs publicly |
 | **Zero Auditability** | No audit trail of what was asked and what AI answered | Manual logging, unreliable |
 | **Cloud Data Leakage** | Sending sensitive company docs to external AI APIs violates compliance | Blocking AI use entirely |
 
@@ -39,14 +42,14 @@ The system runs entirely on-premise with locally-hosted LLMs (via Ollama), makin
 
 ### 3.1 Goals (MVP)
 
-- ✅ Allow users to upload organizational documents (PDF, DOCX)
-- ✅ Semantically index documents using vector embeddings
-- ✅ Answer natural language queries with cited, evidence-backed responses
-- ✅ Enforce server-side RBAC at the retrieval layer (not the UI)
-- ✅ Support human-in-the-loop approval for sensitive AI-proposed actions
-- ✅ Maintain an immutable audit log of all queries, answers, and actions
-- ✅ Gracefully abstain when sufficient evidence is not available
-- ✅ Run entirely locally with no mandatory cloud dependencies
+- [ ] Allow users to upload organizational documents (PDF, DOCX)
+- [ ] Semantically index documents using vector embeddings
+- [ ] Answer natural language queries with cited, evidence-backed responses
+- [ ] Enforce server-side RBAC at the retrieval layer (not the UI)
+- [ ] Support human-in-the-loop approval for sensitive AI-proposed actions
+- [ ] Maintain an immutable audit log of all queries, answers, and actions
+- [ ] Gracefully abstain when sufficient evidence is not available
+- [ ] Run entirely locally with no mandatory cloud dependencies
 
 ### 3.2 Non-Goals (V1)
 
@@ -67,7 +70,7 @@ The system runs entirely on-premise with locally-hosted LLMs (via Ollama), makin
 |---|---|---|
 | F-ING-01 | System SHALL accept PDF and DOCX file uploads via API | P0 |
 | F-ING-02 | System SHALL extract full text and metadata (title, author, date, source) | P0 |
-| F-ING-03 | System SHALL chunk documents into ~512-token segments with 50-token overlap | P0 |
+| F-ING-03 | System SHALL chunk documents into ~240-token segments with 32-token overlap | P0 |
 | F-ING-04 | System SHALL generate semantic vector embeddings for each chunk | P0 |
 | F-ING-05 | System SHALL store embeddings in pgvector with associated metadata | P0 |
 | F-ING-06 | System SHALL attach role-permission tags to each document at upload | P0 |
@@ -151,7 +154,7 @@ The system runs entirely on-premise with locally-hosted LLMs (via Ollama), makin
 
 | Area | Requirement |
 |---|---|
-| **Response Time** | Search + generation end-to-end: < 8 seconds for first token (streaming) |
+| **Response Time** | Query-to-first-token p95 <= 8 seconds; full response p95 <= 12 seconds on documented target hardware/load |
 | **Interface** | React + TypeScript single-page application |
 | **Citations** | Each answer must display clickable citation cards with source doc name and excerpt |
 | **Abstention Message** | When abstaining, display a friendly, clear message — not a generic error |
@@ -165,7 +168,7 @@ The system runs entirely on-premise with locally-hosted LLMs (via Ollama), makin
 
 | Metric | Target |
 |---|---|
-| Query-to-first-token latency | ≤ 5 seconds (local LLM) |
+| Query-to-first-token latency | p50 <= 5 seconds, p95 <= 8 seconds (local LLM) |
 | Retrieval precision@5 | ≥ 70% |
 | Citation accuracy | ≥ 85% |
 | Abstention accuracy | ≥ 90% (correct refusal when evidence absent) |

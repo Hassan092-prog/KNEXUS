@@ -1,10 +1,25 @@
 # Database Schema Design
+
+> **Implementation status - 18 October 2026:** This document describes the target design and acceptance criteria. Only the backend scaffold, dependency health route, and PostgreSQL/pgvector bootstrap are implemented. See [REPOSITORY_REVIEW.md](REPOSITORY_REVIEW.md) for current behavior and known gaps. Code examples, proposed directories, tests, and migrations below are not evidence of completed work.
+
 ## KNEXUS: Knowledge Network for EXploration and Unified Services
 **Version:** 1.0 | **Engine:** PostgreSQL 16 + pgvector | **Last Updated:** October 2026
 
 ---
 
-## 1. Overview
+## Current database bootstrap
+
+`docker/init.sql` only runs `CREATE EXTENSION IF NOT EXISTS vector;` on first initialization of an empty PostgreSQL volume. No application models/tables, HNSW indexes, Alembic configuration, or revisions are committed. All SQL below is a draft, not an applied migration.
+
+Before implementing this schema:
+
+- Separate the migration owner from a least-privilege runtime role. Compose's `POSTGRES_USER` is the bootstrap administrator; it cannot provide immutable audit guarantees for the application.
+- Add composite tenant foreign keys/unique constraints so uploaders, documents, chunks, embeddings, proposers, and approvers cannot reference parents from another organization. Independent UUID foreign keys plus duplicated `org_id` do not enforce this.
+- Synchronize denormalized embedding permissions transactionally with document permissions; re-check parent document authorization during retrieval to avoid stale-access leakage.
+- Add unique chunk positions per document, embedding uniqueness/version rules, non-null lifecycle fields, execution timestamps, idempotency, and verification state before approval workflows are built.
+- The proposal has one role/org per user and no persisted refresh sessions, conversation history, or sandbox task table. These need explicit schema decisions.
+
+## 1. Overview (target)
 
 The KNEXUS database is the single source of truth for all data: users, documents, vector embeddings, audit logs, and tool execution records. It uses **PostgreSQL 16** with the **pgvector** extension for vector storage and similarity search.
 
@@ -14,7 +29,7 @@ The KNEXUS database is the single source of truth for all data: users, documents
 
 1. **UUIDs as primary keys** — All tables use UUID v4 PKs for distributed compatibility.
 2. **Multi-tenancy by `org_id`** — Every data table includes `org_id` as a filter column; all queries MUST include this filter.
-3. **Append-only audit logs** — The `audit_logs` table has no UPDATE or DELETE grants; enforced at the application layer.
+3. **Append-only audit logs** — The `audit_logs` table must deny UPDATE/DELETE to the runtime database role as well as enforcing append-only application behavior.
 4. **Soft deletes** — Documents use an `is_deleted` flag rather than hard deletion to preserve audit trail integrity.
 5. **JSONB for flexible metadata** — Document metadata, chunk metadata, and action payloads use JSONB for schema-less extensibility.
 
@@ -197,7 +212,7 @@ CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at DESC);
 ```
 
 > [!CAUTION]
-> **Never grant UPDATE or DELETE on `audit_logs` to the application database user.** The application user (`knexus_admin`) should only have `INSERT` and `SELECT` on this table.
+> **Never grant UPDATE or DELETE on `audit_logs` to the application database user.** Use a separate runtime role with only `INSERT` and `SELECT` on this table; `knexus_admin` is the development bootstrap administrator.
 
 **`action_data` structure per `action_type`:**
 
@@ -264,7 +279,7 @@ CREATE INDEX idx_proposals_expires_at ON tool_proposals(expires_at);
 
 ## 4. Alembic Migration Strategy
 
-All schema changes go through **Alembic migrations** — never modify the database manually.
+Future schema changes must use **Alembic migrations**. These commands are implementation tasks, not a working setup path: first configure the async migration environment, settings URL, and imported model metadata. Installing Alembic and running `init` alone does not enable autogeneration.
 
 ### Setup (run once):
 ```bash
@@ -307,6 +322,10 @@ FROM
 WHERE
     e.org_id = :current_org_id
     AND e.allowed_roles ?| :user_roles_array       -- JSONB contains-any operator
+    AND d.org_id = :current_org_id
+    AND dc.org_id = :current_org_id
+    AND d.allowed_roles ?| :user_roles_array
+    AND d.status = 'complete'
     AND d.is_deleted = FALSE
 ORDER BY
     e.embedding <=> :query_vector ASC              -- cosine distance ascending
@@ -335,7 +354,7 @@ GROUP BY d.id, d.title;
 
 | Concern | Solution |
 |---|---|
-| Slow vector search as corpus grows | HNSW index with `m=16, ef_construction=64` (already set up) |
+| Slow vector search as corpus grows | HNSW index with `m=16, ef_construction=64` (proposed; not yet created) |
 | Cross-tenant data leakage | `org_id` index + mandatory WHERE clause in all queries |
 | Role filter on large embedding table | GIN index on `allowed_roles` JSONB column |
 | Repeated identical queries | Query-level result cache (Redis/in-memory, Phase 2) |

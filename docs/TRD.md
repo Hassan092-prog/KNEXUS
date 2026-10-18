@@ -1,4 +1,7 @@
 # TRD — Technical Requirements Document
+
+> **Implementation status - 18 October 2026:** This document describes the target design and acceptance criteria. Only the backend scaffold, dependency health route, and PostgreSQL/pgvector bootstrap are implemented. See [REPOSITORY_REVIEW.md](REPOSITORY_REVIEW.md) for current behavior and known gaps. Code examples, proposed directories, tests, and migrations below are not evidence of completed work.
+
 ## KNEXUS: Knowledge Network for EXploration and Unified Services
 **Version:** 1.0 | **Status:** Active | **Last Updated:** October 2026
 
@@ -16,7 +19,7 @@ This document specifies all technical requirements, technology choices, dependen
 
 | Component | Technology | Version | Justification |
 |---|---|---|---|
-| Language | Python | 3.12+ | Ecosystem maturity for AI/ML, async support |
+| Language | Python | 3.12 (team baseline) | Ecosystem maturity for AI/ML, async support |
 | Web Framework | FastAPI | ≥0.111 | Native async, automatic OpenAPI docs, Pydantic v2 |
 | ASGI Server | Uvicorn + uvloop | ≥0.30 | High performance event loop |
 | ORM | SQLAlchemy 2 (async) | ≥2.0.30 | Modern async ORM, Alembic migration support |
@@ -29,7 +32,7 @@ This document specifies all technical requirements, technology choices, dependen
 | Component | Technology | Version | Justification |
 |---|---|---|---|
 | LLM Inference | Ollama | Latest | Local, private, no API cost |
-| Default LLM Model | Llama 3.2 (3B or 8B) | — | Strong reasoning, low hardware requirements |
+| Default LLM Model | Llama 3.2 (`llama3.2`, 3B default) | — | Strong reasoning, low hardware requirements |
 | Embedding Model | `all-MiniLM-L6-v2` (default) | — | 384-dim, fast, high quality for semantic search |
 | Alt Embedding | `nomic-embed-text` via Ollama | — | Keeps entire stack local |
 | Text Splitting | `langchain-text-splitters` | ≥0.2 | Battle-tested recursive character splitter |
@@ -111,8 +114,8 @@ This document specifies all technical requirements, technology choices, dependen
 ┌────────────▼──────────────────────────▼─────────────┐
 │                  Data Layer                          │
 │  PostgreSQL 16 + pgvector                            │
-│  Tables: users, orgs, roles, documents, chunks,      │
-│          embeddings, audit_logs, tool_executions     │
+│  Tables: organizations, users, documents, chunks,      │
+│          embeddings, audit_logs, tool_proposals     │
 └─────────────────────────────────────────────────────┘
              │
 ┌────────────▼────────────────┐
@@ -125,17 +128,17 @@ This document specifies all technical requirements, technology choices, dependen
 
 - All REST endpoints versioned under `/api/v1/`
 - Request and response bodies use **Pydantic v2 models**
-- All endpoints return structured JSON with consistent shape:
+- Proposed endpoint-specific responses follow [API_SPEC.md](API_SPEC.md), including list pagination. The following generic envelope is an optional future proposal, not the current or agreed wire contract:
   ```json
   {
-    "data": { ... },
+    "data": { "example": "value" },
     "meta": { "request_id": "uuid", "timestamp": "iso8601" },
     "error": null
   }
   ```
 - Authentication via `Authorization: Bearer <jwt>` header
 - Pagination via `?limit=<N>&offset=<N>` query params
-- All error responses use RFC 7807 Problem Details format
+- Planned errors follow the `detail`, `code`, `request_id` shape in API_SPEC.md; the scaffold uses FastAPI defaults. RFC 7807 is not the selected contract.
 
 ### 3.3 Asynchronous Processing
 
@@ -152,10 +155,12 @@ This document specifies all technical requirements, technology choices, dependen
 
 | Parameter | Value | Rationale |
 |---|---|---|
-| Chunk size | 512 tokens | Fits within most embedding model context windows |
-| Chunk overlap | 50 tokens | Preserves sentence continuity across chunk boundaries |
+| Chunk size | Up to 240 model tokens | Leaves room under the default MiniLM 256-wordpiece limit; count with its tokenizer |
+| Chunk overlap | 32 model tokens | Preserves sentence continuity across chunk boundaries |
 | Splitter type | Recursive character splitter | Respects paragraph → sentence → word hierarchy |
 | Embedding dimensions | 384 (MiniLM) / 768 (nomic) | Model-dependent; stored as pgvector `vector(384)` |
+
+The [default embedding model card](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) specifies truncation above 256 wordpieces. The proposed 240-token chunk budget and 32-token overlap replace the earlier 512/50 proposal to fit this limit. The chunker must count with the embedding tokenizer, including special tokens, and test against the runtime model limit. Whitespace counts and character splitter sizes are not token counts. Larger chunks require a suitable model. Switching to 768-dimensional embeddings requires a schema/index migration and re-embedding; `model_name` alone does not make `vector(384)` compatible.
 
 ### 4.2 Vector Index
 
@@ -188,9 +193,9 @@ This document specifies all technical requirements, technology choices, dependen
 ### 5.2 RBAC Enforcement
 
 - Role hierarchy: `SuperAdmin > OrgAdmin > Manager > Employee`
-- RBAC enforced at the **SQLAlchemy query layer** using `organization_id` and `allowed_roles` filters
+- RBAC enforced at the **SQLAlchemy query layer** using `org_id` and `allowed_roles` filters
 - The frontend NEVER controls access logic — it is purely cosmetic
-- Tenant isolation: all queries include `WHERE organization_id = :current_user_org_id`
+- Tenant isolation: all queries include `WHERE org_id = :current_user_org_id`
 
 ### 5.3 Tool Execution Safety
 
@@ -226,7 +231,7 @@ This document specifies all technical requirements, technology choices, dependen
 |---|---|---|---|
 | Document ingestion (PDF, 10 pages) | < 3s | < 8s | Timed ingestion jobs |
 | Semantic search (cosine, top-5) | < 100ms | < 300ms | DB query timing |
-| LLM generation (first token) | < 3s | < 7s | SSE stream start |
+| Query-to-first-token (including retrieval) | <= 5s | <= 8s | Client to first SSE token |
 | End-to-end query | < 6s | < 12s | Client-measured |
 | Auth (login) | < 200ms | < 500ms | API response time |
 
@@ -235,10 +240,11 @@ This document specifies all technical requirements, technology choices, dependen
 ## 8. Code Quality Standards
 
 ```toml
-# ruff.toml (in project root)
+# Proposed pyproject.toml configuration (not committed)
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+[tool.ruff.lint]
 select = ["E", "F", "I", "UP", "S"]  # pycodestyle, pyflakes, isort, pyupgrade, bandit
 ```
 
@@ -251,6 +257,10 @@ select = ["E", "F", "I", "UP", "S"]  # pycodestyle, pyflakes, isort, pyupgrade, 
 ---
 
 ## 9. Environment Variables Reference
+
+All current settings have development defaults, so none is syntactically required to import the scaffold. `DATABASE_URL` and `OLLAMA_BASE_URL` drive health checks. `POSTGRES_*` values configure Compose but do not rebuild the backend URL. Auth, embedding, and generation values are reserved for unimplemented services. Root `.env` resolves from the working directory; use CONTRIBUTING.md's root-based launch command. The Required column below describes target deployment policy.
+
+`APP_NAME`, `API_V1_PREFIX`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `DATABASE_SYNC_URL`, `ALGORITHM`, and `BACKEND_CORS_ORIGINS` are also declared in `backend/app/core/config.py`. CORS overrides use a JSON array. That file and `.env.example` define current settings.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|

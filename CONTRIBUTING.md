@@ -1,133 +1,109 @@
-# KNEXUS Team Setup & Contribution Guide
+# KNEXUS contribution and local setup guide
 
-Welcome to the **KNEXUS** project! This guide contains everything your team members need to set up their local development environment and collaborate smoothly without code collisions.
+## Scope and prerequisites
 
----
+The current application is a backend scaffold. Read [README.md](README.md) and the [repository review](docs/REPOSITORY_REVIEW.md) before using the target designs as implementation instructions.
 
-## 🌿 Git & Branching Strategy
+Use **Python 3.12** as the team baseline, Git, and Docker with Docker Compose. Node.js is only needed when the frontend is initialized. Ollama is optional for dependency diagnostics and will be required for future answer generation.
 
-> [!IMPORTANT]
-> **Do NOT commit directly to `main`!**
-> `main` is our stable production branch that should always remain working and deployable.
+## Start from the repository root
 
-### Recommended Workflow: Feature / Member Branches
-
-Each team member works on an isolated branch and merges into `main` through a Pull Request or fast-forward merge once their feature is tested and verified.
-
-#### 1. Branch Naming Convention
-- `feat/<member>-<feature>` (e.g. `feat/hassan-ingestion`, `feat/ali-ollama-chain`, `feat/omar-docker-setup`)
-- `fix/<member>-<bug>` (e.g. `fix/hassan-pgvector-index`)
-
-#### 2. Day-to-Day Git Flow
-```bash
-# 1. Start from latest main
-git checkout main
-git pull origin main
-
-# 2. Create your feature branch
-git checkout -b feat/yourname-feature-description
-
-# 3. Work on your code, test locally, and commit frequently
-git add .
-git commit -m "feat(rag): add recursive chunking logic for PDF documents"
-
-# 4. Push your branch to GitHub
-git push -u origin feat/yourname-feature-description
-
-# 5. Open a Pull Request on GitHub to merge into main!
-```
-
----
-
-## 💻 Local Environment Setup (Phase 0)
-
-### 1. Prerequisites
-Ensure you have the following installed on your machine:
-- **Python 3.10+** (Python 3.11 recommended)
-- **Docker & Docker Compose** (for running PostgreSQL + pgvector)
-- **Git**
-- **Ollama** ([Download Ollama](https://ollama.com/))
-
----
-
-### 2. Clone the Repository
 ```bash
 git clone https://github.com/Hassan092-prog/KNEXUS.git
 cd KNEXUS
 ```
 
----
+Keep the process working directory here when starting the backend. `Settings` reads `.env` from the working directory, not from the Python module location. Do not overwrite an existing `.env` when repeating setup.
 
-### 3. Start PostgreSQL with `pgvector` via Docker
-We use Docker to run PostgreSQL with the `pgvector` extension pre-configured so no manual C-compilation is required:
+### Linux/macOS (POSIX shell)
 
-```bash
-docker compose up -d
-```
-Verify the container is running:
-```bash
-docker ps
-```
-*(You should see `knexus-postgres` running mapped to port `5435`).*
-
----
-
-### 4. Set Up Python Virtual Environment & Backend
-```bash
-cd backend
-
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment:
-# On Linux/macOS:
-source venv/bin/activate
-# On Windows (PowerShell):
-.\venv\Scripts\Activate.ps1
-# On Windows (cmd):
-.\venv\Scripts\activate.bat
-
-# Install dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
----
-
-### 5. Configure Environment Variables
-Copy `.env.example` in the project root to `.env`:
 ```bash
 cp .env.example .env
+python3.12 -m venv backend/venv
+backend/venv/bin/python -m pip install --upgrade pip
+backend/venv/bin/python -m pip install -r backend/requirements.txt
+docker compose up -d postgres
+backend/venv/bin/python -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
 ```
-The defaults already match the `docker-compose.yml` settings.
 
----
+### Windows PowerShell
 
-### 6. Set Up Ollama (Local LLM)
-In a separate terminal, ensure Ollama is running and pull the default model:
+```powershell
+Copy-Item .env.example .env
+py -3.12 -m venv backend/venv
+.\backend\venv\Scripts\python.exe -m pip install --upgrade pip
+.\backend\venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+docker compose up -d postgres
+.\backend\venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
+```
+
+## Verify the scaffold
+
+In another terminal at the repository root:
+
 ```bash
-# Verify Ollama is running
-ollama list
+docker compose ps
+curl http://localhost:8000/
+curl http://localhost:8000/api/v1/health
+```
 
-# Pull the lightweight, high-performance Llama 3.2 model
+In PowerShell use `Invoke-RestMethod http://localhost:8000/api/v1/health` if `curl` resolves to a PowerShell alias.
+
+Open [Swagger](http://localhost:8000/docs), [ReDoc](http://localhost:8000/redoc), or [OpenAPI JSON](http://localhost:8000/api/v1/openapi.json). The application routes are `GET /` and `GET /api/v1/health`; document/query/auth/action endpoints do not exist yet.
+
+The health response reports database connectivity, vector-extension presence, and Ollama `/api/tags` reachability. It always returns HTTP 200. Database exceptions set `status=degraded`; missing vector or unavailable Ollama currently do not. An online Ollama response does not prove the configured model is installed or can generate answers.
+
+## Configuration and services
+
+- Root `.env` defaults match Compose's host PostgreSQL port **5435**. The container listens on **5432**.
+- Change `DATABASE_URL` explicitly when changing database credentials, host, port, or database name. The individual `POSTGRES_*` values do not construct this URL in the backend. `DATABASE_SYNC_URL` is reserved for future synchronous tooling.
+- `BACKEND_CORS_ORIGINS` can be set as a JSON array in `.env`. The default includes local ports 3000 and 5173.
+- Security/model settings are placeholders for planned features; changing `SECRET_KEY` does not enable authentication.
+- Compose starts PostgreSQL only. Ollama's service block is commented out; API and frontend containers are absent.
+- `docker/init.sql` runs only when PostgreSQL initializes an empty data volume. It enables `vector` and creates no application tables. No Alembic setup is committed.
+- Existing volumes retain their users/passwords/database settings. Editing `.env` does not reinitialize a populated database.
+
+Optional Ollama setup, in another terminal:
+
+```bash
+ollama serve
+# In another terminal, if the model is wanted for future development:
 ollama pull llama3.2
+ollama list
 ```
 
----
+Do not start a second Ollama server if a desktop/background service already owns port 11434. The health probe works without downloading a model.
 
-### 7. Run the FastAPI Development Server
-From the `backend` directory (with your virtualenv active):
+To stop PostgreSQL while retaining its data:
+
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+docker compose stop postgres
 ```
 
-Now open your browser:
-- **Interactive API Docs (Swagger):** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Health Check Endpoint:** [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)
+## Troubleshooting
 
-The `/health` endpoint checks database connectivity, the `pgvector` extension, and the Ollama server automatically.
+| Symptom | Check |
+|---|---|
+| Changes in `.env` have no effect | Launch from the repository root and restart the backend; settings are cached per process |
+| Database connection error | Check `docker compose ps`, host port 5435, and `DATABASE_URL`; startup does not wait for readiness |
+| Vector not installed | Inspect the existing database/volume and `docker/init.sql`; initialization scripts do not rerun on populated volumes |
+| Ollama offline | Check its separate service and `OLLAMA_BASE_URL`; the rest of the scaffold still runs |
+| `/query` or `/auth/login` returns 404 | These are planned API contracts, not implemented routes |
 
----
+## Contribution workflow
 
-## 👥 Team Roles & Responsibilities Reference
-Refer to [`docs/KNEXUS_Project_Plan.md`](docs/KNEXUS_Project_Plan.md) for full phase allocations and deliverables.
+Use short-lived `feat/<member>-<feature>`, `fix/<member>-<bug>`, or `docs/<member>-<topic>` branches and pull requests into `main`. Persistent member branches are optional coordination branches, described in the [workflow guide](docs/KNEXUS_Team_Git_Workflow_Guide.md).
+
+```bash
+git switch main
+git pull --ff-only origin main
+git switch -c feat/yourname-feature
+# Make changes, inspect git diff, and run applicable checks.
+git add path/to/changed-file
+git commit -m "feat(rag): add document chunking"
+git push -u origin feat/yourname-feature
+```
+
+Review staged changes for secrets and generated data. `.gitignore` is a convenience, not secret detection. Do not commit `.env`, virtual environments, model downloads, database files, or full datasets. No automated test suite or CI pipeline is committed yet; describe manual checks honestly and add relevant tests with new application behavior. Ruff is planned but is not installed by `requirements.txt`.
+
+See the [project plan](docs/KNEXUS_Project_Plan.md) for ownership and the [documentation index](docs/INDEX.md) for design references.

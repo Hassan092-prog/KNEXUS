@@ -1,4 +1,7 @@
 # KNEXUS — Knowledge Network for EXploration and Unified Services
+
+> **Implementation status - 18 October 2026:** This document describes the target design and acceptance criteria. Only the backend scaffold, dependency health route, and PostgreSQL/pgvector bootstrap are implemented. See [REPOSITORY_REVIEW.md](REPOSITORY_REVIEW.md) for current behavior and known gaps. Code examples, proposed directories, tests, and migrations below are not evidence of completed work.
+
 ## Comprehensive Team Project Plan | B.E. VII Semester | MJCET 2026–2027
 
 ---
@@ -43,11 +46,11 @@ KNEXUS is a RAG-based enterprise knowledge platform that:
 
 ### Datasets
 - **Primary:** EnterpriseRAG-Bench — simulated company data (Slack: 285,605 records, Gmail: 121,390, Linear: 35,308, Google Drive: 25,108 records)
-- **Evaluation QA Set:** 500 questions across Basic (175), Semantic (125), Intra-document reasoning (40), Project-related (40), Constrained (30), Conflicting Info (20), Completeness (20), High-level (10), Information-not-found (20)
+- **Evaluation QA Set:** 500 questions across Basic (175), Semantic (125), Intra-document reasoning (40), Project-related (40), Constrained (30), Conflicting Info (20), Completeness (20), Miscellaneous (20), High-level (10), Information-not-found (20)
 - **Security Test Set:** Custom synthetic fixtures for RBAC, tenant isolation, approval handling, tool execution
 
 ### Base Research Paper
-**"Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks"** — Lewis et al. (Facebook AI Research, UCL, NYU), 2021
+**"Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks"** — Lewis et al. (Facebook AI Research, UCL, NYU), NeurIPS 2020 (bundled arXiv revision: April 2021)
 - RAG combines a dense pre-trained retriever (BERT-based DPR) with a seq2seq generator (BART)
 - End-to-end trained using MIPS (Maximum Inner Product Search) over a Wikipedia document index
 - Key insight: parametric + non-parametric memory hybrid outperforms pure LM baselines on knowledge-intensive tasks
@@ -86,6 +89,12 @@ KNEXUS is a RAG-based enterprise knowledge platform that:
 
 ---
 
+## Academic review prerequisites
+
+The bundled university guidelines require a base paper published in a reputed journal on or after 2021 and a literature survey of at least ten papers from 2021 onward. The current base paper is NeurIPS 2020; its April 2021 arXiv revision does not establish qualifying publication. Obtain guide/coordinator acceptance or select a qualifying base paper; keep Lewis et al. as foundational background. Only three research PDFs are tracked, and the team deck surveys those three.
+
+The abstract DOC/PDF still contains blank course, branch, team, student, and guide fields. Complete verified details and signatures before submission. Dates below are estimates, not confirmed notice dates. See the [repository review](REPOSITORY_REVIEW.md) for artifact findings.
+
 ## 📅 Project Timeline
 
 | Review | Approximate Date | Deliverable |
@@ -102,7 +111,7 @@ KNEXUS is a RAG-based enterprise knowledge platform that:
 *Goal: Establish shared understanding, environment, and architecture before anyone writes production code.*
 
 ### All Members (Shared)
-- [ ] Deep-read the base paper (Lewis et al. RAG 2021) and summarize key insights
+- [ ] Deep-read the base paper (Lewis et al. RAG 2020) and summarize key insights
 - [ ] Read supporting papers (Research Papers 1 & 2 in the repo) and identify gaps
 - [ ] Set up shared GitHub repository with branching strategy (feature branches, PRs)
 - [ ] Set up development environments: Python, Node.js, PostgreSQL, Ollama
@@ -120,10 +129,10 @@ KNEXUS is a RAG-based enterprise knowledge platform that:
 ### Member 1 — Project Lead & RAG Core Architect
 **Technical Areas:** NLP/AI (embedding models), Backend (FastAPI), Database (pgvector), DevOps
 - [ ] **Architecture & API design:** Define all FastAPI endpoint contracts (OpenAPI/Swagger spec) for the entire system before anyone builds
-- [ ] **Document Ingestion Pipeline:** Build the document upload handler, text extraction module (PDFs, DOCX via `pdfplumber`/`python-docx`), and chunking logic (recursive character splitting, ~512 tokens with 50-token overlap)
+- [ ] **Document Ingestion Pipeline:** Build the document upload handler, text extraction module (PDFs, DOCX via `pdfplumber`/`python-docx`), and chunking logic (recursive character splitting, ~240 tokens with 32-token overlap)
 - [ ] **Embedding Generation:** Integrate Sentence Transformers (e.g., `all-MiniLM-L6-v2` or `nomic-embed-text` via Ollama) and generate vector embeddings for each chunk
 - [ ] **pgvector Setup:** Design the PostgreSQL schema (`documents`, `chunks`, `embeddings` tables), configure pgvector extension, and implement HNSW/IVFFlat index for fast ANN search
-- [ ] **Semantic Search API:** Build the `/search` endpoint — takes a query, embeds it, runs cosine similarity search in pgvector, returns top-K chunks with metadata
+- [ ] **Semantic Search API:** Build the retrieval service behind `/api/v1/query` (a standalone `/search` route needs an agreed API contract); it — takes a query, embeds it, runs cosine similarity search in pgvector, returns top-K chunks with metadata
 - [ ] **Abstention Logic:** Implement confidence thresholds — if similarity score is below threshold, system returns "Evidence not found" instead of hallucinating
 - [ ] **Dataset Integration Script:** Write script to import 1,000–2,000 curated records from EnterpriseRAG-Bench (Linear + Slack + Gmail sources) into the KNEXUS corpus
 - [ ] **RAG Evaluation Harness:** Build automated evaluation script that runs the 500-question test set and measures Retrieval Recall@K and Precision@K
@@ -149,7 +158,7 @@ KNEXUS is a RAG-based enterprise knowledge platform that:
 
 ### Member 3 — Data Engineering & Infrastructure
 **Technical Areas:** Data Engineering, Backend (FastAPI), DevOps/Docker, Database
-- [ ] **Database Schema Design:** Collaboratively finalize then implement the full PostgreSQL schema including: `organizations`, `users`, `roles`, `documents`, `document_chunks`, `embeddings`, `audit_logs`, `tool_executions` tables
+- [ ] **Database Schema Design:** Collaboratively finalize then implement the full PostgreSQL schema including: `organizations`, `users`, `documents`, `document_chunks`, `embeddings`, `audit_logs`, `tool_proposals` tables (roles are a user field in this draft)
 - [ ] **EnterpriseRAG-Bench Data Pipeline:** Download, inspect, and preprocess EnterpriseRAG-Bench from HuggingFace; write ETL pipeline to normalize records from Slack/Gmail/Linear/Google Drive formats into KNEXUS unified schema
 - [ ] **Synthetic Security Dataset:** Create the KNEXUS custom synthetic test fixtures — define roles (admin, manager, employee), assign documents to roles, create test Q&A pairs where some queries should be blocked
 - [ ] **Docker Compose Setup:** Create `docker-compose.yml` that orchestrates: PostgreSQL + pgvector, Ollama, FastAPI backend, React frontend — single command to start the full stack
@@ -161,6 +170,8 @@ KNEXUS is a RAG-based enterprise knowledge platform that:
 
 ---
 
+**Security sequencing:** Authentication, tenant ownership, and permission filtering must accompany initial ingestion/retrieval before any shared or sensitive corpus is used. Phase 2 expands governance and proves isolation; it must not be interpreted as permission to expose a cross-tenant query path first.
+
 ## Phase 2 — Security, Access Control & Governance *(Weeks 7–10)*
 *Goal: Add RBAC, permission-aware retrieval, approval workflows, and audit logging — the features that differentiate KNEXUS from generic chatbots.*
 
@@ -168,7 +179,7 @@ KNEXUS is a RAG-based enterprise knowledge platform that:
 **Technical Areas:** Security/Auth, Backend, Database, AI Safety
 - [ ] **Auth System:** Implement JWT-based authentication with FastAPI dependencies — `/login`, `/refresh`, `/logout` endpoints; secure password hashing (bcrypt)
 - [ ] **RBAC Middleware:** Build role-based middleware that attaches user roles to every request; define role hierarchy (SuperAdmin > OrgAdmin > Manager > Employee)
-- [ ] **Permission-Aware Retrieval Filter:** Extend the semantic search pipeline to pre-filter embeddings by `organization_id` and `allowed_roles` BEFORE passing to the LLM — server-side enforcement (not frontend filtering)
+- [ ] **Permission-Aware Retrieval Filter:** Extend the semantic search pipeline to pre-filter embeddings by `org_id` and `allowed_roles` BEFORE passing to the LLM — server-side enforcement (not frontend filtering)
 - [ ] **Multi-Tenancy Isolation:** Implement organization-level data isolation — a user from Org A cannot retrieve documents from Org B even with the same role level
 - [ ] **Access Control Testing:** Using the custom synthetic fixtures, write test suite validating: authorized access works, unauthorized access is denied, cross-tenant leakage is impossible
 - [ ] **Security Review & Threat Modeling:** Write a brief security threat model for the system, identifying potential attack vectors (prompt injection, embedding poisoning, bypass attempts)
@@ -369,7 +380,7 @@ Phase 4 (Final):            M1 ████████ | M2 ██████�
 
 **Hardcopy submissions on Review day:**
 - [ ] 1-page abstract (MJCET template filled)
-- [ ] Base paper printout (Lewis et al. RAG 2021)
+- [ ] Base paper printout (Lewis et al. RAG 2020)
 - [ ] Research Paper 1 printout
 - [ ] Research Paper 2 printout
 

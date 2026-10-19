@@ -18,7 +18,7 @@ Use [TEAM_START.md](TEAM_START.md) for the current handoff status and exact pers
 - [x] Prepared [the draft contract baseline](PHASE_1_CONTRACT.md), Pydantic reference models, generated JSON Schema and synthetic mocks on Hassan's branch.
 - [x] Chosen Naveed's computer for Ollama and configured the shared backend for a loopback SSH tunnel.
 - [ ] Zaid accepts the existing invitation and each member verifies their own clone/environment.
-- [ ] Review and merge the contract PR before relying on its fields for live integration; sync member branches from main after the merge.
+- [ ] Review and merge [Draft PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1) before relying on its fields for live integration; sync member branches from main after the merge.
 - [ ] Naveed installs/loads the selected model and starts the tunnel; verify a real bounded generation request from the shared server.
 - [ ] Zaid initializes the frontend, preserves its README and commits its package manifest/lockfile.
 

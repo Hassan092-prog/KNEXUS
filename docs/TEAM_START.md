@@ -1,6 +1,6 @@
 # Team start: shared baseline and personal setup
 
-**Status: 19 October 2026.** The documentation baseline is published on main at commit `1a258e6`. All three persistent member branches are published. The Phase 1 contract reference and examples are prepared on dev-hassan for a draft PR; they are not accepted or implemented endpoints yet.
+**Status: 19 October 2026.** The documentation baseline is published on main at commit `1a258e6`. All three persistent member branches are published. The Phase 1 contract reference and examples are published on dev-hassan in [Draft PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1); they are not accepted or implemented endpoints yet.
 
 ## GitHub accounts and access
 

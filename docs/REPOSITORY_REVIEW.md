@@ -131,6 +131,10 @@ The [draft implementation baseline](PHASE_1_CONTRACT.md) now has standalone Pyda
 
 The shared server has an i3-7100U, about 8 GB RAM, Intel HD 620 graphics and about 13 GB free disk. Naveed confirmed his computer is substantially stronger; it is selected for Ollama. Only the ignored root environment's Ollama URL/model fields were changed to use localhost:11435 and llama3.2:3b. Naveed must run Ollama and the loopback-only reverse SSH tunnel before live generation can be verified. [TEAM_START.md](TEAM_START.md) gives the exact commands and pending personal-machine steps. No models were downloaded and no service or database changes were made.
 
+## Developer-agent playbook follow-up
+
+PR #1 is merged, and origin/main contains the shared contract baseline at `cb0c20b`. The [Phase 1 guide](PHASE_1_TEAM_GUIDE.md) is now the agent execution brief: role/branch checks, read order, H01-H07 backend tasks, N01-N06 generation tasks, Z01-Z06 frontend tasks, owned paths, dependency gates, verification requirements and copyable agent prompts. The local member-branch upstreams were found pointing at origin/main and restored to their matching origin/dev-* branches; each personal clone must inspect its own tracking configuration. Naveed still has write access and Zaid still has no active write access at this follow-up; his previously observed invitation needs acceptance. No Phase 1 feature implementation is claimed by this documentation change.
+
 ## Recommended implementation order
 
 1. Fix health/readiness/error handling, configuration consistency, and dependency reproducibility; establish basic test/CI coverage.
@@ -138,3 +142,9 @@ The shared server has an i3-7100U, about 8 GB RAM, Intel HD 620 graphics and abo
 3. Deliver one PDF/DOCX ingestion -> indexed chunks -> authorized retrieval -> cited answer/abstention path, with a small labeled corpus.
 4. Add one sandbox action with atomic single-use approval, idempotent execution, verification, and audit records.
 5. Build the UI against generated contracts, expand held-out evaluation, and update academic artifacts with measured results and verified submission details.
+
+## Phase 0 publication readiness follow-up - 19 October 2026
+
+The shared dependency environment, Compose configuration and standalone contract checker pass. PostgreSQL is running healthy. The server inference tunnel on 127.0.0.1:11435 is offline, personal laptop environments are unverified, and Zaid's write-access invitation remains pending. These observations permit independent scaffold/fixture work after each member completes access and branch setup; they do not establish live integration readiness.
+
+[PHASE_0_SETUP_GUIDE.md](PHASE_0_SETUP_GUIDE.md) records per-owner setup commands, safe clone/branch synchronization, current versus future checks, SSH access prerequisites, the Ollama generation gate and handoff evidence. It accompanies the Phase 1 agent playbook in PR #2. No application features are implemented by this documentation change.

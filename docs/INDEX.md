@@ -9,6 +9,7 @@
 | [README](../README.md) | Current capabilities, quick start, repository layout |
 | [Contribution guide](../CONTRIBUTING.md) | POSIX/PowerShell setup, configuration, troubleshooting |
 | [Repository review](REPOSITORY_REVIEW.md) | Code findings, missing implementation, academic conflicts, verification |
+| [Phase 0 setup guide](PHASE_0_SETUP_GUIDE.md) | Ordered access, personal environments, server checks, Ollama/tunnels and readiness gates |
 | [Team start](TEAM_START.md) | Published member branches, GitHub invitation status, contract PR handoff and laptop-hosted Ollama |
 | [Frontend status](../frontend/README.md) | Proposed UI; no application initialized |
 | [Data status](../data/README.md) | Proposed fixtures, corpus selection, provenance |
@@ -21,7 +22,7 @@
 | [TRD](TRD.md) | Technical baseline, configuration, engineering standards |
 | [Architecture](ARCHITECTURE.md) | Current runtime summary and proposed components/tree |
 | [API specification](API_SPEC.md) | Current routes followed by proposed contracts |
-| [Phase 1 baseline](PHASE_1_CONTRACT.md) | Concrete draft fields, limits, data/service boundaries and deferred work |
+| [Phase 1 baseline](PHASE_1_CONTRACT.md) | Merged baseline fields, limits, data/service boundaries and deferred work |
 | [Contract reference](../contracts/phase1/README.md) | Synthetic API/generation mocks, Pydantic reference types, JSON Schema and validator |
 | [Database schema](DATABASE_SCHEMA.md) | Bootstrap scope and draft DDL/migration requirements |
 | [Security model](SECURITY_MODEL.md) | Current gaps, planned policy, threat model, negative tests |
@@ -29,7 +30,7 @@
 | [Team responsibilities](TEAM_RESPONSIBILITIES.md) | Member identities, branches and task ownership; Zaid owns the entire frontend |
 | [Project plan](KNEXUS_Project_Plan.md) | Phases 0-4, delivery ownership and academic prerequisites |
 | [Git workflow](KNEXUS_Team_Git_Workflow_Guide.md) | Persistent `dev-*` member branches, daily pushes, merge-commit PRs |
-| [Phase 1 team guide](PHASE_1_TEAM_GUIDE.md) | Task ownership, integration gates, prompt and code-review templates, skills |
+| [Phase 1 agent playbook](PHASE_1_TEAM_GUIDE.md) | Ordered Hassan/Naveed/Zaid tasks, file boundaries, dependencies, completion checks and copyable agent prompts |
 
 For current behavior, tracked source and generated OpenAPI take precedence. For the initial implementation slice, review PHASE_1_CONTRACT and its reference models; API_SPEC and DATABASE_SCHEMA describe broader targets with the qualifications in SECURITY_MODEL. The OpsPilot startup blueprint is background, not a competing implementation contract. For member identity, responsibilities and path ownership, TEAM_RESPONSIBILITIES.md takes precedence. Update related designs together when a decision changes.
 
@@ -54,7 +55,8 @@ Original PDFs, Office deliverables, papers, and university templates are preserv
 ## Suggested reading order
 
 1. README and repository review: establish what runs today.
-2. CONTRIBUTING: set up the scaffold.
-3. PRD, architecture, API, and schema: understand the intended path.
-4. Security and evaluation: understand boundaries and acceptance checks.
-5. Project plan, workflow, and academic requirements: coordinate delivery.
+2. Phase 0 setup guide and CONTRIBUTING: prepare access, environments and services.
+3. Phase 1 agent playbook: follow your assigned task sequence.
+4. PRD, architecture, API, and schema: understand the intended path.
+5. Security and evaluation: understand boundaries and acceptance checks.
+6. Project plan, workflow, and academic requirements: coordinate delivery.

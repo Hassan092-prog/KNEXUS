@@ -1,5 +1,7 @@
 # KNEXUS contribution and local setup guide
 
+Start with the [Phase 0 setup checklist](docs/PHASE_0_SETUP_GUIDE.md) for role-specific prerequisites and the shared-server/laptop arrangement.
+
 ## Scope and prerequisites
 
 The current application is a backend scaffold. Read [README.md](README.md) and the [repository review](docs/REPOSITORY_REVIEW.md) before using the target designs as implementation instructions.
@@ -43,7 +45,7 @@ docker compose up -d postgres
 
 ## Validate the shared contract reference
 
-The [Phase 1 contract proposal](docs/PHASE_1_CONTRACT.md) includes synthetic fixtures and checks independent of running services. After its PR is merged, run from the root:
+The [Phase 1 contract baseline](docs/PHASE_1_CONTRACT.md) includes synthetic fixtures and checks independent of running services. The initial baseline is merged; run from the root:
 
 ```bash
 backend/venv/bin/python contracts/phase1/check.py
@@ -82,7 +84,7 @@ Optional Ollama setup, in another terminal:
 ```bash
 ollama serve
 # In another terminal, if the model is wanted for future development:
-ollama pull llama3.2
+ollama pull llama3.2:3b
 ollama list
 ```
 

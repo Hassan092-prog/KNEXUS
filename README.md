@@ -6,11 +6,11 @@ KNEXUS is an academic project for a local enterprise knowledge assistant with ci
 
 As reviewed on **19 October 2026**, this repository contains a **FastAPI backend scaffold**, an async SQLAlchemy connection/session layer, a dependency health endpoint, and Docker Compose for PostgreSQL 16 with pgvector.
 
-Document ingestion, embeddings, retrieval, LLM answer generation, authentication/RBAC, approvals, audit storage, and the React interface are **planned and not implemented**. Installing their dependencies does not enable these features. There is no feature-level test suite, migration setup, frontend package manifest or CI workflow yet. The draft shared contracts include a standalone validator and synthetic examples; they do not implement features.
+Document ingestion, embeddings, retrieval, LLM answer generation, authentication/RBAC, approvals, audit storage, and the React interface are **planned and not implemented**. Installing their dependencies does not enable these features. There is no feature-level test suite, migration setup, frontend package manifest or CI workflow yet. The shared contract references include a standalone validator and synthetic examples; they do not implement features.
 
 See the [repository review](docs/REPOSITORY_REVIEW.md) for file coverage, findings, validation, and remaining work. The design documents describe the target system, not the current API.
 
-The [team start guide](docs/TEAM_START.md) records member access/branches and Naveed's Ollama handoff. The [Phase 1 contract proposal](docs/PHASE_1_CONTRACT.md) and [reference fixtures](contracts/phase1/README.md) define the fields for review before integration.
+Complete the [Phase 0 setup guide](docs/PHASE_0_SETUP_GUIDE.md) before the first implementation tasks; it distinguishes verified server checks from pending personal setup and live inference. The [team start guide](docs/TEAM_START.md) records member access/branches and Naveed's Ollama handoff. The [Phase 1 contract baseline](docs/PHASE_1_CONTRACT.md) and [reference fixtures](contracts/phase1/README.md) define the fields for review before integration.
 
 ## Quick start
 
@@ -66,7 +66,7 @@ The [project plan](docs/KNEXUS_Project_Plan.md) defines phases 0-4 and team resp
 | Naveed (2) | `dev-naveed` | LLM/prompt/citation, typed tools, answer evaluation and research |
 | Zaid (3) | `dev-zaid` | Entire frontend, UI verification, user manual and presentation visuals |
 
-The [team responsibilities](docs/TEAM_RESPONSIBILITIES.md) define task and path ownership. The [Phase 1 guide](docs/PHASE_1_TEAM_GUIDE.md) gives tasks, branch commands and collaboration prompts.
+The [team responsibilities](docs/TEAM_RESPONSIBILITIES.md) define task and path ownership. The [Phase 1 agent playbook](docs/PHASE_1_TEAM_GUIDE.md) gives ordered tasks for all three roles, file boundaries, checks and copyable prompts for their agents.
 
 ## Contributors
 

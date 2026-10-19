@@ -1,6 +1,6 @@
 # Phase 1 implementation baseline
 
-**Version 0.1 - proposed for the team's contract PR.** Hassan owns integration/schema contracts, Naveed owns generation and Zaid owns the frontend. Review this baseline together before merging and building live integrations. These definitions describe the implementation target; they do not mean routes or tables already exist.
+**Version 0.1 - initial baseline merged in [PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1).** Hassan owns integration/schema contracts, Naveed owns generation and Zaid owns the frontend. Use these field shapes for implementation and review later contract changes together before updating consumers. These definitions describe the implementation target; they do not mean routes or tables already exist.
 
 For Phase 1 details below, this baseline narrows the broader [API proposal](API_SPEC.md) and [database draft](DATABASE_SCHEMA.md). Future streaming/actions/admin contracts remain design proposals. Scope changes need a reviewed update to this baseline, [reference models](../contracts/phase1/models.py), [schema export](../contracts/phase1/schema.json) and examples together.
 

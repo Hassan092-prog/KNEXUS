@@ -1,6 +1,9 @@
 # Team start: shared baseline and personal setup
 
-**Status: 19 October 2026.** The documentation baseline is published on main at commit `1a258e6`. All three persistent member branches are published. The Phase 1 contract reference and examples are published on dev-hassan in [Draft PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1); they are not accepted or implemented endpoints yet.
+**Status: 19 October 2026.** The shared contracts and documentation are on main at `cb0c20b` after [PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1) was merged. All three persistent member branches are published. Synchronize your own branch from current main before implementation. The [Phase 1 agent playbook](PHASE_1_TEAM_GUIDE.md) gives each role's ordered tasks, owned files, checks and copyable start prompt. Contract definitions are not implemented endpoints.
+
+
+Complete the ordered [Phase 0 setup guide](PHASE_0_SETUP_GUIDE.md) before implementation. The shared scaffold checks pass, but personal setup and live inference require the member checks listed there. The setup guide and Phase 1 playbook are published together through [PR #2](https://github.com/Hassan092-prog/KNEXUS/pull/2); always synchronize from current main before starting.
 
 ## GitHub accounts and access
 
@@ -48,7 +51,7 @@ git switch --track origin/dev-zaid
 
 If that local branch already exists, use `git switch dev-hassan` (or your branch), not `--track` again. Check `git status --short --branch` before editing. Since upstream tracking is set, `git push` sends your commits to your own branch.
 
-After the contract PR is reviewed and merged with a merge commit, synchronize on your own branch from a clean tree:
+PR #1 is merged. Synchronize on your own member branch from a clean tree before starting implementation:
 
 ```powershell
 git fetch origin
@@ -56,7 +59,7 @@ git merge --no-edit origin/main
 git push
 ```
 
-Do not self-merge a draft contract without the team's review. Use one active PR per persistent branch.
+Review future shared-contract changes before merging them. Use one active PR per persistent branch.
 
 ## Contract baseline and first tasks
 
@@ -131,6 +134,7 @@ The configured model must appear in tags. To verify actual generation, use the f
 - [x] Prepared draft contract types, synthetic examples and independent validation.
 - [x] Chosen Naveed's computer as inference host and configured the shared backend's tunnel URL/model tag.
 - [ ] Zaid accepts the invitation; both members verify their own clones and runtime setup.
-- [ ] Team reviews and merges the contract PR, then members synchronize from main.
+- [x] Initial contract baseline merged in PR #1.
+- [ ] Each member synchronizes their own branch from current main before implementation.
 - [ ] Naveed installs/loads Ollama and starts the tunnel; verify actual generation from the shared server.
 - [ ] Start the three implementation PRs above.

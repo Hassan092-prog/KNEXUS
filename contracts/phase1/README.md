@@ -1,6 +1,6 @@
 # Phase 1 shared contract reference
 
-**Version 0.1 - draft for team review.** This folder gives Hassan, Naveed and Zaid concrete inputs/outputs to review before integrating their implementations. It registers no FastAPI routes and creates no database tables.
+**Version 0.1 - initial baseline merged in [PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1).** This folder gives Hassan, Naveed and Zaid concrete inputs/outputs to review before integrating their implementations. It registers no FastAPI routes and creates no database tables.
 
 - [Implementation baseline](../../docs/PHASE_1_CONTRACT.md): scope, HTTP behavior, service/data boundaries and deferred work.
 - [models.py](models.py): authoritative reference types and cross-field invariants using the project's existing Pydantic dependency.

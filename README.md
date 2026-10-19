@@ -4,7 +4,7 @@ KNEXUS is an academic project for a local enterprise knowledge assistant with ci
 
 ## Current implementation
 
-As reviewed on **18 October 2026**, this repository contains a **FastAPI backend scaffold**, an async SQLAlchemy connection/session layer, a dependency health endpoint, and Docker Compose for PostgreSQL 16 with pgvector.
+As reviewed on **19 October 2026**, this repository contains a **FastAPI backend scaffold**, an async SQLAlchemy connection/session layer, a dependency health endpoint, and Docker Compose for PostgreSQL 16 with pgvector.
 
 Document ingestion, embeddings, retrieval, LLM answer generation, authentication/RBAC, approvals, audit storage, and the React interface are **planned and not implemented**. Installing their dependencies does not enable these features. There are no committed automated tests, migrations, frontend package manifest, or CI workflows yet.
 

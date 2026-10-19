@@ -1,6 +1,6 @@
 # KNEXUS team Git workflow
 
-**Updated: 18 October 2026.** This guide and [CONTRIBUTING.md](../CONTRIBUTING.md) use the same default: short-lived feature branches and reviewed pull requests into `main`.
+**Updated: 19 October 2026.** This guide and [CONTRIBUTING.md](../CONTRIBUTING.md) use the same default: short-lived feature branches and reviewed pull requests into `main`.
 
 ## Branches and ownership
 

@@ -1,6 +1,6 @@
 # KNEXUS data and fixtures
 
-**Current state (18 October 2026):** this directory contains this README only. No datasets, fixtures, importer, benchmark file, or evaluation results are committed.
+**Current state (19 October 2026):** this directory contains this README only. No datasets, fixtures, importer, benchmark file, or evaluation results are committed.
 
 ## Planned layout
 

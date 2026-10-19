@@ -1,6 +1,6 @@
 # KNEXUS documentation index
 
-**Reviewed: 18 October 2026.** Begin with the [repository review](REPOSITORY_REVIEW.md) for implementation status, findings, artifact coverage, and validation. The repository currently provides a backend scaffold; the specifications below describe the planned product.
+**Reviewed: 19 October 2026.** Begin with the [repository review](REPOSITORY_REVIEW.md) for implementation status, findings, artifact coverage, and validation. The repository currently provides a backend scaffold; the specifications below describe the planned product.
 
 ## Setup and current behavior
 

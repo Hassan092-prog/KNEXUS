@@ -1,0 +1,19 @@
+{
+  "actor-context.json": "ActorContext",
+  "query-request.json": "QueryRequest",
+  "upload-metadata.json": "UploadMetadata",
+  "upload-accepted.json": "UploadAccepted",
+  "generation-request.json": "GenerationRequest",
+  "generation-answer.json": "GenerationResult",
+  "generation-abstention.json": "GenerationResult",
+  "query-answer.json": "QueryResponse",
+  "query-abstention.json": "QueryResponse",
+  "document-detail.json": "DocumentDetail",
+  "document-list.json": "DocumentList",
+  "document-queued.json": "DocumentStatus",
+  "document-complete.json": "DocumentStatus",
+  "provider-error.json": "ErrorResponse",
+  "validation-error.json": "ErrorResponse",
+  "document-processing.json": "DocumentStatus",
+  "document-failed.json": "DocumentStatus"
+}

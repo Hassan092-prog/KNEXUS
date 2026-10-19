@@ -1,0 +1,785 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "ActorContext": {
+      "additionalProperties": false,
+      "description": "Server-owned identity, never accepted as query/upload JSON from a client.",
+      "properties": {
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        },
+        "org_id": {
+          "format": "uuid",
+          "title": "Org Id",
+          "type": "string"
+        },
+        "effective_roles": {
+          "items": {
+            "enum": [
+              "employee",
+              "manager",
+              "orgadmin",
+              "superadmin"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Effective Roles",
+          "type": "array"
+        }
+      },
+      "required": [
+        "user_id",
+        "org_id",
+        "effective_roles"
+      ],
+      "title": "ActorContext",
+      "type": "object"
+    },
+    "Citation": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minimum": 1,
+          "title": "Id",
+          "type": "integer"
+        },
+        "chunk_id": {
+          "format": "uuid",
+          "title": "Chunk Id",
+          "type": "string"
+        },
+        "document_id": {
+          "format": "uuid",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_title": {
+          "minLength": 1,
+          "title": "Document Title",
+          "type": "string"
+        },
+        "chunk_index": {
+          "minimum": 0,
+          "title": "Chunk Index",
+          "type": "integer"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page"
+        },
+        "excerpt": {
+          "minLength": 1,
+          "title": "Excerpt",
+          "type": "string"
+        },
+        "similarity_score": {
+          "maximum": 1,
+          "minimum": -1,
+          "title": "Similarity Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "chunk_id",
+        "document_id",
+        "document_title",
+        "chunk_index",
+        "excerpt",
+        "similarity_score"
+      ],
+      "title": "Citation",
+      "type": "object"
+    },
+    "DocumentDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "source_type": {
+          "enum": [
+            "pdf",
+            "docx"
+          ],
+          "title": "Source Type",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "processing",
+            "complete",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "allowed_roles": {
+          "items": {
+            "enum": [
+              "employee",
+              "manager",
+              "orgadmin",
+              "superadmin"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Roles",
+          "type": "array"
+        },
+        "chunk_count": {
+          "minimum": 0,
+          "title": "Chunk Count",
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "source_type",
+        "status",
+        "allowed_roles",
+        "chunk_count",
+        "created_at"
+      ],
+      "title": "DocumentDetail",
+      "type": "object"
+    },
+    "DocumentList": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "items": {
+            "$ref": "#/$defs/DocumentSummary"
+          },
+          "title": "Data",
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/PageMeta"
+        }
+      },
+      "required": [
+        "data",
+        "meta"
+      ],
+      "title": "DocumentList",
+      "type": "object"
+    },
+    "DocumentStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "format": "uuid",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "processing",
+            "complete",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "chunks_processed": {
+          "minimum": 0,
+          "title": "Chunks Processed",
+          "type": "integer"
+        },
+        "total_chunks": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Chunks"
+        },
+        "progress_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Progress Percent"
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "INVALID_FILE",
+                "PROCESSING_FAILED",
+                "INTERRUPTED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Code"
+        },
+        "failure_message": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Message"
+        }
+      },
+      "required": [
+        "document_id",
+        "status",
+        "chunks_processed"
+      ],
+      "title": "DocumentStatus",
+      "type": "object"
+    },
+    "DocumentSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "source_type": {
+          "enum": [
+            "pdf",
+            "docx"
+          ],
+          "title": "Source Type",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "processing",
+            "complete",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "allowed_roles": {
+          "items": {
+            "enum": [
+              "employee",
+              "manager",
+              "orgadmin",
+              "superadmin"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Roles",
+          "type": "array"
+        },
+        "chunk_count": {
+          "minimum": 0,
+          "title": "Chunk Count",
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "source_type",
+        "status",
+        "allowed_roles",
+        "chunk_count",
+        "created_at"
+      ],
+      "title": "DocumentSummary",
+      "type": "object"
+    },
+    "ErrorResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "code": {
+          "enum": [
+            "VALIDATION_ERROR",
+            "INVALID_FILE",
+            "FILE_TOO_LARGE",
+            "UNAUTHORIZED",
+            "FORBIDDEN",
+            "NOT_FOUND",
+            "CONFLICT",
+            "PROVIDER_UNAVAILABLE",
+            "INVALID_CITATIONS",
+            "INTERNAL_ERROR"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "request_id": {
+          "format": "uuid",
+          "title": "Request Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "detail",
+        "code",
+        "request_id"
+      ],
+      "title": "ErrorResponse",
+      "type": "object"
+    },
+    "EvidenceChunk": {
+      "additionalProperties": false,
+      "properties": {
+        "citation_id": {
+          "minimum": 1,
+          "title": "Citation Id",
+          "type": "integer"
+        },
+        "chunk_id": {
+          "format": "uuid",
+          "title": "Chunk Id",
+          "type": "string"
+        },
+        "document_id": {
+          "format": "uuid",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_title": {
+          "minLength": 1,
+          "title": "Document Title",
+          "type": "string"
+        },
+        "chunk_index": {
+          "minimum": 0,
+          "title": "Chunk Index",
+          "type": "integer"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page"
+        },
+        "content": {
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "similarity_score": {
+          "maximum": 1,
+          "minimum": -1,
+          "title": "Similarity Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "citation_id",
+        "chunk_id",
+        "document_id",
+        "document_title",
+        "chunk_index",
+        "content",
+        "similarity_score"
+      ],
+      "title": "EvidenceChunk",
+      "type": "object"
+    },
+    "GenerationRequest": {
+      "additionalProperties": false,
+      "description": "Only evidence already authorized by the backend crosses this boundary.",
+      "properties": {
+        "question": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceChunk"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "question",
+        "evidence"
+      ],
+      "title": "GenerationRequest",
+      "type": "object"
+    },
+    "GenerationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "answer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Answer"
+        },
+        "cited_ids": {
+          "items": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "maxItems": 20,
+          "title": "Cited Ids",
+          "type": "array"
+        },
+        "abstained": {
+          "title": "Abstained",
+          "type": "boolean"
+        },
+        "abstention_reason": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Abstention Reason"
+        }
+      },
+      "required": [
+        "answer",
+        "cited_ids",
+        "abstained"
+      ],
+      "title": "GenerationResult",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "PageMeta": {
+      "additionalProperties": false,
+      "properties": {
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "limit": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total"
+      ],
+      "title": "PageMeta",
+      "type": "object"
+    },
+    "QueryMeta": {
+      "additionalProperties": false,
+      "properties": {
+        "retrieval_time_ms": {
+          "minimum": 0,
+          "title": "Retrieval Time Ms",
+          "type": "number"
+        },
+        "generation_time_ms": {
+          "minimum": 0,
+          "title": "Generation Time Ms",
+          "type": "number"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        }
+      },
+      "required": [
+        "retrieval_time_ms",
+        "generation_time_ms",
+        "model"
+      ],
+      "title": "QueryMeta",
+      "type": "object"
+    },
+    "QueryRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "question": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "top_k": {
+          "default": 5,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Top K",
+          "type": "integer"
+        },
+        "stream": {
+          "default": false,
+          "title": "Stream",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "question"
+      ],
+      "title": "QueryRequest",
+      "type": "object"
+    },
+    "QueryResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "answer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Answer"
+        },
+        "citations": {
+          "items": {
+            "$ref": "#/$defs/Citation"
+          },
+          "maxItems": 20,
+          "title": "Citations",
+          "type": "array"
+        },
+        "abstained": {
+          "title": "Abstained",
+          "type": "boolean"
+        },
+        "abstention_reason": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Abstention Reason"
+        },
+        "session_id": {
+          "format": "uuid",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "meta": {
+          "$ref": "#/$defs/QueryMeta"
+        }
+      },
+      "required": [
+        "answer",
+        "citations",
+        "abstained",
+        "session_id",
+        "meta"
+      ],
+      "title": "QueryResponse",
+      "type": "object"
+    },
+    "UploadAccepted": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "format": "uuid",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "task_id": {
+          "format": "uuid",
+          "title": "Task Id",
+          "type": "string"
+        },
+        "status": {
+          "const": "queued",
+          "title": "Status",
+          "type": "string"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "task_id",
+        "status",
+        "message"
+      ],
+      "title": "UploadAccepted",
+      "type": "object"
+    },
+    "UploadMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "allowed_roles": {
+          "items": {
+            "enum": [
+              "employee",
+              "manager",
+              "orgadmin",
+              "superadmin"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Roles",
+          "type": "array"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "allowed_roles"
+      ],
+      "title": "UploadMetadata",
+      "type": "object"
+    }
+  },
+  "title": "KNEXUS Phase 1 reference contracts"
+}

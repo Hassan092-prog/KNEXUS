@@ -21,6 +21,10 @@ Before implementing this schema:
 - Add unique chunk positions per document, embedding uniqueness/version rules, non-null lifecycle fields, execution timestamps, idempotency, and verification state before approval workflows are built.
 - The proposal has one role/org per user and no persisted refresh sessions, conversation history, or sandbox task table. These need explicit schema decisions.
 
+## Phase 1 schema follow-up
+
+The [implementation baseline](PHASE_1_CONTRACT.md) requires persisted `ingestion_jobs` records for the upload `task_id`, document/tenant ownership, lifecycle, counters and safe failure metadata. This table and composite tenant constraints are not present in the illustrative DDL below; Hassan must include them in the first reviewed migration. The [reference contract examples](../contracts/phase1/README.md) describe accepted/status payloads. No migration or application table was created by preparing these contracts.
+
 ## 1. Overview (target)
 
 The KNEXUS database is the single source of truth for all data: users, documents, vector embeddings, audit logs, and tool execution records. It uses **PostgreSQL 16** with the **pgvector** extension for vector storage and similarity search.

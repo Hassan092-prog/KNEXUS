@@ -36,7 +36,7 @@ These paths include proposed modules that do not exist yet; ownership does not i
 
 | Owner | Primary paths and contracts |
 |---|---|
-| Hassan | `backend/app/api/`, `backend/app/core/`, `backend/app/models/`, `backend/app/schemas/`, `backend/alembic/`, ingestion/retrieval services, approval/audit persistence, database and API/integration tests, `docker/`, `docker-compose.yml`, backend dependencies, dataset import/fixtures, CI and deployment docs |
+| Hassan | `backend/app/api/`, `backend/app/core/`, `backend/app/models/`, `backend/app/schemas/`, `backend/alembic/`, ingestion/retrieval services, approval/audit persistence, database and API/integration tests, `docker/`, `docker-compose.yml`, backend dependencies, dataset import/fixtures, CI and deployment docs; shared contracts in `contracts/phase1/` with Naveed/Zaid reviewing consumer impacts |
 | Naveed | `backend/app/services/generation/`, tool registry/typed sandbox handlers in `backend/app/services/tools/`, versioned prompts, answer-quality cases/rubrics and literature/research sections |
 | Zaid | Entire `frontend/` tree, UI components/pages/hooks/API client/types/mock payloads, frontend dependencies/build configuration, UI/component tests, accessibility/user manual and presentation visuals |
 

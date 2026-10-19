@@ -29,27 +29,24 @@ git switch main
 git pull --ff-only origin main
 ```
 
-Create and publish **only your assigned branch**. Run the commands under your name:
+The three branches are already published. In a fresh personal clone, track **only your assigned branch**:
 
 **Hassan (Member 1):**
 
 ```powershell
-git switch -c dev-hassan
-git push -u origin dev-hassan
+git switch --track origin/dev-hassan
 ```
 
 **Naveed (Member 2):**
 
 ```powershell
-git switch -c dev-naveed
-git push -u origin dev-naveed
+git switch --track origin/dev-naveed
 ```
 
 **Zaid (Member 3):**
 
 ```powershell
-git switch -c dev-zaid
-git push -u origin dev-zaid
+git switch --track origin/dev-zaid
 ```
 
 GitHub may ask you to authenticate; use your normal Git credential manager. Never send teammates your password or personal access token.
@@ -103,7 +100,7 @@ Use **one open pull request per member branch at a time**. Open a PR from your `
 
 Use a normal **merge commit** for each PR so Git records the member-branch commits as ancestors of `main`. This lets the same long-lived branch open later PRs without replaying previously merged commits. Do not squash or rebase-merge persistent member branches. If repository settings require squash-only merging, tell the team and switch together to short-lived feature branches for PRs; do not keep opening stale PRs from a squash-merged persistent branch.
 
-After a PR is merged, continue from the same branch. At the beginning of the next task, merge current `origin/main` into it as shown above. Do not force-push or delete your persistent branch. The repository currently has `main` only; each member creates and pushes their own branch.
+After a PR is merged, continue from the same branch. At the beginning of the next task, merge current `origin/main` into it as shown above. Do not force-push or delete your persistent branch. The member branches are already published; see [TEAM_START.md](TEAM_START.md) for access and initial checkout status.
 
 ## Coordinate overlapping files
 

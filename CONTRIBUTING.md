@@ -41,6 +41,16 @@ docker compose up -d postgres
 .\backend\venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
 ```
 
+## Validate the shared contract reference
+
+The [Phase 1 contract proposal](docs/PHASE_1_CONTRACT.md) includes synthetic fixtures and checks independent of running services. After its PR is merged, run from the root:
+
+```bash
+backend/venv/bin/python contracts/phase1/check.py
+```
+
+On Windows use `./backend/venv/Scripts/python.exe contracts/phase1/check.py`. These reference checks do not implement or verify application routes.
+
 ## Verify the scaffold
 
 In another terminal at the repository root:
@@ -109,25 +119,22 @@ Each member keeps one persistent branch and commits/pushes their work there: Has
 ```powershell
 git switch main
 git pull --ff-only origin main
-git switch -c dev-hassan
-git push -u origin dev-hassan
+git switch --track origin/dev-hassan
 ```
 
 **Naveed (Member 2):** run the same first two commands, then:
 
 ```powershell
-git switch -c dev-naveed
-git push -u origin dev-naveed
+git switch --track origin/dev-naveed
 ```
 
 **Zaid (Member 3):** run the same first two commands, then:
 
 ```powershell
-git switch -c dev-zaid
-git push -u origin dev-zaid
+git switch --track origin/dev-zaid
 ```
 
-Run your branch setup once, from your own clone. At the start of each work session, check the branch and sync merged work:
+The remote member branches already exist. Track your assigned branch once from a fresh clone; if it exists locally, use `git switch` with the local branch name. See [TEAM_START.md](docs/TEAM_START.md) for access and Ollama handoff. At the start of each work session, check the branch and sync merged work:
 
 ```bash
 git status --short --branch

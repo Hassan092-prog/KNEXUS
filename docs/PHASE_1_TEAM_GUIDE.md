@@ -10,20 +10,23 @@ Follow [TEAM_RESPONSIBILITIES.md](TEAM_RESPONSIBILITIES.md): Hassan / Member 1 o
 
 ## Start-of-Phase-1 checklist
 
-The repository is ready for foundation implementation; the following handoff/setup steps are required before treating all three workstreams as integrated:
+Use [TEAM_START.md](TEAM_START.md) for the current handoff status and exact personal-branch/Ollama commands.
 
-- [ ] Publish the current documentation changes through the agreed reviewed Git workflow. At the readiness audit, the latest edits were uncommitted and `PHASE_1_TEAM_GUIDE.md` / `TEAM_RESPONSIBILITIES.md` were untracked, so a new clone would not contain this guidance yet.
-- [ ] Give each member repository write access and create/push `dev-hassan`, `dev-naveed` and `dev-zaid` from the updated shared baseline. Only `main` was present in the local branch inventory during the audit; remote permissions/protection were not verified.
-- [ ] Each member verifies their own setup using CONTRIBUTING.md. The audit confirms the shared remote host only; it does not certify personal laptops.
-- [ ] Hassan owns the first API/data/service-contract PR and migration foundation. Review the document/chunk/evidence fields with Naveed and Zaid before their live integrations depend on them.
-- [ ] Naveed sets up Ollama and the selected model before live generation checks. Ollama was absent from the audited remote shell and its health probe was offline; prompt/provider-stub work can start first.
-- [ ] Zaid initializes the frontend in an empty temporary directory, preserving `frontend/README.md` when adding scaffold files. Commit its package manifest/lockfile and document the selected Node requirement. Typed UI mock work can start before API endpoints exist.
+- [x] Existing documentation baseline is published on main (`1a258e6`).
+- [x] Published `dev-hassan`, `dev-naveed` and `dev-zaid` from that baseline.
+- [x] Verified Naveed/MrMax3757 has write access. Zaid/MohammedZaid1946 has a pending write invitation.
+- [x] Prepared [the draft contract baseline](PHASE_1_CONTRACT.md), Pydantic reference models, generated JSON Schema and synthetic mocks on Hassan's branch.
+- [x] Chosen Naveed's computer for Ollama and configured the shared backend for a loopback SSH tunnel.
+- [ ] Zaid accepts the existing invitation and each member verifies their own clone/environment.
+- [ ] Review and merge the contract PR before relying on its fields for live integration; sync member branches from main after the merge.
+- [ ] Naveed installs/loads the selected model and starts the tunnel; verify a real bounded generation request from the shared server.
+- [ ] Zaid initializes the frontend, preserves its README and commits its package manifest/lockfile.
 
-Application migrations, ingestion/query routes, the real generator, frontend source, fixtures and automated test suites are Phase 1 implementation work; their current absence does not prevent starting those tasks. Keep the pre-authentication demo local and synthetic. Academic paper eligibility and incomplete abstract fields remain submission follow-ups in the repository review.
+Application migrations, ingestion/query routes, the real generator, frontend source and feature test suites remain Phase 1 implementation work. Contract reference checks run independently of those services. Keep the pre-authentication demo local and synthetic. Academic submission follow-ups remain in the repository review.
 
 ## First agree on the interfaces
 
-Before parallel coding, schedule one short design session. Write down decisions in a PR to `docs/` so everyone can work against the same contract:
+A concrete proposal is prepared in [PHASE_1_CONTRACT.md](PHASE_1_CONTRACT.md) and [contracts/phase1](../contracts/phase1/README.md). Review its examples together in the contract PR before live integration:
 
 1. **API:** Keep the proposed `POST /api/v1/documents/upload` and `POST /api/v1/query` paths in `API_SPEC.md`, or explicitly agree on changed paths. Define upload type/size limits, queued/processing/complete/failed states, question/top-k input, answer/abstention, and citation fields. Treat the existing API spec as a proposal; these routes do not yet exist.
 2. **Data ownership:** Agree on stable IDs and ownership fields before migration work starts. Documents, chunks, and embeddings need organization IDs from the start. Define uploader, source type, filename/storage reference, lifecycle, chunk index/content/page metadata, embedding model, and vector dimension. Parent/child tenant consistency must be enforced by constraints or validated transactionally.
@@ -69,7 +72,7 @@ A practical four-week sequence is: week 1 contracts/database, a provider stub an
 
 ## Branch commands for each member
 
-Each person clones once and creates/pushes only their own persistent branch. Replace `YOUR_BRANCH` with exactly one of `dev-hassan`, `dev-naveed`, or `dev-zaid`:
+The three branches are already published. Each person uses their own clone and tracks their branch. Replace `YOUR_BRANCH` with exactly one of `dev-hassan`, `dev-naveed`, or `dev-zaid`:
 
 ```powershell
 git clone https://github.com/Hassan092-prog/KNEXUS.git
@@ -78,8 +81,7 @@ git config user.name "Your Name"
 git config user.email "you@example.com"
 git switch main
 git pull --ff-only origin main
-git switch -c YOUR_BRANCH
-git push -u origin YOUR_BRANCH
+git switch --track origin/YOUR_BRANCH
 ```
 
 Daily work and push:
@@ -111,7 +113,7 @@ Use one task, one owner, one branch, and explicit file/interface boundaries. Inc
 Project: KNEXUS. Current implementation: FastAPI scaffold; the requested route/service is not implemented yet.
 Owner: <member>. Branch: <dev-member>.
 Task: <one observable behavior>.
-Read first: docs/TEAM_RESPONSIBILITIES.md, then <specific files and the accepted API/schema contract>.
+Read first: docs/TEAM_RESPONSIBILITIES.md and docs/PHASE_1_CONTRACT.md, then <specific implementation files>.
 Own these files: <paths>. Shared files requiring coordination: <paths>.
 Interface: <inputs, outputs, error/status behavior, tenant/evidence fields>.
 Constraints: keep changes in scope; use only permitted/synthetic data; don't claim authentication/RBAC exists unless this task implements and tests it; don't invent citations; preserve existing behavior outside the task.

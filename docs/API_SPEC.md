@@ -13,6 +13,10 @@
 
 ---
 
+## Phase 1 review baseline
+
+For the first implementation slice, review [PHASE_1_CONTRACT.md](PHASE_1_CONTRACT.md) and [reference models/examples](../contracts/phase1/README.md). They narrow this broader proposal: non-streaming only, stable answer/abstention fields, response correlation IDs without conversation history, explicit query/upload limits and safe provider errors. These are proposed types, not registered endpoints.
+
 ## Implemented routes
 
 With the default prefix and documented launch command:

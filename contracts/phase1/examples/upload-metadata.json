@@ -1,0 +1,7 @@
+{
+  "title": "Synthetic Employee Handbook",
+  "allowed_roles": [
+    "employee"
+  ],
+  "description": "Synthetic fixture only."
+}

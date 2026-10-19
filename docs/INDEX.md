@@ -9,6 +9,7 @@
 | [README](../README.md) | Current capabilities, quick start, repository layout |
 | [Contribution guide](../CONTRIBUTING.md) | POSIX/PowerShell setup, configuration, troubleshooting |
 | [Repository review](REPOSITORY_REVIEW.md) | Code findings, missing implementation, academic conflicts, verification |
+| [Team start](TEAM_START.md) | Published member branches, GitHub invitation status, contract PR handoff and laptop-hosted Ollama |
 | [Frontend status](../frontend/README.md) | Proposed UI; no application initialized |
 | [Data status](../data/README.md) | Proposed fixtures, corpus selection, provenance |
 
@@ -20,6 +21,8 @@
 | [TRD](TRD.md) | Technical baseline, configuration, engineering standards |
 | [Architecture](ARCHITECTURE.md) | Current runtime summary and proposed components/tree |
 | [API specification](API_SPEC.md) | Current routes followed by proposed contracts |
+| [Phase 1 baseline](PHASE_1_CONTRACT.md) | Concrete draft fields, limits, data/service boundaries and deferred work |
+| [Contract reference](../contracts/phase1/README.md) | Synthetic API/generation mocks, Pydantic reference types, JSON Schema and validator |
 | [Database schema](DATABASE_SCHEMA.md) | Bootstrap scope and draft DDL/migration requirements |
 | [Security model](SECURITY_MODEL.md) | Current gaps, planned policy, threat model, negative tests |
 | [Evaluation strategy](EVALUATION_STRATEGY.md) | Dataset, metrics, proposed tests/CI; no measured results |
@@ -28,7 +31,7 @@
 | [Git workflow](KNEXUS_Team_Git_Workflow_Guide.md) | Persistent `dev-*` member branches, daily pushes, merge-commit PRs |
 | [Phase 1 team guide](PHASE_1_TEAM_GUIDE.md) | Task ownership, integration gates, prompt and code-review templates, skills |
 
-For current behavior, tracked source and generated OpenAPI take precedence. For planned contracts, use API_SPEC and DATABASE_SCHEMA with the qualifications in SECURITY_MODEL. The OpsPilot startup blueprint is background, not a competing implementation contract. For member identity, responsibilities and path ownership, TEAM_RESPONSIBILITIES.md takes precedence. Update related designs together when a decision changes.
+For current behavior, tracked source and generated OpenAPI take precedence. For the initial implementation slice, review PHASE_1_CONTRACT and its reference models; API_SPEC and DATABASE_SCHEMA describe broader targets with the qualifications in SECURITY_MODEL. The OpsPilot startup blueprint is background, not a competing implementation contract. For member identity, responsibilities and path ownership, TEAM_RESPONSIBILITIES.md takes precedence. Update related designs together when a decision changes.
 
 ## Academic and reference artifacts
 

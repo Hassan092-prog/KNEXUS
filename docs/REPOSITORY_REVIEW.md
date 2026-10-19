@@ -26,7 +26,7 @@ KNEXUS is a **foundation scaffold**, with much more extensive design documentati
 | `docs/API_SPEC.md`, `DATABASE_SCHEMA.md`, `SECURITY_MODEL.md` | Current routes/DB/security behavior separated from proposed contracts and controls |
 | `docs/EVALUATION_STRATEGY.md`, `KNEXUS_Project_Plan.md`, `KNEXUS_Team_Git_Workflow_Guide.md`, `PHASE_1_TEAM_GUIDE.md` | Corrected benchmark accounting, planning/academic conflicts, persistent branches, task ownership, and collaboration prompts |
 
-No ingestion, embedding inference, search, answer generation, JWT validation, tenant/role policy, approval engine, business audit log, frontend source/package manifest, migration files, tests, or CI workflow is tracked. SQLAlchemy metadata is empty. Installed packages are not feature implementations.
+No ingestion, embedding inference, search, answer generation, JWT validation, tenant/role policy, approval engine, business audit log, frontend source/package manifest, migration files, feature-level test suite or CI workflow is implemented. Standalone contract references/checks are prepared separately for the first team review. SQLAlchemy metadata is empty. Installed packages are not feature implementations.
 
 ## Prioritized implementation findings
 
@@ -122,6 +122,14 @@ All application source/configuration files were reread; they contain no member-s
 | Academic materials | Base-paper eligibility, literature-survey coverage and blank abstract fields remain documented submission issues. They do not block initial software implementation. |
 
 This audit did not install packages/models, start/stop services, change database state or run nonexistent frontend/RAG test suites. It corrected environment-copy examples to preserve existing `.env` files and replaced an in-place frontend scaffold instruction that could conflict with the existing README.
+
+## Coordination handoff follow-up - 19 October 2026
+
+The preceding readiness table is an audit snapshot. The documentation baseline has since been committed/published as `1a258e6`, and dev-hassan/dev-naveed/dev-zaid now exist locally and on origin with tracking. The shared checkout is on dev-hassan. Naveed/MrMax3757 already has write access; Zaid/MohammedZaid1946 has an existing pending write invitation. No invitations were sent during this handoff. Merge commits are enabled; protection/ruleset API inspection returned 403 and is not represented as verified.
+
+The [draft implementation baseline](PHASE_1_CONTRACT.md) now has standalone Pydantic contract references, a generated JSON Schema, synthetic HTTP/generation fixtures and positive/negative validation checks. This is concrete material for the team's contract PR, not already-approved or implemented endpoints, migrations or frontend code. No additional runtime dependency was installed.
+
+The shared server has an i3-7100U, about 8 GB RAM, Intel HD 620 graphics and about 13 GB free disk. Naveed confirmed his computer is substantially stronger; it is selected for Ollama. Only the ignored root environment's Ollama URL/model fields were changed to use localhost:11435 and llama3.2:3b. Naveed must run Ollama and the loopback-only reverse SSH tunnel before live generation can be verified. [TEAM_START.md](TEAM_START.md) gives the exact commands and pending personal-machine steps. No models were downloaded and no service or database changes were made.
 
 ## Recommended implementation order
 

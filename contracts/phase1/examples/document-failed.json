@@ -1,0 +1,9 @@
+{
+  "document_id": "00000000-0000-4000-8000-000000000001",
+  "status": "failed",
+  "chunks_processed": 0,
+  "total_chunks": null,
+  "progress_percent": null,
+  "failure_code": "INVALID_FILE",
+  "failure_message": "No readable text could be extracted from the synthetic document."
+}

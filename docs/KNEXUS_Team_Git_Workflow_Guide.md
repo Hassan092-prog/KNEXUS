@@ -122,4 +122,4 @@ For Office/PDF binary conflicts, coordinate with the file owner and select/regen
 
 Ask the repository admin to enable a GitHub rule for `main`: require pull requests and at least one teammate review; disallow force-push and branch deletion. Do not require CI checks until a real workflow exists. Members need write access to publish their own `dev-*` branches; a protected `main` should accept merges through PRs.
 
-The Phase 1 work breakdown and copyable coding/prompt-evaluation templates are in [PHASE_1_TEAM_GUIDE.md](PHASE_1_TEAM_GUIDE.md).
+The [Phase 1 agent playbook](PHASE_1_TEAM_GUIDE.md) contains the numbered task sequence, file boundaries, completion checks and copyable start prompts for each developer agent.

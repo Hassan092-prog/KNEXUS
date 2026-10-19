@@ -43,7 +43,7 @@ docker compose up -d postgres
 
 ## Validate the shared contract reference
 
-The [Phase 1 contract proposal](docs/PHASE_1_CONTRACT.md) includes synthetic fixtures and checks independent of running services. After its PR is merged, run from the root:
+The [Phase 1 contract baseline](docs/PHASE_1_CONTRACT.md) includes synthetic fixtures and checks independent of running services. The initial baseline is merged; run from the root:
 
 ```bash
 backend/venv/bin/python contracts/phase1/check.py

@@ -8,6 +8,8 @@
 | 2 | Naveed | `dev-naveed` | LLM adapter, prompts/context, citation validation, tool definitions/handlers, answer-quality evaluation and research |
 | 3 | Zaid | `dev-zaid` | Entire frontend: React/TypeScript/Vite, design system, upload/chat/citation screens, login/admin/approval UI, accessibility and UI documentation |
 
+See [PHASE_1_TEAM_GUIDE.md](PHASE_1_TEAM_GUIDE.md) for numbered implementation tasks, agent start prompts, dependencies and completion checks for each role.
+
 ## Work packages
 
 Each package has one accountable owner. Coordinate shared interfaces before implementation and have a teammate review completed changes.

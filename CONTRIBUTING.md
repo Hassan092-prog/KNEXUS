@@ -18,7 +18,9 @@ Keep the process working directory here when starting the backend. `Settings` re
 ### Linux/macOS (POSIX shell)
 
 ```bash
-cp .env.example .env
+if [ ! -f .env ]; then
+    cp .env.example .env
+fi
 python3.12 -m venv backend/venv
 backend/venv/bin/python -m pip install --upgrade pip
 backend/venv/bin/python -m pip install -r backend/requirements.txt
@@ -29,7 +31,9 @@ backend/venv/bin/python -m uvicorn app.main:app --app-dir backend --reload --hos
 ### Windows PowerShell
 
 ```powershell
-Copy-Item .env.example .env
+if (-not (Test-Path -LiteralPath .env)) {
+    Copy-Item -LiteralPath .env.example -Destination .env
+}
 py -3.12 -m venv backend/venv
 .\backend\venv\Scripts\python.exe -m pip install --upgrade pip
 .\backend\venv\Scripts\python.exe -m pip install -r backend/requirements.txt
@@ -90,20 +94,58 @@ docker compose stop postgres
 | Ollama offline | Check its separate service and `OLLAMA_BASE_URL`; the rest of the scaffold still runs |
 | `/query` or `/auth/login` returns 404 | These are planned API contracts, not implemented routes |
 
+## Team ownership
+
+Follow [TEAM_RESPONSIBILITIES.md](docs/TEAM_RESPONSIBILITIES.md): Hassan (Member 1) owns backend, database/migrations, data/runtime, security and integration. Naveed (Member 2) owns LLM/prompt/citation, typed tools and answer-quality work. Zaid (Member 3) owns the entire frontend, UI verification and user-facing documentation.
+
+Hassan owns backend/Compose setup and database changes. Naveed sets up Ollama for generation work. Zaid sets up Node.js and frontend tooling when initializing the agreed React/TypeScript/Vite app; a frontend manifest/build command is not yet committed. Shared API changes are agreed before parallel implementation.
+
 ## Contribution workflow
 
-Use short-lived `feat/<member>-<feature>`, `fix/<member>-<bug>`, or `docs/<member>-<topic>` branches and pull requests into `main`. Persistent member branches are optional coordination branches, described in the [workflow guide](docs/KNEXUS_Team_Git_Workflow_Guide.md).
+Each member keeps one persistent branch and commits/pushes their work there: Hassan (Member 1) uses `dev-hassan`, Naveed (Member 2) uses `dev-naveed`, and Zaid (Member 3) uses `dev-zaid`. Each person should have their own clone. Do not commit directly to `main`.
 
-```bash
+**Hassan (Member 1):**
+
+```powershell
 git switch main
 git pull --ff-only origin main
-git switch -c feat/yourname-feature
-# Make changes, inspect git diff, and run applicable checks.
-git add path/to/changed-file
-git commit -m "feat(rag): add document chunking"
-git push -u origin feat/yourname-feature
+git switch -c dev-hassan
+git push -u origin dev-hassan
 ```
 
-Review staged changes for secrets and generated data. `.gitignore` is a convenience, not secret detection. Do not commit `.env`, virtual environments, model downloads, database files, or full datasets. No automated test suite or CI pipeline is committed yet; describe manual checks honestly and add relevant tests with new application behavior. Ruff is planned but is not installed by `requirements.txt`.
+**Naveed (Member 2):** run the same first two commands, then:
 
-See the [project plan](docs/KNEXUS_Project_Plan.md) for ownership and the [documentation index](docs/INDEX.md) for design references.
+```powershell
+git switch -c dev-naveed
+git push -u origin dev-naveed
+```
+
+**Zaid (Member 3):** run the same first two commands, then:
+
+```powershell
+git switch -c dev-zaid
+git push -u origin dev-zaid
+```
+
+Run your branch setup once, from your own clone. At the start of each work session, check the branch and sync merged work:
+
+```bash
+git status --short --branch
+git branch --show-current
+git fetch origin
+git merge --no-edit origin/main
+```
+
+After a reviewable task, inspect and push named files:
+
+```bash
+git diff
+git add path/to/changed-file
+git diff --cached
+git commit -m "feat(rag): add document chunking"
+git push
+```
+
+Open one pull request at a time from your persistent branch into `main`. Use a merge commit (not squash/rebase) to preserve branch history for later PRs. Never force-push shared branches. Ignored files can still be force-added or tracked from earlier commits, so check staged changes for secrets, `.env`, model downloads, database files, and large datasets. Ask the repository admin to require PR review for `main`; do not require CI checks before a real workflow exists.
+
+See [the team Git guide](docs/KNEXUS_Team_Git_Workflow_Guide.md) for setup and conflict commands and [the Phase 1 guide](docs/PHASE_1_TEAM_GUIDE.md) for member ownership, integration gates, and collaborative coding/prompt templates.

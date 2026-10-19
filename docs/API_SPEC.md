@@ -2,6 +2,8 @@
 
 > **Implementation status - 19 October 2026:** This document describes the target design and acceptance criteria. Only the backend scaffold, dependency health route, and PostgreSQL/pgvector bootstrap are implemented. See [REPOSITORY_REVIEW.md](REPOSITORY_REVIEW.md) for current behavior and known gaps. Code examples, proposed directories, tests, and migrations below are not evidence of completed work.
 
+> **Delivery ownership:** Hassan owns routes, request/response schemas and authorization contracts; Naveed owns generation/tool-service behavior; Zaid owns the frontend API client and UI contract consumption. Follow [TEAM_RESPONSIBILITIES.md](TEAM_RESPONSIBILITIES.md) for member and file ownership.
+
 ## KNEXUS: Knowledge Network for EXploration and Unified Services
 **Version:** 1.0 (target design) | **Base URL:** `http://localhost:8000/api/v1` | **Last Updated:** October 2026
 

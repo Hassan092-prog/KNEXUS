@@ -105,247 +105,115 @@ The abstract DOC/PDF still contains blank course, branch, team, student, and gui
 
 ---
 
-# 🚀 Phased Implementation Plan
+# Phased implementation plan
 
-## Phase 0 — Pre-Development Foundation *(Weeks 1–2 | All Members)*
-*Goal: Establish shared understanding, environment, and architecture before anyone writes production code.*
+The [team responsibilities](TEAM_RESPONSIBILITIES.md) define member identity, branch names and delivery ownership. Hassan is Member 1, Naveed is Member 2 and Zaid is Member 3. Zaid owns the entire frontend.
 
-### All Members (Shared)
-- [ ] Deep-read the base paper (Lewis et al. RAG 2020) and summarize key insights
-- [ ] Read supporting papers (Research Papers 1 & 2 in the repo) and identify gaps
-- [ ] Set up shared GitHub repository with branching strategy (feature branches, PRs)
-- [ ] Set up development environments: Python, Node.js, PostgreSQL, Ollama
-- [ ] Define the 8-slide Review-I PPT structure and divide slide ownership
-- [ ] Write the 1-page abstract hardcopy (following MJCET template)
-- [ ] Finalize system architecture diagram together
+## Phase 0 - Pre-development foundation (Weeks 1-2)
 
-**Deliverable:** Shared architecture doc, GitHub repo, all environments working, Review-I PPT skeleton
+| Owner | Responsibilities and exit evidence |
+| --- | --- |
+| Hassan (Member 1) | Define API/service/data contracts, own schema/runtime setup, organize integration; publish agreed contracts and reproducible backend setup |
+| Naveed (Member 2) | Literature review, model/prompt baseline and quality rubric; document evidence and known limitations |
+| Zaid (Member 3) | User flows, wireframes and frontend/API-state inventory; cover the eight required Review-I content sections in the visual plan |
 
----
+All members review the base/supporting papers, attend design/rehearsal sessions and check the academic prerequisites. Original templates and papers are reference materials, not current task-allocation contracts.
 
-## Phase 1 — Core RAG Pipeline + Data Infrastructure *(Weeks 3–6)*
-*Goal: Build the foundational document ingestion, embedding, storage, and retrieval system. This is the beating heart of KNEXUS.*
+## Phase 1 - Core RAG pipeline, storage and first frontend (Weeks 3-6)
 
-### Member 1 — Project Lead & RAG Core Architect
-**Technical Areas:** NLP/AI (embedding models), Backend (FastAPI), Database (pgvector), DevOps
-- [ ] **Architecture & API design:** Define all FastAPI endpoint contracts (OpenAPI/Swagger spec) for the entire system before anyone builds
-- [ ] **Document Ingestion Pipeline:** Build the document upload handler, text extraction module (PDFs, DOCX via `pdfplumber`/`python-docx`), and chunking logic (recursive character splitting, ~240 tokens with 32-token overlap)
-- [ ] **Embedding Generation:** Integrate Sentence Transformers (e.g., `all-MiniLM-L6-v2` or `nomic-embed-text` via Ollama) and generate vector embeddings for each chunk
-- [ ] **pgvector Setup:** Design the PostgreSQL schema (`documents`, `chunks`, `embeddings` tables), configure pgvector extension, and implement HNSW/IVFFlat index for fast ANN search
-- [ ] **Semantic Search API:** Build the retrieval service behind `/api/v1/query` (a standalone `/search` route needs an agreed API contract); it — takes a query, embeds it, runs cosine similarity search in pgvector, returns top-K chunks with metadata
-- [ ] **Abstention Logic:** Implement confidence thresholds — if similarity score is below threshold, system returns "Evidence not found" instead of hallucinating
-- [ ] **Dataset Integration Script:** Write script to import 1,000–2,000 curated records from EnterpriseRAG-Bench (Linear + Slack + Gmail sources) into the KNEXUS corpus
-- [ ] **RAG Evaluation Harness:** Build automated evaluation script that runs the 500-question test set and measures Retrieval Recall@K and Precision@K
+Use [PHASE_1_TEAM_GUIDE.md](PHASE_1_TEAM_GUIDE.md) for branch commands, integration gates and collaborative prompts.
 
-**Technical Skills Gained:** Vector databases, embedding models, NLP preprocessing, FastAPI, PostgreSQL, evaluation metrics
+### Hassan (Member 1) - Backend, database, ingestion and retrieval
 
----
+- [ ] Own FastAPI request/response contracts, routes and service orchestration.
+- [ ] Implement tenant-consistent SQLAlchemy models, Alembic migrations, PostgreSQL/pgvector storage and vector indexes.
+- [ ] Implement PDF/DOCX extraction, tokenizer-aware chunking (starting budget 240 tokens, 32 overlap) and 384-dimensional embedding generation.
+- [ ] Implement top-k retrieval with tenant/role filters and low-evidence abstention before generation.
+- [ ] Own dataset importer, source-ID/provenance manifests and synthetic security fixtures; use a coherent small corpus before expanding.
+- [ ] Own root-based configuration, Compose/runtime setup, health/readiness follow-up, API errors and backend integration checks.
 
-### Member 2 — LLM Integration & Answer Generation Engineer
-**Technical Areas:** Generative AI (Ollama/LLMs), Backend (FastAPI), Prompt Engineering, Testing
-- [ ] **Ollama Setup & Model Selection:** Set up Ollama server locally, pull candidate models (Llama 3.2, Mistral 7B, Phi-3), benchmark latency and quality for enterprise Q&A
-- [ ] **LLM Chain Architecture:** Build the generation pipeline — takes retrieved chunks + query → constructs prompt → calls Ollama → returns cited answer
-- [ ] **Prompt Engineering:** Design and iterate on the system prompt that instructs the LLM to (a) answer only from provided context, (b) cite sources, (c) abstain if evidence is missing
-- [ ] **Context Window Management:** Implement dynamic context assembly — rank and select chunks that fit within the model's context window (handle long-context cases gracefully)
-- [ ] **Citation Formatting:** Build citation extractor that maps generated answer spans back to source document IDs and page/chunk references
-- [ ] **Answer Quality Evaluator:** Implement automated evaluation for citation accuracy using the 500-question evaluation set (compare generated citations against ground truth)
-- [ ] **Streaming Response Support:** Implement server-sent events (SSE) so the frontend receives streaming token output (better UX)
-- [ ] **Unit Tests for RAG Chain:** Write comprehensive unit tests covering: retrieval quality, citation accuracy, abstention triggering, edge cases (empty context, very long queries)
+### Naveed (Member 2) - LLM generation and answer evaluation
 
-**Technical Skills Gained:** LLM integration, prompt engineering, generative AI pipelines, API design, automated evaluation, testing
+- [ ] Implement the Ollama adapter with bounded provider failures and a fake provider for deterministic checks.
+- [ ] Version the grounded-answer prompt and build bounded context from ranked, already-authorized chunks.
+- [ ] Validate citations against retrieved source IDs, implement answer/abstention output handling, and label supported/missing/conflicting/adversarial answer cases.
+- [ ] Record model/prompt versions and development/held-out split; contribute answer-quality labels to Hassan's evaluation harness.
+- [ ] Stabilize a non-streaming answer path before adding SSE in a coordinated API change.
 
----
+### Zaid (Member 3) - Frontend foundation, upload and chat
 
-### Member 3 — Data Engineering & Infrastructure
-**Technical Areas:** Data Engineering, Backend (FastAPI), DevOps/Docker, Database
-- [ ] **Database Schema Design:** Collaboratively finalize then implement the full PostgreSQL schema including: `organizations`, `users`, `documents`, `document_chunks`, `embeddings`, `audit_logs`, `tool_proposals` tables (roles are a user field in this draft)
-- [ ] **EnterpriseRAG-Bench Data Pipeline:** Download, inspect, and preprocess EnterpriseRAG-Bench from HuggingFace; write ETL pipeline to normalize records from Slack/Gmail/Linear/Google Drive formats into KNEXUS unified schema
-- [ ] **Synthetic Security Dataset:** Create the KNEXUS custom synthetic test fixtures — define roles (admin, manager, employee), assign documents to roles, create test Q&A pairs where some queries should be blocked
-- [ ] **Docker Compose Setup:** Create `docker-compose.yml` that orchestrates: PostgreSQL + pgvector, Ollama, FastAPI backend, React frontend — single command to start the full stack
-- [ ] **Data Versioning & Migrations:** Set up Alembic for database migrations, ensuring schema evolution is tracked
-- [ ] **Monitoring & Logging Infrastructure:** Set up structured logging (JSON logs), basic health check endpoints, and a simple dashboard to monitor ingestion progress
-- [ ] **Performance Benchmarking:** Measure and document ingestion throughput, search latency (p50/p95), and generation latency end-to-end
+- [ ] Initialize the agreed React/TypeScript/Vite frontend and design tokens/component structure.
+- [ ] Build upload/status views and the document list using typed mock payloads until Hassan's API is ready.
+- [ ] Build chat, citation cards/source detail, abstention and loading/error/empty states.
+- [ ] Own frontend API client/types, component checks, initial responsive behavior and accessibility.
+- [ ] Connect to accepted API contracts after backend integration; document any mismatch in a coordinated PR.
 
-**Technical Skills Gained:** Data engineering/ETL, Docker/DevOps, database design, infrastructure automation, performance testing
+**Security sequencing:** Authentication, tenant ownership and permission filtering accompany the first shared-data ingestion/retrieval path. Before authentication exists, keep the demo local with synthetic data and an explicitly fixed demo actor; do not expose it as an authenticated multi-tenant service. Frontend role controls do not authorize backend requests.
 
----
+**Exit:** one reproducible upload -> parse/chunk/embed/store -> authorized retrieval -> cited answer or abstention -> frontend display path, with actual checks and known gaps recorded. A corpus subset does not justify claiming a full 500-question evaluation.
 
-**Security sequencing:** Authentication, tenant ownership, and permission filtering must accompany initial ingestion/retrieval before any shared or sensitive corpus is used. Phase 2 expands governance and proves isolation; it must not be interpreted as permission to expose a cross-tenant query path first.
+## Phase 2 - Security, controlled tools and frontend completion (Weeks 7-10)
 
-## Phase 2 — Security, Access Control & Governance *(Weeks 7–10)*
-*Goal: Add RBAC, permission-aware retrieval, approval workflows, and audit logging — the features that differentiate KNEXUS from generic chatbots.*
+### Hassan (Member 1) - Authorization, approval persistence and audit
 
-### Member 1 — RBAC Architecture & Permission-Aware Retrieval
-**Technical Areas:** Security/Auth, Backend, Database, AI Safety
-- [ ] **Auth System:** Implement JWT-based authentication with FastAPI dependencies — `/login`, `/refresh`, `/logout` endpoints; secure password hashing (bcrypt)
-- [ ] **RBAC Middleware:** Build role-based middleware that attaches user roles to every request; define role hierarchy (SuperAdmin > OrgAdmin > Manager > Employee)
-- [ ] **Permission-Aware Retrieval Filter:** Extend the semantic search pipeline to pre-filter embeddings by `org_id` and `allowed_roles` BEFORE passing to the LLM — server-side enforcement (not frontend filtering)
-- [ ] **Multi-Tenancy Isolation:** Implement organization-level data isolation — a user from Org A cannot retrieve documents from Org B even with the same role level
-- [ ] **Access Control Testing:** Using the custom synthetic fixtures, write test suite validating: authorized access works, unauthorized access is denied, cross-tenant leakage is impossible
-- [ ] **Security Review & Threat Modeling:** Write a brief security threat model for the system, identifying potential attack vectors (prompt injection, embedding poisoning, bypass attempts)
+- [ ] Implement JWT/session policy, role hierarchy, tenant ownership and retrieval authorization.
+- [ ] Own approval state transitions, expiry recheck, exact-action binding, atomic single-use claims and idempotent execution orchestration.
+- [ ] Implement audit persistence, tenant-safe administrative endpoints and execution verification records.
+- [ ] Prove cross-tenant/role isolation and tamper/replay/concurrency behavior with backend integration checks.
 
-**Technical Skills Gained:** Security engineering, authentication systems, multi-tenancy architecture, threat modeling
+### Naveed (Member 2) - Typed tools and AI regression cases
 
----
+- [ ] Implement the server-owned typed tool registry and one low-risk local sandbox handler.
+- [ ] Supply canonical action-envelope/integrity helpers and positive/negative tool cases for Hassan's approval engine.
+- [ ] Evaluate prompt-injection, citation, abstention and tool-schema cases with fixed model/prompt versions.
+- [ ] Keep model proposals separate from server authorization and approval decisions.
 
-### Member 2 — Controlled Tool Execution & Approval Workflows
-**Technical Areas:** AI Agents/Tools, Backend (FastAPI), Workflow Design, Testing
-- [ ] **Tool Registry:** Design and implement a controlled tool registry — define tools as typed Python functions with schemas (e.g., `create_task`, `update_document`, `send_notification`)
-- [ ] **Approval Workflow Engine:** Build the human-in-the-loop approval system: (1) User proposes an action, (2) System logs the proposal with a hash of the payload, (3) Authorized approver reviews and approves/rejects, (4) System executes only if the payload hasn't changed
-- [ ] **Post-Condition Verification:** After tool execution, implement a verification step that confirms the expected state change occurred (e.g., task was actually created)
-- [ ] **Execution Audit Trail:** Log every tool invocation: proposed_by, proposed_at, approved_by, approved_at, executed_at, result, verification_status
-- [ ] **Test Scenarios:** Implement the 6 key test scenarios from the dataset strategy: authorized valid task, unauthorized operation, expired approval, modified payload, successful creation, failed execution
-- [ ] **Action Abstention:** If a proposed action requires a tool not in the registry or requires permissions the user doesn't have, return a structured "Cannot perform this action" response
+### Zaid (Member 3) - Login, approval and admin UI
 
-**Technical Skills Gained:** Agent/tool systems, workflow orchestration, API design, state machines, audit systems
+- [ ] Implement login/session presentation, protected navigation and role-aware screen visibility.
+- [ ] Build proposal detail, pending queue and approve/reject controls that show the exact reviewed payload.
+- [ ] Build document/admin interfaces, permission state displays and user-facing failure handling.
+- [ ] Keep frontend API types and component behavior aligned with generated backend contracts.
 
----
+## Phase 3 - Integration, evaluation and final report (Weeks 11-14)
 
-### Member 3 — Frontend Development & User Experience
-**Technical Areas:** Frontend (React/TypeScript), UX Design, API Integration, Accessibility
-- [ ] **Project Setup & Design System:** Initialize React + TypeScript app (Vite), set up component library structure, define color palette, typography, spacing tokens
-- [ ] **Authentication UI:** Build Login page, role-aware navigation, session management, protected route guards
-- [ ] **Knowledge Chat Interface:** Build the primary Q&A chat UI — conversation threads, streaming response display, citation cards that link to source documents, abstention messages
-- [ ] **Document Management Panel:** Build the document upload UI (drag-and-drop), ingestion progress indicator, document library with metadata display, role-permission tags
-- [ ] **Admin Dashboard:** Role management UI, user management, organization configuration, system health indicators
-- [ ] **Approval Workflow UI:** Action proposal form, pending approvals queue for managers, approve/reject interface with diff view of proposed action
-- [ ] **Responsive & Accessible Design:** Ensure the UI works on different screen sizes; follow WCAG 2.1 AA for accessibility
+| Owner | Deliverables |
+| --- | --- |
+| Hassan (Member 1) | Full integration and CI, deployment/configuration, retrieval/load measurement and benchmark automation, final-report compilation, API/runtime documentation |
+| Naveed (Member 2) | Controlled prompt/model/retrieval-quality experiments, research/methodology/results sections, answer-label review and demo narrative |
+| Zaid (Member 3) | Frontend integration/usability/accessibility, UI verification, user manual/screenshots, report UI section and presentation visuals |
 
-**Technical Skills Gained:** React/TypeScript, UX design, component architecture, API integration, accessibility
+Hassan owns the evaluation harness and release/deployment process; Naveed owns answer-quality interpretation; Zaid owns frontend experience and UI evidence. Report measured numbers, dataset/source coverage, hardware and versions rather than copying target/sample metrics.
 
----
+## Phase 4 - Review preparation and defense (Weeks 15-16)
 
-## Phase 3 — Integration, Evaluation & Optimization *(Weeks 11–14)*
-*Goal: Connect all components, run comprehensive evaluation against the 500-question test set, and optimize for quality and performance.*
+| Owner | Deliverables |
+| --- | --- |
+| Hassan (Member 1) | Full-pipeline regression, release/archive, final report integration and defense coordination |
+| Naveed (Member 2) | Verify research/results/limitations, rehearse model and workflow demo narrative |
+| Zaid (Member 3) | Frontend polish, demo/PPT visuals, UI evidence and hardcopy/submission assembly |
 
-### Member 1 — System Integration & End-to-End Testing
-**Technical Areas:** Integration Testing, CI/CD, System Architecture, Performance
-- [ ] **End-to-End Integration:** Connect frontend → FastAPI → RAG pipeline → LLM → pgvector in a complete working flow; resolve all inter-component API contract mismatches
-- [ ] **Integration Test Suite:** Write E2E tests covering complete user journeys: document upload → ingestion → search → cited answer → audit log entry
-- [ ] **CI/CD Pipeline:** Set up GitHub Actions workflow — automated linting, unit tests, integration tests on every PR
-- [ ] **Performance Optimization:** Profile retrieval latency, identify bottlenecks; tune pgvector index parameters (nlist, ef_construction); implement query result caching for repeated queries
-- [ ] **Evaluation Report:** Run the 500-question EnterpriseRAG-Bench evaluation set, record Recall@K, Precision@K, answer quality (ROUGE/BERTScore), abstention accuracy; document results in a structured report
-- [ ] **Load Testing:** Simulate concurrent users using Locust/k6 to assess system stability and identify breaking points
+All members rehearse and peer-review the final materials. Coordinate rehearsal slots and record remaining submission tasks.
 
-**Technical Skills Gained:** System integration, CI/CD, performance engineering, evaluation methodologies, load testing
+# Team member summary
 
----
+| Member | Branch | Primary ownership |
+| --- | --- | --- |
+| Hassan (1) | `dev-hassan` | Backend, schema/migrations, data/infra, ingestion/retrieval, authorization/approval/audit, CI/deployment, integration and report compilation |
+| Naveed (2) | `dev-naveed` | LLM/prompt/context/citations, typed tool handlers, answer-quality experiments and research |
+| Zaid (3) | `dev-zaid` | Entire frontend from Phase 1 through delivery, UI verification, user manual and presentation visuals |
 
-### Member 2 — Model Tuning, Prompt Refinement & Knowledge Graph Extension
-**Technical Areas:** NLP/AI, Prompt Engineering, Research, Documentation
-- [ ] **Prompt A/B Testing:** Systematically test 3–5 prompt variants against the evaluation QA set; quantify which prompt template produces the most accurate, well-cited answers
-- [ ] **Retrieval Strategy Experiments:** Compare retrieval strategies: vanilla cosine similarity vs. hybrid search (BM25 + dense retrieval) vs. re-ranking (cross-encoder); document gains
-- [ ] **Hallucination Rate Analysis:** Categorize failure modes — cases where the system hallucinated vs. correctly abstained; analyze patterns
-- [ ] **Research Paper Writing Support:** Draft the methodology, experiments, and results sections of the final project report; ensure all evaluation numbers are reproducible from the scripts
-- [ ] **Demo Preparation:** Build a compelling live demo scenario using the EnterpriseRAG-Bench "Redwood Inference" fictional company — prepare 5-7 showcase queries demonstrating all key features (citation, abstention, RBAC, approval)
+# Technical skills and review exposure
 
-**Technical Skills Gained:** Experimental ML research, NLP evaluation, technical writing, demo engineering
-
----
-
-### Member 3 — Final Report, Documentation & Deployment
-**Technical Areas:** Technical Writing, Documentation, DevOps, Presentation
-- [ ] **System Documentation:** Write complete API documentation (FastAPI auto-docs + Postman collection); document all KNEXUS configuration options
-- [ ] **Final Report Compilation:** Compile the complete B.E. project report following MJCET guidelines — Introduction, Literature Survey, System Design, Implementation, Results, Conclusion, Future Work, References
-- [ ] **User Manual:** Write an end-user guide explaining how to upload documents, ask questions, manage approvals, and interpret citations
-- [ ] **Deployment Guide:** Document the complete local deployment process (Docker Compose); test it on a fresh machine
-- [ ] **Review-II and Final PPT:** Design the Review-II and Final Defense presentations with system demo screenshots, architecture diagrams, results charts
-- [ ] **Future Work Section:** Propose concrete future extensions — web connector (external retrieval), fine-tuned organization-specific embeddings, mobile app, enterprise SSO integration
-
-**Technical Skills Gained:** Technical writing, documentation engineering, deployment, presentation design
-
----
-
-## Phase 4 — Review Preparation & Defense *(Weeks 15–16)*
-*Goal: Polish the deliverables, rehearse the presentation, and finalize all academic submissions.*
-
-### All Members (Shared)
-- [ ] Final run of the complete evaluation suite — document all numbers for the report
-- [ ] Rehearse the live demo 3+ times with edge case handling prepared
-- [ ] Print and collate hardcopy submissions: 1-page abstract + base paper + 2 supporting papers
-- [ ] Peer-review each other's sections of the final report
-- [ ] Prepare Q&A responses for likely panel questions (architecture decisions, model choices, dataset justification, RBAC design, scalability)
-- [ ] Final code cleanup, README update, and repository archiving
-
----
-
-# 👥 Team Member Summary
-
-## Member 1 — Project Lead & System Architect
-
-| Phase | Role | Technical Areas |
+| Area | Primary owner | Review/support |
 |---|---|---|
-| Phase 0 | Co-architect, environment lead | System design, DevOps |
-| Phase 1 | RAG Core + pgvector + Ingestion | NLP, Vector DB, FastAPI, Evaluation |
-| Phase 2 | RBAC + Permission-Aware Retrieval | Security, Auth, Multi-tenancy |
-| Phase 3 | E2E Integration + CI/CD + Evaluation | Integration, Performance, CI/CD |
-| Phase 4 | Integration coordination, Q&A prep | All areas |
+| Backend/API, schema, vector storage, ETL, runtime/CI | Hassan | Naveed reviews AI interfaces; Zaid reviews client contracts |
+| Tenant/role policy, approval transactions and audit | Hassan | Naveed reviews tool-integrity cases; Zaid reviews visible states |
+| LLM adapters, prompts, citations, typed tool handlers | Naveed | Hassan reviews service/security boundaries |
+| Frontend, UI API client, accessibility and usability | Zaid | Hassan reviews API integration; Naveed reviews evidence presentation |
+| Evaluation harness/report compilation | Hassan | Naveed supplies answer/research analysis; Zaid supplies UI evidence |
 
-**Full-stack exposure:** AI/ML pipelines, Vector Databases, Security Engineering, System Integration, Performance Testing, CI/CD
-
----
-
-## Member 2 — AI/LLM Engineer & Research Lead
-
-| Phase | Role | Technical Areas |
-|---|---|---|
-| Phase 0 | Literature survey lead, research gaps | NLP, Research |
-| Phase 1 | LLM Integration + Prompt Engineering + Testing | Generative AI, FastAPI, Evaluation |
-| Phase 2 | Tool Execution + Approval Workflows | Agent Systems, Backend, Testing |
-| Phase 3 | Model Tuning + Prompt Experiments + Demo | NLP Research, Prompt Engineering |
-| Phase 4 | Demo rehearsal, report methodology | All areas |
-
-**Full-stack exposure:** Generative AI/LLM, Prompt Engineering, Agent Systems, Automated Evaluation, Technical Writing, Demo Engineering
-
----
-
-## Member 3 — Data & Infrastructure Engineer + Frontend Lead
-
-| Phase | Role | Technical Areas |
-|---|---|---|
-| Phase 0 | Repo setup, Docker baseline | DevOps, Database |
-| Phase 1 | Data ETL + DB Schema + Docker Compose | Data Engineering, PostgreSQL, DevOps |
-| Phase 2 | Frontend (React/TypeScript) full build | Frontend, UX, API Integration |
-| Phase 3 | Final Report + Documentation + Deployment | Technical Writing, Documentation |
-| Phase 4 | PPT design, hardcopy compilation | Presentation, Documentation |
-
-**Full-stack exposure:** Data Engineering, Docker/DevOps, Frontend (React/TypeScript), Database Design, Technical Writing, Documentation
-
----
-
-# 🎓 Technical Skills Matrix
-
-| Skill Area | Member 1 | Member 2 | Member 3 |
-|---|---|---|---|
-| RAG / NLP / Embeddings | ⭐⭐⭐ Primary | ⭐⭐ Secondary | ⭐ Exposed |
-| LLM Integration / Prompt Engineering | ⭐⭐ Secondary | ⭐⭐⭐ Primary | ⭐ Exposed |
-| FastAPI / Python Backend | ⭐⭐⭐ Primary | ⭐⭐ Secondary | ⭐⭐ Secondary |
-| PostgreSQL / pgvector / Database | ⭐⭐⭐ Primary | ⭐ Exposed | ⭐⭐ Secondary |
-| Security / Auth / RBAC | ⭐⭐⭐ Primary | ⭐⭐ Secondary | ⭐ Exposed |
-| Agent Systems / Tool Execution | ⭐⭐ Secondary | ⭐⭐⭐ Primary | ⭐ Exposed |
-| React / TypeScript / Frontend | ⭐ Exposed | ⭐ Exposed | ⭐⭐⭐ Primary |
-| Data Engineering / ETL | ⭐⭐ Secondary | ⭐ Exposed | ⭐⭐⭐ Primary |
-| Docker / DevOps / CI/CD | ⭐⭐ Secondary | ⭐ Exposed | ⭐⭐⭐ Primary |
-| Evaluation / Testing | ⭐⭐⭐ Primary | ⭐⭐⭐ Primary | ⭐⭐ Secondary |
-| Technical Writing / Report | ⭐⭐ Secondary | ⭐⭐ Secondary | ⭐⭐⭐ Primary |
-| Research / Literature Survey | ⭐⭐ Secondary | ⭐⭐⭐ Primary | ⭐⭐ Secondary |
-
-> [!TIP]
-> Every member gets at least **Exposed (⭐)** to every technical domain, ensuring all three have breadth of experience for viva questions, industry interviews, and portfolio depth.
-
----
-
-# 📊 Workload Distribution Overview
-
-```
-Phase 0 (Foundation):       M1 ████████ | M2 ████████ | M3 ████████  [Equal — 33% each]
-Phase 1 (RAG + Data):       M1 █████████| M2 ████████ | M3 ████████  [M1 slightly more tasks]
-Phase 2 (Security + UX):    M1 █████████| M2 ████████ | M3 ████████  [M1 leads security arch]
-Phase 3 (Integration):      M1 █████████| M2 ████████ | M3 ████████  [M1 owns integration]
-Phase 4 (Final):            M1 ████████ | M2 ████████ | M3 ████████  [Equal — 33% each]
-```
-
----
+Review exposure does not transfer accountable ownership.
 
 # 📌 Key Decisions Summary
 
@@ -365,18 +233,18 @@ Phase 4 (Final):            M1 ████████ | M2 ██████�
 # ⚡ Review I — Immediate Action Items
 
 > [!IMPORTANT]
-> Review I PPT must contain these 8 sections. Divide slide ownership:
+> Review I PPT must cover these eight content sections; the number of slides can differ. Section ownership follows the team responsibilities:
 
 | Slide | Content | Owner |
 |---|---|---|
-| 1 | Title of Project | Member 3 (PPT design) |
-| 2 | Problem Statement | Member 1 (led architecture) |
-| 3 | Literature Survey (highlight base paper) | Member 2 (research lead) |
-| 4 | Research Gaps | Member 2 (research lead) |
-| 5 | Abstract | Member 1 |
-| 6 | Existing Systems | Member 3 |
-| 7 | Brief Overview of Proposed System | Member 1 |
-| 8 | References | Member 2 |
+| 1 | Title of Project | Zaid (Member 3; PPT design) |
+| 2 | Problem Statement | Hassan (Member 1; architecture) |
+| 3 | Literature Survey (highlight base paper) | Naveed (Member 2; research) |
+| 4 | Research Gaps | Naveed (Member 2; research) |
+| 5 | Abstract | Hassan (Member 1) |
+| 6 | Existing Systems | Zaid (Member 3) |
+| 7 | Brief Overview of Proposed System | Hassan (Member 1) |
+| 8 | References | Naveed (Member 2) |
 
 **Hardcopy submissions on Review day:**
 - [ ] 1-page abstract (MJCET template filled)

@@ -15,7 +15,9 @@ See the [repository review](docs/REPOSITORY_REVIEW.md) for file coverage, findin
 Use Python 3.12, Git, and Docker with Compose. Run these commands from the repository root in a POSIX shell:
 
 ```bash
-cp .env.example .env
+if [ ! -f .env ]; then
+    cp .env.example .env
+fi
 python3.12 -m venv backend/venv
 backend/venv/bin/python -m pip install -r backend/requirements.txt
 docker compose up -d postgres
@@ -53,6 +55,16 @@ Templates/                   Original abstract and presentation templates
 The MVP targets PDF/DOCX ingestion, dense retrieval with pgvector, local Ollama answers, validated citations and abstention, tenant/role filtering, one governed sandbox action, and audit logging. Hybrid BM25/dense retrieval, reranking, streaming, and additional integrations follow the core path.
 
 The [project plan](docs/KNEXUS_Project_Plan.md) defines phases 0-4 and team responsibilities. Start with the [documentation index](docs/INDEX.md) for the full reading order and reference-material status.
+
+## Team ownership
+
+| Member | Branch | Primary ownership |
+| --- | --- | --- |
+| Hassan (1) | `dev-hassan` | Backend/API, database/migrations, ingestion/retrieval, security, data/runtime and integration |
+| Naveed (2) | `dev-naveed` | LLM/prompt/citation, typed tools, answer evaluation and research |
+| Zaid (3) | `dev-zaid` | Entire frontend, UI verification, user manual and presentation visuals |
+
+The [team responsibilities](docs/TEAM_RESPONSIBILITIES.md) define task and path ownership. The [Phase 1 guide](docs/PHASE_1_TEAM_GUIDE.md) gives tasks, branch commands and collaboration prompts.
 
 ## Contributors
 

@@ -1,79 +1,128 @@
-# KNEXUS team Git workflow
+# KNEXUS team Git workflow: one branch per member
 
-**Updated: 19 October 2026.** This guide and [CONTRIBUTING.md](../CONTRIBUTING.md) use the same default: short-lived feature branches and reviewed pull requests into `main`.
+**Team model:** each of the three members has a persistent branch, commits and pushes their own work there, then opens a pull request into `main` when a feature is ready. Members do not push directly to `main`.
 
-## Branches and ownership
+The names below follow the current team presentation. Change the branch labels if the team uses different names, but keep one stable branch per person.
 
-- `main`: reviewed integration branch; keep the existing scaffold runnable.
-- `feat/<member>-<feature>`: one feature or coherent milestone.
-- `fix/<member>-<bug>`: a focused correction.
-- `docs/<member>-<topic>`: documentation work.
+| Member | Persistent branch | Primary ownership |
+| --- | --- | --- |
+| Hassan (Member 1) | `dev-hassan` | Backend, database/migrations, data/runtime, security and integration |
+| Naveed (Member 2) | `dev-naveed` | LLM/prompt/citations, typed tools and answer evaluation |
+| Zaid (Member 3) | `dev-zaid` | Entire frontend and UI verification |
 
-Persistent `dev-hassan`, `dev-member2`, and `dev-member3` branches may be used as optional coordination branches when the team agrees. They are not required and do not replace focused PRs. Use normal merge commits when repeatedly integrating persistent branches, or recreate them from `main` after a squash merge to avoid replaying old changes.
+Use [TEAM_RESPONSIBILITIES.md](TEAM_RESPONSIBILITIES.md) for member responsibilities and path ownership.
 
-The proposed module ownership is:
+Each person should use their own clone of the repository. Do not share a single working directory: `git switch` changes the checkout for everyone using that directory.
 
-| Owner | Planned areas |
-|---|---|
-| Member 1 | `backend/app/services/ingestion/`, `services/retrieval/`, `core/`, `models/`, security integration |
-| Member 2 | `backend/app/services/generation/`, `services/tools/`, prompts, evaluation |
-| Member 3 | `frontend/`, `data/`, `docker/`, schema and data integration |
+## One-time setup
 
-These service/model directories are not implemented yet. Consult [ARCHITECTURE.md](ARCHITECTURE.md) and agree on new paths before creating competing structures. Coordinate edits to shared settings, routes, dependencies, schemas, and Compose.
+Install Git, then clone the repository and set your commit identity. Use the email connected to your GitHub account.
 
-## Start a task
+### Windows PowerShell
 
-From a clean working tree:
-
-```bash
-git status
+```powershell
+git clone https://github.com/Hassan092-prog/KNEXUS.git
+Set-Location KNEXUS
+git config user.name "Your Name"
+git config user.email "you@example.com"
 git switch main
 git pull --ff-only origin main
-git switch -c feat/yourname-feature
 ```
 
-## Save and review changes
+Create and publish **only your assigned branch**. Run the commands under your name:
 
-```bash
-git diff
-git add path/to/changed-file
-git diff --cached
-git commit -m "feat(rag): add document chunking"
-git push -u origin feat/yourname-feature
+**Hassan (Member 1):**
+
+```powershell
+git switch -c dev-hassan
+git push -u origin dev-hassan
 ```
 
-Stage intentional files; inspect `.env`, credentials, large downloads, and generated artifacts before committing. Ignored files can still be explicitly force-added or remain tracked from earlier commits.
+**Naveed (Member 2):**
 
-## Bring in changes from main
+```powershell
+git switch -c dev-naveed
+git push -u origin dev-naveed
+```
 
-Commit or stash local work first, then:
+**Zaid (Member 3):**
 
-```bash
+```powershell
+git switch -c dev-zaid
+git push -u origin dev-zaid
+```
+
+GitHub may ask you to authenticate; use your normal Git credential manager. Never send teammates your password or personal access token.
+
+### If your branch already exists on GitHub
+
+Fetch it and track the remote branch; do not create a second branch with the same name:
+
+```powershell
 git fetch origin
-git merge origin/main
+git switch --track origin/dev-hassan
 ```
 
-Explicit merging avoids depending on each developer's `git pull` merge/rebase configuration. Do not force-push shared branches. A rebase is an optional team decision for a private branch, not a required daily routine.
+Replace the name with your own branch.
 
-Branches reduce interference while editing but do not guarantee conflict-free integration. Conflicts can arise from overlapping edits, renames/deletions, binary files, or changes made at different times since the common ancestor. A fast-forward is possible only when one branch tip is an ancestor of the other; separate module ownership does not ensure it.
+## Every work session
 
-## Open a pull request
+First check that you are on your own branch and have a clean working tree:
 
-Push the branch and open the [KNEXUS pull-request page](https://github.com/Hassan092-prog/KNEXUS/pulls) with base `main`. Describe the resulting behavior, checks run, and known limitations. Request a teammate's review, resolve comments/conflicts, then merge using the repository's agreed method. Branch protection and CI are policies to configure; this repository does not currently contain an automated workflow.
+```powershell
+git status --short --branch
+git branch --show-current
+```
 
-## Resolve conflicts
+Before a new task, bring in teammates' merged changes. Commit or stash any unfinished work first:
 
-```bash
-git status
-# Open conflicted files; reconcile both intended changes and remove conflict markers.
-git add path/to/resolved-file
-git merge --continue
-# Re-run relevant checks, then push.
+```powershell
+git fetch origin
+git switch dev-hassan
+git merge --no-edit origin/main
 git push
 ```
 
-Use `git merge --abort` if you need to return to the pre-merge state. For DOC/PPT/PDF binaries, choose or regenerate the correct artifact with its owner; Git cannot reconcile their content as plain text.
+Replace `dev-hassan` with your branch. If `main` has no new commits, Git reports that it is already up to date.
 
-## Before merging
+After each reviewable task, inspect and push your work:
 
-Confirm the scaffold still imports/starts when code changes, exercise affected routes, and add appropriate tests for new behavior. For docs, check links, commands, status claims, and consistency with source. There are currently no committed test or CI suites; do not describe proposed checks as passing automation.
+```powershell
+git diff
+git add path/to/your/changed-file
+git diff --cached
+git commit -m "feat(ingestion): parse PDF text"
+git push
+```
+
+Commit small coherent tasks and push at the end of each work session. Stage named files rather than `git add .`; check for `.env`, credentials, downloaded corpora, model weights, and generated output before pushing. A branch is a collaboration boundary, not a backup for secrets.
+
+## Integrate completed work
+
+Use **one open pull request per member branch at a time**. Open a PR from your `dev-*` branch to `main`, ask a teammate to review, and describe behavior, checks, and limitations. Keep committing/pushing to update that same PR while it is under review.
+
+Use a normal **merge commit** for each PR so Git records the member-branch commits as ancestors of `main`. This lets the same long-lived branch open later PRs without replaying previously merged commits. Do not squash or rebase-merge persistent member branches. If repository settings require squash-only merging, tell the team and switch together to short-lived feature branches for PRs; do not keep opening stale PRs from a squash-merged persistent branch.
+
+After a PR is merged, continue from the same branch. At the beginning of the next task, merge current `origin/main` into it as shown above. Do not force-push or delete your persistent branch. The repository currently has `main` only; each member creates and pushes their own branch.
+
+## Coordinate overlapping files
+
+Branches isolate each person's local work; they do not prevent merge conflicts. Before editing shared interfaces such as `docker-compose.yml`, `backend/app/core/config.py`, API routes, dependency lists, migrations, or schema models, agree who owns the change. For Phase 1, use the task split in [PHASE_1_TEAM_GUIDE.md](PHASE_1_TEAM_GUIDE.md): Hassan (Member 1) owns models/migrations, data/runtime and routes/orchestration; Naveed (Member 2) owns prompt/generation and typed tool modules; Zaid (Member 3) owns the entire frontend. If a task needs another owner's file, agree on the contract and let its owner make the shared-file change, or coordinate one PR at a time.
+
+Do not open multiple overlapping PRs for the same shared file. Review against `main`, sync your branch before resolving conflicts, and keep both members' intent. For a merge conflict:
+
+```powershell
+git status
+# Edit conflicted files; remove conflict markers and preserve intended changes.
+git add path/to/resolved-file
+git commit
+git push
+```
+
+For Office/PDF binary conflicts, coordinate with the file owner and select/regenerate the intended artifact; Git cannot merge their content as text.
+
+## Protect the shared branch
+
+Ask the repository admin to enable a GitHub rule for `main`: require pull requests and at least one teammate review; disallow force-push and branch deletion. Do not require CI checks until a real workflow exists. Members need write access to publish their own `dev-*` branches; a protected `main` should accept merges through PRs.
+
+The Phase 1 work breakdown and copyable coding/prompt-evaluation templates are in [PHASE_1_TEAM_GUIDE.md](PHASE_1_TEAM_GUIDE.md).

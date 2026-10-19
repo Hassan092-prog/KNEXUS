@@ -23,10 +23,12 @@
 | [Database schema](DATABASE_SCHEMA.md) | Bootstrap scope and draft DDL/migration requirements |
 | [Security model](SECURITY_MODEL.md) | Current gaps, planned policy, threat model, negative tests |
 | [Evaluation strategy](EVALUATION_STRATEGY.md) | Dataset, metrics, proposed tests/CI; no measured results |
-| [Project plan](KNEXUS_Project_Plan.md) | Phases 0-4, ownership, estimates, academic prerequisites |
-| [Git workflow](KNEXUS_Team_Git_Workflow_Guide.md) | Feature branches, PRs, optional member branches, conflict handling |
+| [Team responsibilities](TEAM_RESPONSIBILITIES.md) | Member identities, branches and task ownership; Zaid owns the entire frontend |
+| [Project plan](KNEXUS_Project_Plan.md) | Phases 0-4, delivery ownership and academic prerequisites |
+| [Git workflow](KNEXUS_Team_Git_Workflow_Guide.md) | Persistent `dev-*` member branches, daily pushes, merge-commit PRs |
+| [Phase 1 team guide](PHASE_1_TEAM_GUIDE.md) | Task ownership, integration gates, prompt and code-review templates, skills |
 
-For current behavior, tracked source and generated OpenAPI take precedence. For planned contracts, use API_SPEC and DATABASE_SCHEMA with the qualifications in SECURITY_MODEL. The OpsPilot startup blueprint is background, not a competing implementation contract. Update related designs together when a decision changes.
+For current behavior, tracked source and generated OpenAPI take precedence. For planned contracts, use API_SPEC and DATABASE_SCHEMA with the qualifications in SECURITY_MODEL. The OpsPilot startup blueprint is background, not a competing implementation contract. For member identity, responsibilities and path ownership, TEAM_RESPONSIBILITIES.md takes precedence. Update related designs together when a decision changes.
 
 ## Academic and reference artifacts
 

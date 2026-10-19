@@ -2,6 +2,8 @@
 
 > **Implementation status - 19 October 2026:** This document describes the target design and acceptance criteria. Only the backend scaffold, dependency health route, and PostgreSQL/pgvector bootstrap are implemented. See [REPOSITORY_REVIEW.md](REPOSITORY_REVIEW.md) for current behavior and known gaps. Code examples, proposed directories, tests, and migrations below are not evidence of completed work.
 
+> **Delivery ownership:** Hassan owns backend/database/runtime/CI standards; Naveed owns LLM/prompt/tool adapter details; Zaid owns frontend dependencies, build configuration and UI standards. Follow [TEAM_RESPONSIBILITIES.md](TEAM_RESPONSIBILITIES.md) for member and file ownership.
+
 ## KNEXUS: Knowledge Network for EXploration and Unified Services
 **Version:** 1.0 | **Status:** Active | **Last Updated:** October 2026
 

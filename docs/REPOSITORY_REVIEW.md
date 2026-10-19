@@ -1,6 +1,6 @@
 # KNEXUS repository and documentation review
 
-**Review date:** 19 October 2026. **Scope:** all 37 tracked files in the starting checkout, including every source/configuration file, all Markdown documents, Office documents/templates, PDFs, and research-paper references. Workspace inspection, extraction, edits, and runtime checks were performed on `hassan@192.168.1.92` over SSH. The starting working tree was clean.
+**Review date:** 19 October 2026. **Scope:** the original review covered all 37 files then tracked, including source/configuration, Markdown, Office documents/templates, PDFs and research references. Follow-ups include this report, the Phase 1 guide and the team responsibilities guide. Workspace operations use SSH to `hassan@192.168.1.92`. The original review began with a clean tree; later edits retain the preceding uncommitted documentation work.
 
 ## Assessment
 
@@ -24,7 +24,7 @@ KNEXUS is a **foundation scaffold**, with much more extensive design documentati
 | `docs/INDEX.md` | Complete linked inventory and document precedence |
 | `docs/PRD.md`, `TRD.md`, `ARCHITECTURE.md` | Target requirements, technical baseline, proposed tree/diagrams; added current-state boundaries and corrected conflicts |
 | `docs/API_SPEC.md`, `DATABASE_SCHEMA.md`, `SECURITY_MODEL.md` | Current routes/DB/security behavior separated from proposed contracts and controls |
-| `docs/EVALUATION_STRATEGY.md`, `KNEXUS_Project_Plan.md`, `KNEXUS_Team_Git_Workflow_Guide.md` | Corrected benchmark accounting, planning/academic conflicts, and branch workflow |
+| `docs/EVALUATION_STRATEGY.md`, `KNEXUS_Project_Plan.md`, `KNEXUS_Team_Git_Workflow_Guide.md`, `PHASE_1_TEAM_GUIDE.md` | Corrected benchmark accounting, planning/academic conflicts, persistent branches, task ownership, and collaboration prompts |
 
 No ingestion, embedding inference, search, answer generation, JWT validation, tenant/role policy, approval engine, business audit log, frontend source/package manifest, migration files, tests, or CI workflow is tracked. SQLAlchemy metadata is empty. Installed packages are not feature implementations.
 
@@ -54,7 +54,7 @@ No ingestion, embedding inference, search, answer generation, JWT validation, te
 - Restored **20 Miscellaneous** questions so the evaluation categories total **500**. Corrected Constrained-category meaning; added subset/source coverage, held-out evaluation, document/chunk scoring boundaries, and false-abstention reporting.
 - Aligned planned precision@5 to **0.70**, first-token targets to **p50 <= 5s / p95 <= 8s**, and full-response p95 to **12s**. These are acceptance targets, not results.
 - Marked sample benchmark results and tests/CI snippets as illustrative. Removed the unsupported `--benchmark` invocation and the claim that dependencies are pinned.
-- Reconciled contribution guides around feature branches and PRs, with optional member branches. Removed guarantees about merge conflicts and fast-forward frequency.
+- Reconciled contribution guides around persistent `dev-hassan`, `dev-naveed` and `dev-zaid` branches with merge-commit PRs. Removed guarantees about merge conflicts and fast-forward frequency.
 - Corrected the RAG paper publication year, noted academic eligibility concerns, and made security enforcement a prerequisite for initial ingestion/retrieval rather than an optional later layer.
 
 ## Academic and binary document review
@@ -97,6 +97,31 @@ No fresh dependency installation, Windows runtime launch, frontend build, retrie
 - [MiniLM model card](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2): 384-dimensional embeddings and default truncation above 256 wordpieces.
 - [NeurIPS RAG publication](https://papers.nips.cc/paper/2020/hash/6b493230205f780e1bc26945df7481e5-Abstract.html): publication year 2020.
 - [Ollama Llama 3.2 model listing](https://ollama.com/library/llama3.2): default 3B model; the prior 8B Llama 3.2 description was incorrect.
+
+## Team workflow and ownership
+
+Hassan is Member 1, Naveed is Member 2 and Zaid is Member 3. The [team responsibilities](TEAM_RESPONSIBILITIES.md), [Phase 1 guide](PHASE_1_TEAM_GUIDE.md) and [Git workflow](KNEXUS_Team_Git_Workflow_Guide.md) use persistent branches `dev-hassan`, `dev-naveed` and `dev-zaid` respectively. Hassan owns backend/API, schema/migrations, data/runtime, security and integration; Naveed owns LLM/prompt/citation, typed tool handlers and answer evaluation; Zaid owns the entire frontend from Phase 1 onward. Each member pushes their own branch and opens a merge-commit PR to `main`.
+
+All application source/configuration files were reread; they contain no member-specific runtime ownership or frontend implementation to change. Member summaries, Phase 1 tasks, Git and contribution guides, frontend/data READMEs, core design notes and the index now follow the same ownership map. External papers, institutional templates and the archived startup blueprint are references rather than current delivery contracts. Planning changes do not implement features or resolve the code findings above. Documentation checks cover member/branch/owner consistency, source syntax, relative links, JSON examples and patch formatting.
+
+## Phase 1 readiness audit - 19 October 2026
+
+**Verdict:** ready to begin Phase 1 foundation work. Complete the publishing, personal-branch/setup and contract handoff steps in [PHASE_1_TEAM_GUIDE.md](PHASE_1_TEAM_GUIDE.md) before expecting independent workstreams to integrate. This is not a claim that the Phase 1 product is implemented or that all environments are ready.
+
+| Area | Audit evidence / status |
+|---|---|
+| Documentation | All current source/document paths inventoried, including the two new team guides. Relative links, JSON examples, source syntax and patch whitespace pass; member/branch/owner mappings agree. |
+| Shared Python environment | Python 3.12.3; `pip check` reports no broken requirements. A fresh installation on each laptop is still unverified; requirements remain lower bounds without a lockfile. |
+| Compose/database | Compose config validates; existing PostgreSQL container is healthy. Live read-only probes confirm database connectivity and vector extension 0.8.7. No public application tables exist yet, matching the absence of migrations/models. |
+| Backend | Lifespan startup/shutdown and root, Swagger, ReDoc and OpenAPI probes pass. Application paths are exactly `/` and `/api/v1/health`; proposed upload/query routes return 404. The default localhost:5173 CORS preflight passes. |
+| Health limitations | Live health returns HTTP 200 / aggregate healthy while Ollama is offline. The earlier readiness/error-handling findings remain tracked implementation work. |
+| Ollama | Not found in the remote shell; service probe offline. Install/run it on the chosen inference host and load the model before live generation. Fake-provider/prompt work can start now. |
+| Frontend | Remote Node v20.20.2 and npm 10.8.2 are available, but no frontend manifest/source/build exists yet. The scaffold task must select compatible package/runtime versions on Zaid's machine. |
+| Git handoff | Latest documentation edits remain uncommitted; the two team guides are untracked. The local branch inventory has `main` only. Publish the baseline and have members create/push their own branches; GitHub write access/protection settings were not verified. |
+| Contracts | API and schema are draft designs. Review the first contract PR before live frontend/generator integration; mock/stub work can proceed against agreed examples. |
+| Academic materials | Base-paper eligibility, literature-survey coverage and blank abstract fields remain documented submission issues. They do not block initial software implementation. |
+
+This audit did not install packages/models, start/stop services, change database state or run nonexistent frontend/RAG test suites. It corrected environment-copy examples to preserve existing `.env` files and replaced an in-place frontend scaffold instruction that could conflict with the existing README.
 
 ## Recommended implementation order
 

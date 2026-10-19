@@ -142,3 +142,9 @@ PR #1 is merged, and origin/main contains the shared contract baseline at `cb0c2
 3. Deliver one PDF/DOCX ingestion -> indexed chunks -> authorized retrieval -> cited answer/abstention path, with a small labeled corpus.
 4. Add one sandbox action with atomic single-use approval, idempotent execution, verification, and audit records.
 5. Build the UI against generated contracts, expand held-out evaluation, and update academic artifacts with measured results and verified submission details.
+
+## Phase 0 publication readiness follow-up - 19 October 2026
+
+The shared dependency environment, Compose configuration and standalone contract checker pass. PostgreSQL is running healthy. The server inference tunnel on 127.0.0.1:11435 is offline, personal laptop environments are unverified, and Zaid's write-access invitation remains pending. These observations permit independent scaffold/fixture work after each member completes access and branch setup; they do not establish live integration readiness.
+
+[PHASE_0_SETUP_GUIDE.md](PHASE_0_SETUP_GUIDE.md) records per-owner setup commands, safe clone/branch synchronization, current versus future checks, SSH access prerequisites, the Ollama generation gate and handoff evidence. It accompanies the Phase 1 agent playbook in PR #2. No application features are implemented by this documentation change.

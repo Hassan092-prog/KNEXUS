@@ -10,7 +10,7 @@ Document ingestion, embeddings, retrieval, LLM answer generation, authentication
 
 See the [repository review](docs/REPOSITORY_REVIEW.md) for file coverage, findings, validation, and remaining work. The design documents describe the target system, not the current API.
 
-The [team start guide](docs/TEAM_START.md) records member access/branches and Naveed's Ollama handoff. The [Phase 1 contract baseline](docs/PHASE_1_CONTRACT.md) and [reference fixtures](contracts/phase1/README.md) define the fields for review before integration.
+Complete the [Phase 0 setup guide](docs/PHASE_0_SETUP_GUIDE.md) before the first implementation tasks; it distinguishes verified server checks from pending personal setup and live inference. The [team start guide](docs/TEAM_START.md) records member access/branches and Naveed's Ollama handoff. The [Phase 1 contract baseline](docs/PHASE_1_CONTRACT.md) and [reference fixtures](contracts/phase1/README.md) define the fields for review before integration.
 
 ## Quick start
 

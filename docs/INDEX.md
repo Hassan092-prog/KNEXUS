@@ -9,6 +9,7 @@
 | [README](../README.md) | Current capabilities, quick start, repository layout |
 | [Contribution guide](../CONTRIBUTING.md) | POSIX/PowerShell setup, configuration, troubleshooting |
 | [Repository review](REPOSITORY_REVIEW.md) | Code findings, missing implementation, academic conflicts, verification |
+| [Phase 0 setup guide](PHASE_0_SETUP_GUIDE.md) | Ordered access, personal environments, server checks, Ollama/tunnels and readiness gates |
 | [Team start](TEAM_START.md) | Published member branches, GitHub invitation status, contract PR handoff and laptop-hosted Ollama |
 | [Frontend status](../frontend/README.md) | Proposed UI; no application initialized |
 | [Data status](../data/README.md) | Proposed fixtures, corpus selection, provenance |
@@ -54,7 +55,8 @@ Original PDFs, Office deliverables, papers, and university templates are preserv
 ## Suggested reading order
 
 1. README and repository review: establish what runs today.
-2. CONTRIBUTING: set up the scaffold.
-3. PRD, architecture, API, and schema: understand the intended path.
-4. Security and evaluation: understand boundaries and acceptance checks.
-5. Project plan, workflow, and academic requirements: coordinate delivery.
+2. Phase 0 setup guide and CONTRIBUTING: prepare access, environments and services.
+3. Phase 1 agent playbook: follow your assigned task sequence.
+4. PRD, architecture, API, and schema: understand the intended path.
+5. Security and evaluation: understand boundaries and acceptance checks.
+6. Project plan, workflow, and academic requirements: coordinate delivery.

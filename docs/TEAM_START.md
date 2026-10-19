@@ -3,6 +3,8 @@
 **Status: 19 October 2026.** The shared contracts and documentation are on main at `cb0c20b` after [PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1) was merged. All three persistent member branches are published. Synchronize your own branch from current main before implementation. The [Phase 1 agent playbook](PHASE_1_TEAM_GUIDE.md) gives each role's ordered tasks, owned files, checks and copyable start prompt. Contract definitions are not implemented endpoints.
 
 
+Complete the ordered [Phase 0 setup guide](PHASE_0_SETUP_GUIDE.md) before implementation. The shared scaffold checks pass, but personal setup and live inference require the member checks listed there. The setup guide and Phase 1 playbook are published together through [PR #2](https://github.com/Hassan092-prog/KNEXUS/pull/2); always synchronize from current main before starting.
+
 ## GitHub accounts and access
 
 | Member | GitHub account | Branch | Access observed |

@@ -111,6 +111,8 @@ The [team responsibilities](TEAM_RESPONSIBILITIES.md) define member identity, br
 
 ## Phase 0 - Pre-development foundation (Weeks 1-2)
 
+Use [PHASE_0_SETUP_GUIDE.md](PHASE_0_SETUP_GUIDE.md) for ordered account/branch/tooling setup, observed readiness and the laptop inference connection. Its setup checklist supports the broader design/academic foundation tasks below.
+
 | Owner | Responsibilities and exit evidence |
 | --- | --- |
 | Hassan (Member 1) | Define API/service/data contracts, own schema/runtime setup, organize integration; publish agreed contracts and reproducible backend setup |

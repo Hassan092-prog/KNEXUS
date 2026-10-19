@@ -4,6 +4,8 @@ This is the execution brief for the three KNEXUS developers and their coding age
 
 **Phase 1 outcome:** upload a small synthetic PDF/DOCX, store its text/chunks/embeddings, retrieve permitted evidence for a question, generate a cited answer or abstain, and show the result through the frontend.
 
+Before starting, complete the access/branch/environment checks in [PHASE_0_SETUP_GUIDE.md](PHASE_0_SETUP_GUIDE.md). Model connectivity is required for live integration; independent fixture/fake-provider work can begin after the common setup gates.
+
 ## 1. Identify your role and read the baseline
 
 | Member | Name | Required branch | Primary scope |

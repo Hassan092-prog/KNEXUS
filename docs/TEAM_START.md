@@ -1,6 +1,6 @@
 # Team start: shared baseline and personal setup
 
-**Status: 19 October 2026.** The shared contracts and documentation are on main at `cb0c20b` after [PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1) was merged. All three persistent member branches are published. Synchronize your own branch from current main before implementation. The [Phase 1 agent playbook](PHASE_1_TEAM_GUIDE.md) gives each role's ordered tasks, owned files, checks and copyable start prompt. Contract definitions are not implemented endpoints.
+**Status: 21 October 2026.** The shared contract baseline and both setup/playbook guides are merged through [PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1) and [PR #2](https://github.com/Hassan092-prog/KNEXUS/pull/2). See [current status and next actions](PROJECT_STATUS.md) for the latest verified progress and shared-server API port. All three persistent member branches are published. Synchronize your own branch from current main before implementation. The [Phase 1 agent playbook](PHASE_1_TEAM_GUIDE.md) gives each role's ordered tasks, owned files, checks and copyable start prompt. Contract definitions are not implemented endpoints.
 
 
 Complete the ordered [Phase 0 setup guide](PHASE_0_SETUP_GUIDE.md) before implementation. The shared scaffold checks pass, but personal setup and live inference require the member checks listed there. The setup guide and Phase 1 playbook are published together through [PR #2](https://github.com/Hassan092-prog/KNEXUS/pull/2); always synchronize from current main before starting.
@@ -11,9 +11,9 @@ Complete the ordered [Phase 0 setup guide](PHASE_0_SETUP_GUIDE.md) before implem
 |---|---|---|---|
 | Hassan | Hassan092-prog | dev-hassan | Repository admin/write access |
 | Naveed | MrMax3757 | dev-naveed | Write access already active |
-| Zaid | MohammedZaid1946 | dev-zaid | Write-access invitation already pending; accept it in GitHub notifications/email |
+| Zaid | MohammedZaid1946 | dev-zaid | Write access active; invitation accepted and verified 21 October 2026 |
 
-No new invitations were sent. Zaid must accept the existing invitation before cloning this private repository with his own account. Do not share Hassan's credentials. Merge commits are enabled. The API returned 403 for branch-protection/ruleset inspection; review those settings manually in GitHub rather than assuming protection exists.
+Both Naveed and Zaid can now access this private repository using their own GitHub accounts. No repository invitations are pending. Do not share Hassan's credentials. Merge commits are enabled. The API returned 403 for branch-protection/ruleset inspection; review those settings manually in GitHub rather than assuming protection exists.
 
 ## Personal clones and branches
 
@@ -130,10 +130,11 @@ The configured model must appear in tags. To verify actual generation, use the f
 
 - [x] Published existing documentation baseline.
 - [x] Published dev-hassan, dev-naveed and dev-zaid and set upstream tracking in the shared clone.
-- [x] Verified Naveed's write access and Zaid's pending invitation.
+- [x] Verified active write access for both Naveed and Zaid on 21 October 2026.
 - [x] Prepared draft contract types, synthetic examples and independent validation.
 - [x] Chosen Naveed's computer as inference host and configured the shared backend's tunnel URL/model tag.
-- [ ] Zaid accepts the invitation; both members verify their own clones and runtime setup.
+- [x] Zaid accepted the invitation; active write access verified.
+- [ ] Each member verifies their own clone and runtime setup.
 - [x] Initial contract baseline merged in PR #1.
 - [ ] Each member synchronizes their own branch from current main before implementation.
 - [ ] Naveed installs/loads Ollama and starts the tunnel; verify actual generation from the shared server.

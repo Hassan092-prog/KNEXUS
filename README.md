@@ -8,7 +8,7 @@ As reviewed on **19 October 2026**, this repository contains a **FastAPI backend
 
 Document ingestion, embeddings, retrieval, LLM answer generation, authentication/RBAC, approvals, audit storage, and the React interface are **planned and not implemented**. Installing their dependencies does not enable these features. There is no feature-level test suite, migration setup, frontend package manifest or CI workflow yet. The shared contract references include a standalone validator and synthetic examples; they do not implement features.
 
-See the [repository review](docs/REPOSITORY_REVIEW.md) for file coverage, findings, validation, and remaining work. The design documents describe the target system, not the current API.
+See [current status and next actions](docs/PROJECT_STATUS.md) for the 21 October access/runtime check, the shared-server port workaround and the next task for each developer. See the [repository review](docs/REPOSITORY_REVIEW.md) for file coverage, findings, validation, and remaining work. The design documents describe the target system, not the current API.
 
 Complete the [Phase 0 setup guide](docs/PHASE_0_SETUP_GUIDE.md) before the first implementation tasks; it distinguishes verified server checks from pending personal setup and live inference. The [team start guide](docs/TEAM_START.md) records member access/branches and Naveed's Ollama handoff. The [Phase 1 contract baseline](docs/PHASE_1_CONTRACT.md) and [reference fixtures](contracts/phase1/README.md) define the fields for review before integration.
 

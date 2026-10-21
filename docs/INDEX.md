@@ -1,11 +1,12 @@
 # KNEXUS documentation index
 
-**Reviewed: 19 October 2026.** Begin with the [repository review](REPOSITORY_REVIEW.md) for implementation status, findings, artifact coverage, and validation. The repository currently provides a backend scaffold; the specifications below describe the planned product.
+**Status refreshed: 21 October 2026; full artifact review: 19 October 2026.** Start with [current status and next actions](PROJECT_STATUS.md) for verified access/runtime progress and each developer's next task. Begin with the [repository review](REPOSITORY_REVIEW.md) for implementation status, findings, artifact coverage, and validation. The repository currently provides a backend scaffold; the specifications below describe the planned product.
 
 ## Setup and current behavior
 
 | Document | Purpose |
 |---|---|
+| [Current status and next actions](PROJECT_STATUS.md) | Latest observed access, branch/runtime progress, next-session tasks and shared API port |
 | [README](../README.md) | Current capabilities, quick start, repository layout |
 | [Contribution guide](../CONTRIBUTING.md) | POSIX/PowerShell setup, configuration, troubleshooting |
 | [Repository review](REPOSITORY_REVIEW.md) | Code findings, missing implementation, academic conflicts, verification |

@@ -2,6 +2,8 @@
 
 This is the execution brief for the three KNEXUS developers and their coding agents. Read the common rules, then work through the section for your assigned member. Inspect the actual files before coding: a planned directory or an unchecked task below does not prove what exists today.
 
+See [current status and next actions](PROJECT_STATUS.md) before starting; it records verified progress, pending setup and the current shared-server API port.
+
 **Phase 1 outcome:** upload a small synthetic PDF/DOCX, store its text/chunks/embeddings, retrieve permitted evidence for a question, generate a cited answer or abstain, and show the result through the frontend.
 
 Before starting, complete the access/branch/environment checks in [PHASE_0_SETUP_GUIDE.md](PHASE_0_SETUP_GUIDE.md). Model connectivity is required for live integration; independent fixture/fake-provider work can begin after the common setup gates.
@@ -265,10 +267,10 @@ Work through Z01-Z06. Begin with frontend-owned mocks copied/generated from the 
 - [ ] Confirm browser requests reach the real API and upload/status/query/citation behavior works without mock fallback.
 - [ ] Surface contract mismatches in a coordinated PR; do not patch backend routes or silently rename fields in the client.
 
-If the shared API listens on server localhost:8000, this runs on Zaid's computer while he uses it:
+For the current shared-server setup, start KNEXUS on server localhost:8002 as described in PROJECT_STATUS.md. This tunnel runs on Zaid's computer while he uses that API:
 
 ```powershell
-ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8000:127.0.0.1:8000 hassan@192.168.1.92
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8000:127.0.0.1:8002 hassan@192.168.1.92
 ```
 
 An authorized SSH account/key is required. With the tunnel active, the frontend's API base URL can be `http://127.0.0.1:8000/api/v1`. If local port 8000 is occupied, coordinate another local port and update the client URL. This API tunnel is separate from Naveed's reverse Ollama tunnel.

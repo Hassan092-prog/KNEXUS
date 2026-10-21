@@ -53,6 +53,8 @@ backend/venv/bin/python contracts/phase1/check.py
 
 On Windows use `./backend/venv/Scripts/python.exe contracts/phase1/check.py`. These reference checks do not implement or verify application routes.
 
+For the shared server, check [current status](docs/PROJECT_STATUS.md): ports 8000/8001 were occupied on 21 October, so KNEXUS was smoke-tested on port 8002. Use that port if still available and adjust URLs/tunnels accordingly. General local setup below retains default port 8000.
+
 ## Verify the scaffold
 
 In another terminal at the repository root:

@@ -2,14 +2,17 @@
 
 Use this checklist before starting the [Phase 1 agent playbook](PHASE_1_TEAM_GUIDE.md). Finish access and the shared contract check first, then start the independent implementation tasks. Complete the live inference gate before claiming an integrated RAG demo.
 
-## Readiness at the 19 October 2026 check
+See [current status and next actions](PROJECT_STATUS.md) for observed progress and the next task for each member.
+
+## Readiness at the 21 October 2026 check
 
 | Item | Evidence / status | Owner and next action |
 |---|---|---|
 | Shared backend environment | Python 3.12; dependency consistency check passes | Hassan maintains runtime |
-| Database configuration | Compose configuration valid; PostgreSQL container healthy | Hassan verifies actual connection/vector below |
+| Database configuration | Compose valid; PostgreSQL healthy; actual connection/vector verified | Hassan maintains runtime |
+| API address | Expected routes on port 8000 return 404; port 8001 also occupied; temporary HTTP check on 8002 passes | Use free port 8002 for shared development, verifying availability first |
 | Shared contract reference | 17 synthetic examples and 24 negative cases pass; schema freshness/evidence membership checked | All members rerun in their own environment |
-| GitHub access | Hassan admin; Naveed write; Zaid's write invitation pending | Zaid accepts with MohammedZaid1946 |
+| GitHub access | Hassan admin; Naveed and Zaid active write; no invitations pending | Everyone verifies their own clone/fetch/push |
 | Personal clones/tooling | Not verified from members' computers | Each member completes steps 1-3 |
 | Inference | Naveed's computer selected; server tunnel port 11435 is offline | Naveed completes step 5 with Hassan |
 | Application features | Backend scaffold only; frontend, migrations and RAG APIs are unimplemented | These are Phase 1 deliverables |
@@ -20,7 +23,7 @@ These are dated observations, not a continuously updated monitoring dashboard. R
 
 ## 1. Accept access and create personal clones - everyone
 
-Sign in to GitHub using your own account. Zaid accepts the existing invitation at [repository invitations](https://github.com/Hassan092-prog/KNEXUS/invitations). If it expires, Hassan renews write access for MohammedZaid1946. Never share GitHub tokens or passwords.
+Sign in to GitHub using your own account. Zaid's invitation has been accepted; both MohammedZaid1946 and MrMax3757 have active write access, verified 21 October 2026. Everyone still needs to verify their own clone and push credentials. Never share GitHub tokens or passwords.
 
 | Developer | GitHub login | Personal branch |
 |---|---|---|
@@ -110,18 +113,18 @@ No database or model service is needed for this contract check. Do not regenerat
 
 ## 4. Verify the scaffold - Hassan
 
-From the server repo root, start the API in a dedicated terminal if it is not already running:
+The expected KNEXUS routes on server port 8000 currently return 404 and port 8001 is also occupied. Use port 8002 if still free; do not stop an unidentified service. A temporary check on 8002 passed and was stopped afterward. From the server repo root, start the API in a dedicated terminal when needed:
 
 ```bash
-backend/venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+backend/venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8002
 ```
 
 In a second server terminal:
 
 ```bash
-curl --fail http://127.0.0.1:8000/
-curl --fail http://127.0.0.1:8000/api/v1/health
-curl --fail http://127.0.0.1:8000/api/v1/openapi.json
+curl --fail http://127.0.0.1:8002/
+curl --fail http://127.0.0.1:8002/api/v1/health
+curl --fail http://127.0.0.1:8002/api/v1/openapi.json
 ```
 
 Expect database connected and pgvector_extension installed. Inspect individual fields: aggregate healthy can still accompany offline Ollama. Swagger is /docs. Root and health are the only application routes today; upload/query returning 404 is expected until Phase 1 implements them. Do not reset the shared database to test future migrations; use a disposable test database.
@@ -167,7 +170,7 @@ Confirm the selected model appears in tags and generation returns a nonempty res
 Use typed contract fixtures first. When the server API is needed, obtain authorized SSH access and run from Zaid's computer:
 
 ```powershell
-ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8000:127.0.0.1:8000 hassan@192.168.1.92
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8000:127.0.0.1:8002 hassan@192.168.1.92
 ```
 
 Keep the tunnel open and set the future frontend client's API base to http://127.0.0.1:8000/api/v1. The API must be running on the server. If local port 8000 is occupied, choose another local port and change the client base accordingly. The browser calls the backend, never Ollama. Until upload/query routes exist, mock mode must be explicit; live failures must remain visible.
@@ -182,10 +185,12 @@ Keep the tunnel open and set the future frontend client's API base to http://127
 
 ## Setup handoff checklist
 
-- [ ] Zaid accepts the invitation; all three members can clone/fetch/push using their own account.
+- [x] Zaid accepted; Naveed and Zaid both have active write access.
+- [ ] All members verify clone/fetch/push using their own account.
 - [ ] Each personal clone is on the correct dev-* branch with matching upstream and current shared docs/contracts.
 - [ ] Each member reviews the contract/checker evidence and agrees the service/wire boundaries.
-- [ ] Hassan verifies backend, PostgreSQL and vector; Naveed verifies Python tooling; Zaid verifies Node/npm.
+- [x] Shared backend, PostgreSQL and vector verified on 21 October (temporary API check stopped afterward).
+- [ ] Naveed verifies personal Python tooling; Zaid verifies Node/npm.
 - [ ] Authorized SSH access is arranged for members who need server tunnels.
 - [ ] Naveed starts Ollama/tunnel; Hassan verifies tags and a real bounded response from the server before live integration.
 - [ ] Each owner starts the first incomplete task and records checks/handoff evidence in their PR.

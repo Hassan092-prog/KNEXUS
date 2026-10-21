@@ -2,6 +2,8 @@
 
 **Review date:** 19 October 2026. **Scope:** the original review covered all 37 files then tracked, including source/configuration, Markdown, Office documents/templates, PDFs and research references. Follow-ups include this report, the Phase 1 guide and the team responsibilities guide. Workspace operations use SSH to `hassan@192.168.1.92`. The original review began with a clean tree; later edits retain the preceding uncommitted documentation work.
 
+For the latest checks and execution order, see [current status and next actions](PROJECT_STATUS.md). Dated entries below preserve the earlier audit observations.
+
 ## Assessment
 
 KNEXUS is a **foundation scaffold**, with much more extensive design documentation than implementation. It is not yet a working RAG assistant or a secure multi-tenant application. The documentation now distinguishes current behavior from planned requirements. This review changes documentation only; code findings below remain implementation work.
@@ -148,3 +150,11 @@ PR #1 is merged, and origin/main contains the shared contract baseline at `cb0c2
 The shared dependency environment, Compose configuration and standalone contract checker pass. PostgreSQL is running healthy. The server inference tunnel on 127.0.0.1:11435 is offline, personal laptop environments are unverified, and Zaid's write-access invitation remains pending. These observations permit independent scaffold/fixture work after each member completes access and branch setup; they do not establish live integration readiness.
 
 [PHASE_0_SETUP_GUIDE.md](PHASE_0_SETUP_GUIDE.md) records per-owner setup commands, safe clone/branch synchronization, current versus future checks, SSH access prerequisites, the Ollama generation gate and handoff evidence. It accompanies the Phase 1 agent playbook in PR #2. No application features are implemented by this documentation change.
+
+## Access and runtime follow-up - 21 October 2026
+
+Zaid/MohammedZaid1946 and Naveed/MrMax3757 both now have active write access; no invitations or PRs are pending at this check. Main and the three member branches remain at the merged setup/playbook baseline fb9e889 before this documentation update, with no newer implementation commits observed. Laptop work and personal environments cannot be inferred from that shared history.
+
+Dependency consistency, Compose configuration, contract validation (17 examples/24 negative cases), Python syntax and in-process scaffold probes pass. Real database connectivity and vector extension are confirmed. Ports 8000/8001 are occupied; expected KNEXUS routes on 8000 return 404. A temporary KNEXUS process on port 8002 passes real HTTP root/docs/OpenAPI/health probes and was then stopped; existing services were preserved. Server Ollama tunnel port 11435 remains closed, so actual model availability/generation is unverified.
+
+The current-status guide and refreshed team/setup guides record active access, the API port workaround and ordered first tasks H01/N01/Z01. This follow-up changes documentation only; there is no new application feature implementation.

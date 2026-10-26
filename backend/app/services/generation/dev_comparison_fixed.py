@@ -155,7 +155,7 @@ async def run_case(case: dict, service):
 async def main():
     from backend.app.services.generation.generator import GenerationService
 
-    service = GenerationService(model=MODEL_TAG, timeout_seconds=30)
+    service = GenerationService(model=MODEL_TAG, timeout=30)
 
     results = []
     # Smoke check: supported and unsupported cases

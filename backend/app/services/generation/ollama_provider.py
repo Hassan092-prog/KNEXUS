@@ -41,21 +41,11 @@ async def ollama_generate(request: GenerationRequest) -> GenerationResult:
             data = resp.json()
             answer = data.get("response", "")
     except httpx.HTTPError as exc:
-        # Network or server error – treat as abstention
-        return GenerationResult(
-            answer=None,
-            cited_ids=[],
-            abstained=True,
-            abstention_reason=f"Ollama request failed: {exc}" if str(exc) else "Ollama request failed",
-        )
+        # Propagate network/server errors to caller for unified handling
+        raise RuntimeError(f"Ollama request failed: {exc}")
     except Exception as exc:
-        # Unexpected error – also abstain
-        return GenerationResult(
-            answer=None,
-            cited_ids=[],
-            abstained=True,
-            abstention_reason=f"Unexpected error in Ollama provider: {exc}",
-        )
+        # Unexpected error – propagate
+        raise RuntimeError(f"Unexpected error in Ollama provider: {exc}")
     cited_ids = _extract_citation_ids(answer)
     # ---------- New validation ----------
     if not answer:

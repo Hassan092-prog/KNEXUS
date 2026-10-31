@@ -1,6 +1,8 @@
 # Current project status and next actions
 
-**Checked: 21 October 2026 (Asia/Calcutta).** This is the latest observed status; older dated audit entries are historical. Repository progress describes pushed commits, not unobserved work on personal machines.
+**Current checkpoint: 31 October 2026 (Asia/Calcutta).** The isolated `integration/phase1` branch is based on H01 `074cb12b9552d5b72d95a7dda86252fbc564637f`. Its generation package is present locally with offline boundary and mock-provider coverage; 51 focused tests pass. The canonical contract checker passes separately with 17 examples and 24 negative cases. This foundation is available on `integration/phase1` and has not been merged into `main`.
+
+The application feature routes, application migrations, document processing, retrieval APIs, authentication, action approval, and frontend application remain unimplemented. The branch adds no public feature route and does not establish live Ollama behavior or answer quality. The original `dev-hassan` checkout remains on H01 with its existing seven uncommitted document edits preserved. Older dated entries below are historical snapshots.
 
 ## What is complete
 

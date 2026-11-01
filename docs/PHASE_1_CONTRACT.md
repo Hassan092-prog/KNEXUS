@@ -1,8 +1,8 @@
 # Phase 1 implementation baseline
 
-**Version 0.1 - initial baseline merged in [PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1).** Hassan owns integration/schema contracts, Naveed owns generation and Zaid owns the frontend. Use these field shapes for implementation and review later contract changes together before updating consumers. These definitions describe the implementation target; they do not mean routes or tables already exist.
+**Version 0.1 - initial baseline merged in [PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1).** Hassan owns integration/schema contracts, Naveed owns generation and Zaid owns the frontend. Use these field shapes for implementation and review later contract changes together before updating consumers. The HTTP definitions remain targets. The generation boundary and initial persistence schema are implemented in the reviewed shared baseline on main; see [current status](PROJECT_STATUS.md).
 
-For Phase 1 details below, this baseline narrows the broader [API proposal](API_SPEC.md) and [database draft](DATABASE_SCHEMA.md). Future streaming/actions/admin contracts remain design proposals. Scope changes need a reviewed update to this baseline, [reference models](../contracts/phase1/models.py), [schema export](../contracts/phase1/schema.json) and examples together.
+For Phase 1 details below, this baseline narrows the broader [API proposal](API_SPEC.md) and [database implementation](DATABASE_SCHEMA.md). Future streaming/actions/admin contracts remain design proposals. Scope changes need a reviewed update to this baseline, [reference models](../contracts/phase1/models.py), [schema export](../contracts/phase1/schema.json) and examples together.
 
 ## First vertical slice
 
@@ -60,13 +60,13 @@ The team accepted the async call boundary `app.core.generation.GenerationService
 async def generate(self, request: GenerationRequest) -> GenerationResult: ...
 ```
 
-The backend calls `run_generation(service, request)` to await an injected implementation and validate that cited IDs belong to the already-authorized evidence. A generator must not read the database, choose a tenant, grant permissions or execute tools. The isolated integration baseline includes a provider implementation compatible with this boundary; production integration and live model quality still require verification.
+The backend calls `run_generation(service, request)` to await an injected implementation and validate that cited IDs belong to the already-authorized evidence. A generator must not read the database, choose a tenant, grant permissions or execute tools. The reviewed shared baseline on main includes a compatible provider; HTTP integration and live model quality still require verification.
 
 The local synthetic actor helper is `app.core.demo_identity.build_demo_actor()`. It returns the fixed actor in `contracts/phase1/examples/actor-context.json`, using the documented orgadmin-to-manager-to-employee expansion. It is demo identity only and does not authenticate requests. Public query/upload metadata continues to reject identity fields; upload `allowed_roles` remains document metadata.
 
 ## Initial persistence contract
 
-Hassan owns the migration implementation. Use organizations/users for a server-owned demo actor, documents, document_chunks, embeddings, and an ingestion-job record. Align the existing DDL with these invariants before autogeneration:
+Hassan owns the migration implementation. Use organizations/users for a server-owned demo actor, documents, document_chunks, embeddings, and an ingestion-job record. The reviewed ORM and initial Alembic revision implement the storage foundation; services must preserve these invariants:
 
 - Each tenant-owned child references a parent in the same organization; enforce composite ownership constraints and service checks.
 - Document lifecycle is queued -> processing -> complete or failed. Only complete, nondeleted, currently authorized documents can be retrieved.
@@ -75,7 +75,7 @@ Hassan owns the migration implementation. Use organizations/users for a server-o
 - Upload returns 202 only after a job/document record is committed. Failed/partial indexing cannot be presented as complete. Keep raw parser/DB/provider diagnostics out of public error fields.
 - Migrations are reviewed revisions, not SQL pasted manually into the shared development database. Test migration round trips only on a disposable database.
 
-The existing database draft does not yet include ingestion_jobs or all tenant constraints. Those are explicit implementation requirements, not already-applied schema changes. Refresh sessions, conversation history, controlled-action persistence and durable queues are outside this first slice.
+The initial revision includes ingestion_jobs and tenant constraints and passed disposable verification. It has not been applied to the shared database; service orchestration remains pending. Refresh sessions, conversation history, controlled-action persistence and durable queues are outside this first slice.
 
 ## Error behavior
 
@@ -94,10 +94,10 @@ Parsing/indexing failures discovered after 202 update the persisted job/document
 
 The public error shape is detail/code/request_id, with a server-owned correlation UUID. These error handlers are to be implemented with the routes; FastAPI defaults remain on the current scaffold. Provider failure is an error state, not a fabricated answer or an evidence abstention.
 
-## Independent first PRs
+## Current handoffs
 
-- Hassan: adopt reviewed data/service types and implement migration/storage foundation with tenant-consistency checks.
-- Naveed: implement provider-independent prompt/result handling against generation fixtures, then the Ollama adapter on his computer.
+- Hassan: reuse completed H01/H02 and implement ingestion, filtered retrieval and API orchestration.
+- Naveed: preserve the reviewed provider boundary and complete context policy, live evaluation and the backend handoff.
 - Zaid: initialize frontend and use query/document/status/error fixtures as typed mocks, then integrate only the accepted APIs.
 
 Run [the contract check](../contracts/phase1/README.md) before changing shared fields. One member implements a contract change; the other two review their consumer impact. Do not silently change fields in parallel branches.

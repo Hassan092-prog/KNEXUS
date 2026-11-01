@@ -1,162 +1,164 @@
-# KNEXUS contribution and local setup guide
+# Setup and contribution guide
 
-Start with the [Phase 0 setup checklist](docs/PHASE_0_SETUP_GUIDE.md) for role-specific prerequisites and the shared-server/laptop arrangement.
+Read [project status](docs/PROJECT_STATUS.md) for the shared revision and [team responsibilities](docs/TEAM_RESPONSIBILITIES.md) for ownership. Hassan's shared-workspace commands run over SSH to `hassan@192.168.1.92`. Each laptop clone uses its own environment.
 
-## Scope and prerequisites
+## 1. Choose a safe checkout
 
-The current application is a backend scaffold. Read [README.md](README.md) and the [repository review](docs/REPOSITORY_REVIEW.md) before using the target designs as implementation instructions.
+Each member uses a separate clone or agreed worktree. Inspect changes before switching or synchronizing:
 
-Use **Python 3.12** as the team baseline, Git, and Docker with Docker Compose. Node.js is only needed when the frontend is initialized. Ollama is optional for dependency diagnostics and will be required for future answer generation.
+~~~bash
+git status --short --branch
+git branch --show-current
+git remote -v
+git fetch origin --no-tags
+~~~
 
-## Start from the repository root
+The four persistent branches are `main` and the three `dev-*` branches. Each member branch tracks its matching remote branch. The reviewed baseline is now on main; integration/review branches are retired. Do not merge the old dev-naveed generator over the reviewed foundation.
 
-```bash
+For a new clone, after verifying the agreed starting point:
+
+~~~bash
 git clone https://github.com/Hassan092-prog/KNEXUS.git
 cd KNEXUS
-```
+git switch --track origin/dev-hassan
+~~~
 
-Keep the process working directory here when starting the backend. `Settings` reads `.env` from the working directory, not from the Python module location. Do not overwrite an existing `.env` when repeating setup.
+Naveed uses `origin/dev-naveed`; Zaid uses `origin/dev-zaid`. If the local branch exists, switch without `--track`. Confirm `git config user.name` and `git config user.email`; use your own account and actual authorship.
 
-### Linux/macOS (POSIX shell)
+A stale member branch needs a reviewed baseline handoff first. Inspect ancestry and local edits; never reset, force-push or import the old generation checkpoint automatically.
 
-```bash
-if [ ! -f .env ]; then
-    cp .env.example .env
-fi
+## 2. Prepare the backend
+
+Python 3.12 is the team baseline. Installation commands below are for an approved new personal environment. Reuse the working server environment. Run from the repository root.
+
+Linux/macOS:
+
+~~~bash
+if [ ! -f .env ]; then cp .env.example .env; fi
 python3.12 -m venv backend/venv
-backend/venv/bin/python -m pip install --upgrade pip
 backend/venv/bin/python -m pip install -r backend/requirements.txt
-docker compose up -d postgres
-backend/venv/bin/python -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
-```
+~~~
 
-### Windows PowerShell
+Windows PowerShell:
 
-```powershell
+~~~powershell
 if (-not (Test-Path -LiteralPath .env)) {
     Copy-Item -LiteralPath .env.example -Destination .env
 }
 py -3.12 -m venv backend/venv
-.\backend\venv\Scripts\python.exe -m pip install --upgrade pip
 .\backend\venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+~~~
+
+`Settings` resolves `.env` relative to the repository root, independently of the working directory. Exported variables override it. Restart after changes because settings are cached. Development defaults are unsuitable for public deployment.
+
+`DATABASE_URL` is independent of `POSTGRES_*` fields; changing them does not rebuild it. Compose's default host port is 5435, container port 5432. Existing volumes retain initialization data when environment values change.
+
+## 3. Run offline checks
+
+Linux/macOS, from the root:
+
+~~~bash
+backend/venv/bin/python -B -m pytest backend/tests/test_h01_boundaries.py backend/tests/phase1/generation backend/tests/test_persistence_models.py -q -p no:cacheprovider
+backend/venv/bin/python -B contracts/phase1/check.py
+~~~
+
+PowerShell:
+
+~~~powershell
+.\backend\venv\Scripts\python.exe -B -m pytest backend/tests/test_h01_boundaries.py backend/tests/phase1/generation backend/tests/test_persistence_models.py -q -p no:cacheprovider
+.\backend\venv\Scripts\python.exe -B contracts/phase1/check.py
+~~~
+
+These need no database, model service or downloads. The separate canonical checker proves contract invariants, not working APIs or model quality. See [backend tests](backend/tests/README.md) for database safeguards and recorded evidence.
+
+## 4. Start a local API when needed
+
+For an approved new local PostgreSQL service:
+
+~~~bash
 docker compose up -d postgres
-.\backend\venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
-```
+~~~
 
-## Validate the shared contract reference
+Do not use this as a shared-server reset. Initialization enables vector on a new volume only. Application tables require Alembic; online migrations and explicit seeding require approval for the exact database. See [database schema](docs/DATABASE_SCHEMA.md).
 
-The [Phase 1 contract baseline](docs/PHASE_1_CONTRACT.md) includes synthetic fixtures and checks independent of running services. The initial baseline is merged; run from the root:
+~~~bash
+backend/venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+~~~
 
-```bash
-backend/venv/bin/python contracts/phase1/check.py
-```
+PowerShell uses `.\backend\venv\Scripts\python.exe` with the same arguments. Use an available port; an earlier server check used 8002 because 8000/8001 were occupied. Check availability again rather than assuming it.
 
-On Windows use `./backend/venv/Scripts/python.exe contracts/phase1/check.py`. These reference checks do not implement or verify application routes.
+While the API is intentionally running:
 
-For the shared server, check [current status](docs/PROJECT_STATUS.md): ports 8000/8001 were occupied on 21 October, so KNEXUS was smoke-tested on port 8002. Use that port if still available and adjust URLs/tunnels accordingly. General local setup below retains default port 8000.
+~~~bash
+curl --fail --max-time 10 http://127.0.0.1:8000/
+curl --fail --max-time 10 http://127.0.0.1:8000/api/v1/health
+~~~
 
-## Verify the scaffold
+Health always returns HTTP 200 and checks Ollama tags, not generation. See [current API behavior](docs/API_SPEC.md).
 
-In another terminal at the repository root:
+## 5. Connect laptop inference
 
-```bash
-docker compose ps
-curl http://localhost:8000/
-curl http://localhost:8000/api/v1/health
-```
+Naveed's laptop is the selected Ollama host; the shared Linux server hosts API/database services. Hassan can use the same adapter locally without transferring implementation ownership.
 
-In PowerShell use `Invoke-RestMethod http://localhost:8000/api/v1/health` if `curl` resolves to a PowerShell alias.
+Use the existing installed model. Installations, downloads and service changes require approval. Do not start a second daemon if Ollama is running.
 
-Open [Swagger](http://localhost:8000/docs), [ReDoc](http://localhost:8000/redoc), or [OpenAPI JSON](http://localhost:8000/api/v1/openapi.json). The application routes are `GET /` and `GET /api/v1/health`; document/query/auth/action endpoints do not exist yet.
-
-The health response reports database connectivity, vector-extension presence, and Ollama `/api/tags` reachability. It always returns HTTP 200. Database exceptions set `status=degraded`; missing vector or unavailable Ollama currently do not. An online Ollama response does not prove the configured model is installed or can generate answers.
-
-## Configuration and services
-
-- Root `.env` defaults match Compose's host PostgreSQL port **5435**. The container listens on **5432**.
-- Change `DATABASE_URL` explicitly when changing database credentials, host, port, or database name. The individual `POSTGRES_*` values do not construct this URL in the backend. `DATABASE_SYNC_URL` is reserved for future synchronous tooling.
-- `BACKEND_CORS_ORIGINS` can be set as a JSON array in `.env`. The default includes local ports 3000 and 5173.
-- Security/model settings are placeholders for planned features; changing `SECRET_KEY` does not enable authentication.
-- Compose starts PostgreSQL only. Ollama's service block is commented out; API and frontend containers are absent.
-- `docker/init.sql` runs only when PostgreSQL initializes an empty data volume. It enables `vector` and creates no application tables. No Alembic setup is committed.
-- Existing volumes retain their users/passwords/database settings. Editing `.env` does not reinitialize a populated database.
-
-Optional Ollama setup, in another terminal:
-
-```bash
-ollama serve
-# In another terminal, if the model is wanted for future development:
-ollama pull llama3.2:3b
+~~~bash
+ollama --version
 ollama list
-```
+ollama ps
+~~~
 
-Do not start a second Ollama server if a desktop/background service already owns port 11434. The health probe works without downloading a model.
+The [generation README](backend/app/services/generation/README.md) owns provider configuration, injection and live-harness commands. Root `.env` does not automatically export settings to the standalone generator.
 
-To stop PostgreSQL while retaining its data:
+Naveed runs this authorized tunnel on his laptop while Ollama listens on loopback:
 
-```bash
-docker compose stop postgres
-```
+~~~powershell
+ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R 127.0.0.1:11435:127.0.0.1:11434 hassan@192.168.1.92
+~~~
+
+API-side generation uses `http://127.0.0.1:11435`; laptop-local checks use `http://127.0.0.1:11434`. GitHub access does not grant SSH access. Use approved accounts/keys; never share secrets.
+
+While that tunnel is intentionally active, server-side reachability can be checked with:
+
+~~~bash
+curl --fail --max-time 10 http://127.0.0.1:11435/api/tags
+~~~
+
+Tags prove reachability only. Use the opt-in generation harness for structured answers/abstentions. Sleeping the laptop or closing the tunnel makes shared inference unavailable.
+
+## 6. Prepare frontend development
+
+Zaid owns the frontend. Only its README is committed. Confirm the React/TypeScript framework and supported Node/npm versions first; Vite and Next.js were discussed, but neither has a committed application scaffold.
+
+Generate into an empty temporary directory and adapt into `frontend/` without removing existing work. Document actual commands after adding a manifest and lockfile. Browser configuration contains no secrets.
+
+When Hassan runs the API on server port 8002, Zaid can use this authorized tunnel:
+
+~~~powershell
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8000:127.0.0.1:8002 hassan@192.168.1.92
+~~~
+
+The frontend API base is then `http://127.0.0.1:8000/api/v1`. Choose another local port if occupied. The browser calls the API, never Ollama. Keep mock mode visible; never substitute fixtures for live errors.
+
+## 7. Review and integrate
+
+Main now contains the accepted baseline. Synchronize a clean member branch with `git fetch origin --no-tags` and a reviewed normal merge from `origin/main`. If your branch has divergent implementation or pending edits, inspect and coordinate rather than merging blindly.
+
+Work in small owned slices. Inspect and stage named files. Commits, pushes, PRs and merges need the user's authorization; this guide is not automatic approval. Use one active PR per member branch targeting `main`.
+
+Inspect the staged diff and `git diff --cached --check`. Exclude secrets, uploads, large corpora, model weights, environments and caches. Use merge commits to preserve member history; never force-push persistent branches.
+
+Hassan reviews integration. Check repository protections and CI in GitHub rather than assuming they exist. Coordinate conflicts with the owner and preserve both intended changes.
+
+Delete a temporary branch only when its commits are reachable from a retained branch, no active PR depends on it, owners have handed off work, and attached worktrees are preserved. Retain all three member branches.
 
 ## Troubleshooting
 
-| Symptom | Check |
+| Symptom | Action |
 |---|---|
-| Changes in `.env` have no effect | Launch from the repository root and restart the backend; settings are cached per process |
-| Database connection error | Check `docker compose ps`, host port 5435, and `DATABASE_URL`; startup does not wait for readiness |
-| Vector not installed | Inspect the existing database/volume and `docker/init.sql`; initialization scripts do not rerun on populated volumes |
-| Ollama offline | Check its separate service and `OLLAMA_BASE_URL`; the rest of the scaffold still runs |
-| `/query` or `/auth/login` returns 404 | These are planned API contracts, not implemented routes |
-
-## Team ownership
-
-Follow [TEAM_RESPONSIBILITIES.md](docs/TEAM_RESPONSIBILITIES.md): Hassan (Member 1) owns backend, database/migrations, data/runtime, security and integration. Naveed (Member 2) owns LLM/prompt/citation, typed tools and answer-quality work. Zaid (Member 3) owns the entire frontend, UI verification and user-facing documentation.
-
-Hassan owns backend/Compose setup and database changes. Naveed sets up Ollama for generation work. Zaid sets up Node.js and frontend tooling when initializing the agreed React/TypeScript/Vite app; a frontend manifest/build command is not yet committed. Shared API changes are agreed before parallel implementation.
-
-## Contribution workflow
-
-Each member keeps one persistent branch and commits/pushes their work there: Hassan (Member 1) uses `dev-hassan`, Naveed (Member 2) uses `dev-naveed`, and Zaid (Member 3) uses `dev-zaid`. Each person should have their own clone. Do not commit directly to `main`.
-
-**Hassan (Member 1):**
-
-```powershell
-git switch main
-git pull --ff-only origin main
-git switch --track origin/dev-hassan
-```
-
-**Naveed (Member 2):** run the same first two commands, then:
-
-```powershell
-git switch --track origin/dev-naveed
-```
-
-**Zaid (Member 3):** run the same first two commands, then:
-
-```powershell
-git switch --track origin/dev-zaid
-```
-
-The remote member branches already exist. Track your assigned branch once from a fresh clone; if it exists locally, use `git switch` with the local branch name. See [TEAM_START.md](docs/TEAM_START.md) for access and Ollama handoff. At the start of each work session, check the branch and sync merged work:
-
-```bash
-git status --short --branch
-git branch --show-current
-git fetch origin
-git merge --no-edit origin/main
-```
-
-After a reviewable task, inspect and push named files:
-
-```bash
-git diff
-git add path/to/changed-file
-git diff --cached
-git commit -m "feat(rag): add document chunking"
-git push
-```
-
-Open one pull request at a time from your persistent branch into `main`. Use a merge commit (not squash/rebase) to preserve branch history for later PRs. Never force-push shared branches. Ignored files can still be force-added or tracked from earlier commits, so check staged changes for secrets, `.env`, model downloads, database files, and large datasets. Ask the repository admin to require PR review for `main`; do not require CI checks before a real workflow exists.
-
-See [the team Git guide](docs/KNEXUS_Team_Git_Workflow_Guide.md) for setup and conflict commands and [the Phase 1 guide](docs/PHASE_1_TEAM_GUIDE.md) for member ownership, integration gates, and collaborative coding/prompt templates.
+| Environment changes ignored | Restart; exported variables override root `.env` |
+| DB cannot connect | Verify explicit URL/host/port without printing credentials; never reset the volume |
+| Application tables missing | Obtain approval for the migration target; startup creates no tables |
+| Tags work, generation fails | Check exact tag, provider configuration and typed failure |
+| Upload/query returns 404 | Feature routes are not implemented |
+| Old generator heuristics on a member branch | Preserve edits and coordinate a clean baseline handoff |

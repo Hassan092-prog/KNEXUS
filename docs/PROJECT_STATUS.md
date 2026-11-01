@@ -1,82 +1,65 @@
-# Current project status and next actions
+# Current status and next actions
 
-**Backend work in progress:** The Phase 1 persistence foundation is published on work/hassan-phase1-backend in open draft PR #4, based on foundation commit 553bf997dd02b6a36bc10f4625cfde0c40658c02. Offline checks pass. The corrected harness verified the actual public.embeddings.embedding type and completed the migration upgrade/re-upgrade/downgrade/re-upgrade cycle plus five PostgreSQL/pgvector database tests on a fresh disposable database. A separate offline wrapped-exception regression also passed. Two earlier attempts in this correction cycle stopped on harness readiness and shell-formatting issues; each cleaned up its disposable resources. The successful run also removed its container, network, volume and sanitized copy. The shared database has not been migrated, and this work has not been merged into integration/phase1 or main. The retained attempt-5 log does not hash its sanitized source copy, so it cannot independently tie the database run to this exact commit.
+**Checked: 1 November 2026.** This page owns progress and verification history. Requirements elsewhere describe intended behavior unless completion is recorded here.
 
-**Current checkpoint: 1 November 2026 (Asia/Calcutta).** The published integration/phase1 foundation is at 553bf997dd02b6a36bc10f4625cfde0c40658c02 and has not been merged into main. Hassan's backend work branch has 76 passing focused offline tests; the canonical contract checker passes separately with 17 examples and 24 negative cases. The corrected harness passed five disposable PostgreSQL/pgvector database tests and the complete migration cycle, with an actual catalog assertion for the vector column type; one separate offline wrapped-exception regression also passed. Two earlier attempts in this correction cycle stopped on harness readiness and shell-formatting issues and cleaned up their resources.
+## Published checkpoint
 
-The initial persistence migration and models are implemented and verified on Hassan's work branch. They are published in open draft PR #4 and have not been merged into integration/phase1 or main; the shared database has not been migrated. Application feature routes, document processing, retrieval APIs, authentication, action approval, and the frontend application remain unimplemented. The branch adds no public feature route and does not establish live Ollama behavior or answer quality. The original dev-hassan checkout remains on H01 with its existing seven uncommitted document edits preserved. Older dated entries below are historical snapshots.
+[PR #5](https://github.com/Hassan092-prog/KNEXUS/pull/5) is merged into `main` using merge commit `5104a19e61f35d4a10e38000737e68513069f2a5`. It carries the reviewed H01, generation and persistence baseline from `3a4342e02d37efc98e49f86f8b638c1fc9c14174`, including [PR #4](https://github.com/Hassan092-prog/KNEXUS/pull/4).
 
-## What is complete
+History preserves foundation `553bf997dd02b6a36bc10f4625cfde0c40658c02`, persistence `f3eb6e82c37668ba7b19d1560de2032792c08183` and its documentation follow-up `fb7b2ffbf9a599053f35f8f200f2d35ffbb3c0f2`. The shared database has not been migrated. Check GitHub for active PRs rather than inferring review state from this dated checkpoint.
 
-- Hassan has repository admin access. Naveed (MrMax3757) and Zaid (MohammedZaid1946) both have active write access. There are no pending repository invitations.
-- Historical snapshot before PR #4: Main and all three origin/dev-* branches contained the published setup/contract/playbook baseline fb9e889 at that check. No later implementation commits or open PRs had been found then.
-- Shared backend dependency consistency and Docker Compose configuration pass. PostgreSQL is healthy; real database connectivity and the vector extension are verified.
-- Contract checking passes 17 synthetic examples, 24 negative cases, evidence membership and schema freshness. All eight tracked Python files parse.
-- In-process scaffold routes pass. A temporary real HTTP server on port 8002 also passed root, Swagger, OpenAPI and health checks; it was stopped after verification.
+Documentation now has one owner per subject: setup/Git in CONTRIBUTING, task definitions in the Phase 1 playbook, contracts in canonical references and progress here. Four superseded setup/audit guides were removed. This consolidation changes no application behavior or Phase 1 contract fields.
 
-## What remains
+## Implementation and next tasks
 
-| Area | Current evidence | Next owner/action |
+| Area | Delivered | Next action |
 |---|---|---|
-| Personal clones and tooling | GitHub permission confirmed; laptop clone/push/runtime checks not observed | Each member verifies their own branch/upstream/environment |
-| Running API address | Ports 8000 and 8001 occupied; expected KNEXUS routes on 8000 return 404 | Hassan starts KNEXUS on free port 8002 for development; verify again before use |
-| Inference | Server localhost:11435 closed; live model/tag/generation not verified | Naveed starts local Ollama and reverse SSH tunnel; Hassan checks server-side inference |
-| Backend features | No feature routes yet; H02 persistence models/migration are published in open draft PR #4 and verified, but not merged into integration/phase1 or main | Hassan reviews PR #4 and addresses feedback; continue H03-H07 after this slice is merged |
-| Generation implementation | The shared foundation includes the async fake/Ollama generation service and offline tests; live Ollama inference and answer quality are not verified | Naveed continues N01-N06 |
-| Frontend | README only; no app/package/build yet | Zaid starts Z01, then Z02-Z06 |
+| H01 | Canonical imports, fixed synthetic actor, role expansion and injected `run_generation` | Reuse in feature APIs |
+| H02 | Six ORM tables, tenant foreign keys, lifecycle rules, timezone-aware timestamps, 384-dimensional vectors, Alembic and explicit seed helper; PR #4 merged | Hassan: H03 upload/parsing, then H04 embedding/indexing |
+| Generation | Async fake/Ollama service, structured validation, typed failures/deadlines and offline regressions | Naveed: extend the reviewed foundation, finish context policy and reproducible live evaluation |
+| API | Root, health and generated docs only | Hassan: document and query APIs H03-H06 |
+| Frontend | README only | Zaid: confirm framework, then Z01/Z02 and upload/chat fixtures |
+| Data/evaluation | Synthetic contract/harness examples; no benchmark corpus | Build a small labeled synthetic corpus |
+| Auth, governed actions, audit | Unimplemented; demo identity is not login | Phase 2; satisfy security gates before shared-sensitive data |
+| Integrated demo | Unverified | H07/N06/Z05-Z06 after APIs and live provider handoff |
 
-**Decision:** shared setup and repository access support starting Phase 1 after each person's local setup checks. Live end-to-end integration is not ready. No Phase 1 feature task is marked complete based on scaffolding, installed packages or fixture validation. Offline inference does not block the independent first tasks.
+Naveed reports a clean Windows recovery worktree reproducing the older foundation with 51 boundary/generation tests and the canonical checker. This is member-reported evidence, not published completion of N01-N06. His old `dev-naveed` checkpoint is not a descendant of the reviewed foundation and must not overwrite it. Unpushed laptop work cannot be established from GitHub.
 
-## What to do, in order
+## Verification evidence
 
-| When | Hassan / dev-hassan | Naveed / dev-naveed | Zaid / dev-zaid |
-|---|---|---|---|
-| First work session, before edits | Sync own branch; rerun contract check; start API only when needed | Sync own branch; verify Python environment and contract fixtures | Clone/sync own branch; verify Node/npm and fixture fields |
-| Same session, after setup | H01: runtime schemas, server-owned demo actor, injected generation boundary/test setup | N01: agree async generation callable with Hassan; fake provider and focused checks | Z01: React/TypeScript/Vite scaffold, preserving existing README |
-| Next reviewable slices | H02 models/migrations, then H03/H04 ingestion/indexing and H05/H06 retrieval/API | N02 prompt/context, then N03/N04 adapter/result validation; configure Ollama/tunnel alongside this | Z02 typed client/mocks, then Z03/Z04 upload/status/chat/citation views |
-| At every completed slice | Push named changes to own branch, open/update its one active PR, report checks and handoff | Same | Same |
-| Before live integration | Publish working endpoints; verify real model response and permissions/failure cases | Hand off working adapter and measured model/runtime details | Connect live client using the verified API address; keep mock/live modes explicit |
-| Phase 1 completion gate | Together verify browser upload -> status -> stored/indexed chunks -> permitted retrieval -> cited answer or abstention; record results and remaining failures | Contribute generation/evaluation evidence | Contribute browser/UI/failure-state evidence |
+- Final persistence review: 76 focused offline H01/generation/persistence tests passed.
+- Separate canonical checker: 17 synthetic examples and 24 negative cases passed, including evidence membership and schema freshness.
+- Disposable attempt 5: upgrade, repeat upgrade, downgrade, downgraded-state assertions and re-upgrade passed.
+- Six module checks passed: **five PostgreSQL tests plus one offline wrapped-exception regression**. Coverage included tenant references, lifecycle/whitespace, seed behavior, persistence and vector dimensions.
+- The vector test inspected catalog type `vector(384)` and required native asyncpg `DataError` with SQLSTATE `22000` for a 383-dimensional untyped vector insert.
+- Temporary container, network, volume and sanitized copy were cleaned up after each attempt; protected shared resources were preserved.
+- Raw artifacts remain outside Git at `/tmp/knexus-pgverify-review-20261101/`. `run-attempt-5.log` is the corrected successful run; earlier failures are retained.
+- **Provenance limitation:** attempt 5 did not hash the sanitized source snapshot. Its log supports the run but does not independently fingerprint exact committed source.
+- PR #4 had zero GitHub check runs; local success does not establish CI.
+- Live Ollama quality, retrieval permissions, browser integration and production security remain unverified.
 
-These are task gates, not promised dates. Aim to finish the personal setup and first small task in the next work session; agree actual delivery dates after each developer reports availability and the first task's evidence. Do not wait for all backend features before beginning frontend mocks or generator checks. Follow the detailed done criteria in the [Phase 1 playbook](PHASE_1_TEAM_GUIDE.md).
+These are recorded implementation/review results, not tests repeated during documentation cleanup.
 
-## Commands for the next session
+## Four-branch workflow
 
-In each member's own clone, switch to their assigned branch and inspect for local changes. With a clean tree, synchronize:
+The local and GitHub named branches are now exactly:
 
-```bash
-git status --short --branch
-git branch --show-current
-git fetch origin
-git pull --ff-only
-git merge --no-edit origin/main
-git branch -vv
-```
+| Branch | Purpose | Next step |
+|---|---|---|
+| `main` | Accepted shared implementation and reviewed documentation | Start new work from the accepted main revision |
+| `dev-hassan` | Hassan's publication and backend branch | Preserve the original checkout's seven edits; continue using an isolated checkout |
+| `dev-naveed` | Naveed's generation branch | Coordinate old-generator/recovery handoff before synchronization |
+| `dev-zaid` | Zaid's frontend branch | Synchronize the accepted baseline before frontend work |
 
-The upstream must match your own origin/dev-* branch. If local commits cause divergence, inspect and coordinate a normal merge; never reset or force-push to conceal it. A new clone follows [TEAM_START.md](TEAM_START.md).
+The merged temporary work/hassan-phase1-backend and integration/phase1 branches were deleted locally and remotely only after ancestry verification. The obsolete local codex/generation-review ref and its missing-worktree registration were also removed. Their commits remain reachable from main.
 
-Hassan's server terminal (workspace commands run over SSH):
+The backend and former integration worktrees remain clean at their original commits in detached HEAD state. The original dev-hassan checkout and its seven edits are unchanged. Local branch deletion does not update or remove a teammate's laptop worktree or unpublished changes.
 
-```bash
-cd '/home/hassan/Documents/Hassan/coding_projects/Major Project/KNEXUS'
-backend/venv/bin/python contracts/phase1/check.py
-backend/venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8002
-```
+## Next sequence
 
-Keep the API terminal open. Verify in a second server terminal:
+1. Each member inspects their own work and synchronizes from the accepted main baseline without discarding edits or restoring old generator defects.
+2. Hassan continues H03/H04; Naveed finishes generation evaluation and handoff; Zaid starts frontend fixtures/scaffold.
+3. Add filtered retrieval and document/query APIs, then connect UI and live generation.
+4. Close Phase 1 only after real browser upload -> processing -> permitted retrieval -> cited answer/abstention and failure cases have evidence.
 
-```bash
-curl --fail --max-time 10 http://127.0.0.1:8002/api/v1/health
-```
-
-Port 8002 was free during this check; confirm before starting. Do not terminate an unidentified service occupying another port. Health HTTP 200/aggregate healthy is insufficient: inspect database, vector and Ollama fields individually.
-
-For Zaid to reach this server instance, after authorized SSH access is arranged, run on Zaid's computer:
-
-```powershell
-ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8000:127.0.0.1:8002 hassan@192.168.1.92
-```
-
-The frontend client base remains http://127.0.0.1:8000/api/v1 on Zaid's machine. If his local port is occupied, choose another and update the client base. This is independent of the reverse Ollama tunnel on server port 11435. [Phase 0 step 5](PHASE_0_SETUP_GUIDE.md#5-enable-inference---naveed-then-hassan) gives Naveed's exact model/tunnel commands and Hassan's bounded real-generation check.
-
-Use the [agent start prompts](PHASE_1_TEAM_GUIDE.md) for each developer's role. Ask the agent to inspect the current files, complete the first incomplete owned task, run meaningful checks and report the next handoff. Do not mark an implementation task done until its stated criteria pass.
+The [playbook](PHASE_1_TEAM_GUIDE.md) defines tasks; [CONTRIBUTING.md](../CONTRIBUTING.md) owns commands. Historical October runtime/access/port checks do not prove today's service or permission state.

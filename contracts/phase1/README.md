@@ -6,7 +6,7 @@
 - [models.py](models.py): authoritative reference types and cross-field invariants using the project's existing Pydantic dependency.
 - [schema.json](schema.json): generated JSON Schema for frontend tooling and shape inspection. Python cross-field/membership validators are additional requirements not fully expressible in this export.
 - [examples/manifest.json](examples/manifest.json): maps every synthetic fixture to its model.
-- [Team start guide](../../docs/TEAM_START.md): branch, access and Ollama handoff instructions.
+- [Setup and Git workflow](../../CONTRIBUTING.md): environments, branches and inference.
 
 Run from the repository root with the backend environment:
 
@@ -30,4 +30,4 @@ backend/venv/bin/python contracts/phase1/check.py --write-schema
 
 All examples are synthetic; timing values of zero and similarity values are illustrative, not evaluation results. Files ending in `query-*`, `document-*`, `upload-*` and `*-error` are HTTP-boundary mocks. `generation-*` are the internal backend/generator boundary. `actor-context.json` is server-controlled fixture identity, never a client payload.
 
-Backend implementation should adopt these types deliberately when the corresponding feature PR is written. The running scaffold remains unchanged. Update the reference, export, fixtures and callers together when the accepted contract changes.
+Backend code imports canonical classes through app.schemas; do not duplicate them. Generation and persistence are implemented; document/query HTTP routes remain pending. Update the reference, export, fixtures and callers together when the accepted contract changes.

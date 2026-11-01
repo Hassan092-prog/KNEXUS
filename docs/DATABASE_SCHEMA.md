@@ -1,17 +1,17 @@
 # Database Schema Design
 
-> **Implementation status - 19 October 2026:** This document describes the target design and acceptance criteria. Only the backend scaffold, dependency health route, and PostgreSQL/pgvector bootstrap are implemented. See [REPOSITORY_REVIEW.md](REPOSITORY_REVIEW.md) for current behavior and known gaps. Code examples, proposed directories, tests, and migrations below are not evidence of completed work.
+> **Shared-baseline status - 1 November 2026:** The published integration/phase1 baseline contains the backend scaffold and PostgreSQL/pgvector bootstrap, but no application tables. The separate work/hassan-phase1-backend worktree contains draft ORM models and an initial Alembic revision. The corrected harness passed offline checks, the full migration cycle and five persistence integration tests on a fresh disposable PostgreSQL/pgvector database; a separate offline wrapped-exception regression also passed. It verifies the actual vector column type through PostgreSQL catalog data. Two earlier attempts stopped on harness readiness and shell-formatting issues; all disposable resources were removed after each attempt. The work is committed locally and has not been merged into integration/phase1 or main; no shared database was used. The SQL examples below remain broader design proposals; the Alembic revision is the current first-slice implementation.
 
 > **Delivery ownership:** Hassan owns all database models, Alembic migrations, tenant constraints, vector storage and data/runtime integration. Zaid owns frontend data presentation rather than database implementation. Follow [TEAM_RESPONSIBILITIES.md](TEAM_RESPONSIBILITIES.md) for member and file ownership.
 
 ## KNEXUS: Knowledge Network for EXploration and Unified Services
-**Version:** 1.0 | **Engine:** PostgreSQL 16 + pgvector | **Last Updated:** October 2026
+**Version:** 1.0 | **Engine:** PostgreSQL 16 + pgvector | **Last Updated:** November 2026
 
 ---
 
 ## Current database bootstrap
 
-`docker/init.sql` only runs `CREATE EXTENSION IF NOT EXISTS vector;` on first initialization of an empty PostgreSQL volume. No application models/tables, HNSW indexes, Alembic configuration, or revisions are committed. All SQL below is a draft, not an applied migration.
+The database bootstrap file only runs CREATE EXTENSION IF NOT EXISTS vector on first initialization of an empty PostgreSQL volume. The current work branch adds application models, HNSW metadata, Alembic configuration and an initial revision. The revision was exercised against a disposable database that has since been removed; it has not been applied to the shared development database. The SQL below describes the broader target and is not a substitute for the reviewed revision.
 
 Before implementing this schema:
 
@@ -23,7 +23,7 @@ Before implementing this schema:
 
 ## Phase 1 schema follow-up
 
-The [implementation baseline](PHASE_1_CONTRACT.md) requires persisted `ingestion_jobs` records for the upload `task_id`, document/tenant ownership, lifecycle, counters and safe failure metadata. This table and composite tenant constraints are not present in the illustrative DDL below; Hassan must include them in the first reviewed migration. The [reference contract examples](../contracts/phase1/README.md) describe accepted/status payloads. No migration or application table was created by preparing these contracts.
+The implementation baseline requires persisted ingestion_jobs records for the upload task_id, document/tenant ownership, lifecycle, counters and safe failure metadata. The draft revision backend/alembic/versions/0001_phase1_persistence.py includes these records, the initial six tables, 384-dimensional vectors and composite tenant constraints. It passed offline SQL rendering and a live migration round-trip plus persistence checks on a disposable database; no shared database was accessed. The reference contract examples describe accepted/status payloads.
 
 ## 1. Overview (target)
 
@@ -285,29 +285,28 @@ CREATE INDEX idx_proposals_expires_at ON tool_proposals(expires_at);
 
 ## 4. Alembic Migration Strategy
 
-Future schema changes must use **Alembic migrations**. These commands are implementation tasks, not a working setup path: first configure the async migration environment, settings URL, and imported model metadata. Installing Alembic and running `init` alone does not enable autogeneration.
+The repository root `alembic.ini` and `backend/alembic/` define the async migration environment. Do not run `alembic init` or create tables from application startup. The initial revision creates the Phase 1 tables and vector index. Its downgrade drops those tables but deliberately retains the pgvector extension because other database objects may use it. The demo organization/user are created only by the explicit `seed_demo_identity(session)` helper; migrations and application startup do not seed data. Settings load `.env` from the repository root regardless of the command working directory; exported environment variables take precedence.
 
-### Setup (run once):
+From the repository root, render migration SQL without connecting to a database:
+
 ```bash
-# From backend/ directory
-alembic init alembic
+alembic -c alembic.ini upgrade head --sql
 ```
 
-### Creating a new migration:
+To create a later revision, review ORM metadata first, then use:
+
 ```bash
-alembic revision --autogenerate -m "create_initial_schema"
+alembic -c alembic.ini revision --autogenerate -m "describe_schema_change"
 ```
 
-### Applying migrations:
+Applying or downgrading a migration connects to the database selected by `DATABASE_URL`:
+
 ```bash
-alembic upgrade head
+alembic -c alembic.ini upgrade head
+alembic -c alembic.ini downgrade -1
 ```
 
-### Rolling back:
-```bash
-alembic downgrade -1
-```
-
+Run those online commands only against an explicitly approved disposable database for tests. Never use the shared KNEXUS database for migration round trips. Inspect generated revisions and SQL before applying them; autogeneration does not replace review.
 ---
 
 ## 5. Key SQL Queries

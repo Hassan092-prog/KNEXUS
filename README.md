@@ -1,73 +1,41 @@
-# KNEXUS: Knowledge Network for EXploration and Unified Services
+# KNEXUS
 
-KNEXUS is an academic project for a local enterprise knowledge assistant with cited answers, permission-aware retrieval, and human-approved sandbox actions.
+Knowledge Network for EXploration and Unified Services is a three-member academic project for cited answers over permitted organizational documents, followed by one human-approved sandbox action.
 
-## Current implementation
+## Start here
 
-As reviewed on **19 October 2026**, this repository contains a **FastAPI backend scaffold**, an async SQLAlchemy connection/session layer, a dependency health endpoint, and Docker Compose for PostgreSQL 16 with pgvector.
+- [Project status](docs/PROJECT_STATUS.md): delivered work, evidence and next tasks.
+- [Setup and Git workflow](CONTRIBUTING.md): environments, branches and laptop/server connections.
+- [Phase 1 playbook](docs/PHASE_1_TEAM_GUIDE.md): ordered tasks and completion gates.
+- [Documentation index](docs/INDEX.md): requirements, contracts, designs and academic references.
 
-Document ingestion, embeddings, retrieval, LLM answer generation, authentication/RBAC, approvals, audit storage, and the React interface are **planned and not implemented**. Installing their dependencies does not enable these features. There is no feature-level test suite, migration setup, frontend package manifest or CI workflow yet. The shared contract references include a standalone validator and synthetic examples; they do not implement features.
+## What exists
 
-See [current status and next actions](docs/PROJECT_STATUS.md) for the 21 October access/runtime check, the shared-server port workaround and the next task for each developer. See the [repository review](docs/REPOSITORY_REVIEW.md) for file coverage, findings, validation, and remaining work. The design documents describe the target system, not the current API.
+The reviewed generation and persistence baseline is merged into `main` through [PR #5](https://github.com/Hassan092-prog/KNEXUS/pull/5) at `5104a19e61f35d4a10e38000737e68513069f2a5`, preserving the persistence work reviewed in PR #4. See [project status](docs/PROJECT_STATUS.md) for remaining tasks.
 
-Complete the [Phase 0 setup guide](docs/PHASE_0_SETUP_GUIDE.md) before the first implementation tasks; it distinguishes verified server checks from pending personal setup and live inference. The [team start guide](docs/TEAM_START.md) records member access/branches and Naveed's Ollama handoff. The [Phase 1 contract baseline](docs/PHASE_1_CONTRACT.md) and [reference fixtures](contracts/phase1/README.md) define the fields for review before integration.
+Implemented code includes FastAPI root/health routes, canonical contract models, a server-owned synthetic actor, an injectable async generation boundary with explicit fake/Ollama providers, six PostgreSQL/pgvector ORM tables, an initial Alembic migration and offline tests. Persistence was also verified using a separate disposable database. The shared database has not been migrated.
 
-## Quick start
+Upload, parsing, embedding inference, retrieval and query APIs, authentication, approval/audit features and the frontend application remain to be implemented. The generation adapter is not wired into an HTTP query route. Live Ollama quality and an end-to-end browser flow remain unverified.
 
-Use Python 3.12, Git, and Docker with Compose. Run these commands from the repository root in a POSIX shell:
+## Local development
 
-```bash
-if [ ! -f .env ]; then
-    cp .env.example .env
-fi
-python3.12 -m venv backend/venv
-backend/venv/bin/python -m pip install -r backend/requirements.txt
-docker compose up -d postgres
-backend/venv/bin/python -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
-```
+Use Python 3.12 for the backend. Docker is needed for a local PostgreSQL instance; offline generator checks need neither Docker nor Ollama. Follow [CONTRIBUTING.md](CONTRIBUTING.md) for Linux and Windows commands. Existing shared services and databases require explicit approval before changes.
 
-The root working directory matters: settings read `.env` relative to the process working directory. [CONTRIBUTING.md](CONTRIBUTING.md) includes PowerShell commands, verification, configuration details, and troubleshooting. Do not overwrite an existing `.env` when repeating setup.
+Implemented application routes are `GET /` and `GET /api/v1/health`, with Swagger at `/docs`, ReDoc at `/redoc` and OpenAPI at `/api/v1/openapi.json`. Health HTTP 200 is a diagnostic response, not proof of generation, migrations or readiness.
 
-- API landing response: <http://localhost:8000/>
-- Health: <http://localhost:8000/api/v1/health>
-- Swagger: <http://localhost:8000/docs>
-- ReDoc: <http://localhost:8000/redoc>
-- OpenAPI: <http://localhost:8000/api/v1/openapi.json>
+## Source layout
 
-Ollama is optional for the scaffold. To make its health probe report online, run Ollama separately; Compose currently starts only PostgreSQL. No model is used for generation yet.
+| Path | Purpose |
+|---|---|
+| `backend/app/` | API, settings, canonical imports, generation and persistence models |
+| `backend/alembic/`, `alembic.ini` | Explicit schema migrations; no startup table creation |
+| `backend/tests/` | Offline boundary/generation/persistence checks and opt-in live harness |
+| `contracts/phase1/` | Canonical models, generated schema and synthetic wire examples |
+| `frontend/` | Instructions; no application scaffold is committed |
+| `data/` | Corpus policy; no benchmark corpus/importer is committed |
+| `docker/`, `docker-compose.yml` | PostgreSQL development bootstrap |
+| `docs/` | Product/technical documentation and academic references |
 
-The health endpoint returns HTTP 200 even when dependencies fail. Its aggregate `status` becomes `degraded` only on a database exception; inspect the individual fields too. No authentication is enforced. Treat this as a local development scaffold.
-
-## Repository layout
-
-```text
-backend/app/                 FastAPI routes, settings, async database plumbing
-backend/requirements.txt     Dependencies (minimum versions, not a lockfile)
-frontend/README.md           Planned React/TypeScript/Vite interface
-data/README.md               Planned datasets and fixtures
-docker/init.sql              Enables vector on first database initialization
-docker-compose.yml           PostgreSQL service and persistent named volume
-docs/                        Designs, roadmap, academic artifacts, research
-Guidelines and NOtices/      University requirements and scanned notice
-Templates/                   Original abstract and presentation templates
-```
-
-## Planned capabilities
-
-The MVP targets PDF/DOCX ingestion, dense retrieval with pgvector, local Ollama answers, validated citations and abstention, tenant/role filtering, one governed sandbox action, and audit logging. Hybrid BM25/dense retrieval, reranking, streaming, and additional integrations follow the core path.
-
-The [project plan](docs/KNEXUS_Project_Plan.md) defines phases 0-4 and team responsibilities. Start with the [documentation index](docs/INDEX.md) for the full reading order and reference-material status.
-
-## Team ownership
-
-| Member | Branch | Primary ownership |
-| --- | --- | --- |
-| Hassan (1) | `dev-hassan` | Backend/API, database/migrations, ingestion/retrieval, security, data/runtime and integration |
-| Naveed (2) | `dev-naveed` | LLM/prompt/citation, typed tools, answer evaluation and research |
-| Zaid (3) | `dev-zaid` | Entire frontend, UI verification, user manual and presentation visuals |
-
-The [team responsibilities](docs/TEAM_RESPONSIBILITIES.md) define task and path ownership. The [Phase 1 agent playbook](docs/PHASE_1_TEAM_GUIDE.md) gives ordered tasks for all three roles, file boundaries, checks and copyable prompts for their agents.
-
-## Contributors
+The repository has four persistent branches: `main`, `dev-hassan`, `dev-naveed` and `dev-zaid`. Temporary integration/review branches have been retired after preserving their work in main. Member ownership is maintained in [team responsibilities](docs/TEAM_RESPONSIBILITIES.md).
 
 Major Project Team 3, MJCET CSE (AI&ML), academic year 2026-2027.

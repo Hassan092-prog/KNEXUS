@@ -50,6 +50,20 @@ The generator returns GenerationResult with answer, cited_ids, abstained and abs
 
 The context builder must respect the chosen LLM's real token/context budget; the per-field limits in reference types do not replace token counting. Use MiniLM 384-dimensional embeddings, tokenizer-aware chunks starting at 240 tokens / overlap 32, and cosine retrieval. Larger embeddings require a schema/index migration and full re-embedding.
 
+## Runtime imports and accepted generator handoff
+
+The canonical Pydantic definitions remain in `contracts/phase1/models.py`; do not create parallel application model classes. Backend code imports the accepted request/response types through `app.schemas`. That package re-exports the canonical classes and validators.
+
+The team accepted the async call boundary `app.core.generation.GenerationService`:
+
+```python
+async def generate(self, request: GenerationRequest) -> GenerationResult: ...
+```
+
+The backend calls `run_generation(service, request)` to await an injected implementation and validate that cited IDs belong to the already-authorized evidence. A generator must not read the database, choose a tenant, grant permissions or execute tools. The isolated integration baseline includes a provider implementation compatible with this boundary; production integration and live model quality still require verification.
+
+The local synthetic actor helper is `app.core.demo_identity.build_demo_actor()`. It returns the fixed actor in `contracts/phase1/examples/actor-context.json`, using the documented orgadmin-to-manager-to-employee expansion. It is demo identity only and does not authenticate requests. Public query/upload metadata continues to reject identity fields; upload `allowed_roles` remains document metadata.
+
 ## Initial persistence contract
 
 Hassan owns the migration implementation. Use organizations/users for a server-owned demo actor, documents, document_chunks, embeddings, and an ingestion-job record. Align the existing DDL with these invariants before autogeneration:

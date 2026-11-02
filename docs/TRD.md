@@ -2,23 +2,41 @@
 
 Use [project status](PROJECT_STATUS.md) for delivered behavior. This document records implementation decisions and standards; it does not duplicate setup commands, schemas or API payloads.
 
+## Approved hosted-API and reuse decision (2 November 2026)
+
+This decision supersedes laptop Ollama and local MiniLM hosting. Both generation and embedding inference must use hosted APIs. Offline fakes remain explicit test tools, never silent fallbacks.
+
+Selectively adapt relevant code/features from [enterprise-knowledge-bot](https://github.com/Hassan092-prog/enterprise-knowledge-bot/tree/e67771a15f49a79443a365fbce85b8559ef43fb7), pinned to `e67771a15f49a79443a365fbce85b8559ef43fb7`. Inspect that revision before reuse; do not silently substitute newer source. Preserve applicable copyright/licence notices and accurate authorship. Verify actual adaptation through code review; this decision is not proof that migration is complete.
+
+Hassan adapts backend models, parsing/chunking, API and retrieval to KNEXUS's async layout and PostgreSQL/pgvector. Naveed adapts hosted generation/provider code. Zaid adapts and redesigns useful frontend components. Do not import ChromaDB, duplicate database engines, old entry points, CSV agents, Graph RAG, Redis/Celery, unused SDKs, secrets or source data stores by default.
+
+Agree generation and embedding provider/model/endpoint, model revision/dimension, credential setup, privacy/retention, token limits, deadlines, rate limits and spending authorization before live use. No provider/model or new environment-variable contract is selected here. Use mocked HTTP pending reviewed adapters and authorized credentials/billable calls; do not run local inference as a substitute.
+
+Storage currently enforces vector(384). Even a different 384-dimensional model creates a different vector space: re-embed the corpus and use the identical model/revision for queries and documents. A dimension change additionally requires a reviewed schema/index migration. Do not change a model name alone or mix old MiniLM vectors with hosted query vectors.
+
+Preserve original source text and validate chunking against the hosted embedding model's actual token policy. Historical 240-token/32-overlap defaults remain compatibility defaults until validated; MiniLM limits do not establish hosted limits. The generation character ceiling is not token counting or proof of context fit.
+
+Only the backend holds provider credentials and calls hosted APIs. Review third-party retention/data policy before sending synthetic-first document text or authorized evidence. No credentials in browser variables, Git, chat or logs. No silent model switching or local fallback on provider failure.
+
+Preserve canonical GenerationRequest, EvidenceChunk, GenerationResult, H01 run_generation, tenant permissions, cancellation, bounded failures and public API errors. Validate embedding dimensions, finite values and model/revision provenance. Coordinate shared settings/contracts before changing them.
+
 ## Selected foundation
 
 | Area | Baseline |
 |---|---|
 | Backend | Python 3.12, FastAPI, Pydantic v2, async SQLAlchemy 2, asyncpg |
 | Persistence | PostgreSQL 16, pgvector, Alembic; one database engine |
-| Embeddings | all-MiniLM-L6-v2, 384 dimensions; service implementation pending |
-| Chunking | Embedding-tokenizer-aware initial budget 240 tokens / 32 overlap, checked against runtime model/special-token limits |
-| Generation | Explicit fake/Ollama provider, async H01 boundary and canonical structured result |
-| Model host | Naveed's laptop; explicit installed model tag for evaluation, currently llama3.2:3b baseline |
+| Embeddings | Target: hosted API, provider/model pending; historical MiniLM and vector(384) need coordinated migration |
+| Chunking | Preserve source; validate historical 240/32 defaults against the hosted model's actual token limits |
+| Generation | Target: hosted API through H01; existing fake/Ollama adapters are historical implementation |
+| Model host | Hosted APIs; no laptop/server inference or model tunnel |
 | Frontend | React + TypeScript; Zaid must confirm Vite/Next.js before scaffolding |
 | Ingestion | Persisted jobs with explicit interruption/retry behavior; no durable worker implemented |
 | CI | No committed workflow or attached PR checks; do not claim automation |
 
 [backend/requirements.txt](../backend/requirements.txt) is the dependency source of truth. Its minimum bounds are not a lockfile. Installed auth/parsing/ML packages do not implement features. Do not add unused provider SDKs, ChromaDB, Redis/Celery or a second storage engine by default.
 
-Alternate embedding dimensions require a schema/index migration and full re-embedding. Switching model_name alone cannot make vectors compatible. A hosted generation adapter is not selected or implemented.
+Alternate embedding dimensions require a schema/index migration and full re-embedding. Switching model_name alone cannot make vectors compatible. Hosted adapters are required by the revised plan; selection and implementation remain pending.
 
 ## Configuration boundaries
 
@@ -28,7 +46,7 @@ Alternate embedding dimensions require a schema/index migration and full re-embe
 
 `API_V1_PREFIX` defaults to `/api/v1`. `BACKEND_CORS_ORIGINS` supports a JSON array. `DEBUG` enables SQL echo. `SECRET_KEY`/token settings are development placeholders, not authentication.
 
-Generation has its own explicit constructor/process-environment controls. Pydantic loading does not export root `.env`; the [generation README](../backend/app/services/generation/README.md) owns exact names, precedence and examples. The current general model default differs from the explicit 3B evaluation tag, so pass a tag deliberately.
+Generation has its own explicit constructor/process-environment controls. Pydantic loading does not export root `.env`; the [generation README](../backend/app/services/generation/README.md) owns exact names, precedence and examples. Existing OLLAMA_* and MiniLM defaults are historical code paths, not hosted configuration. Implement and review hosted settings before documenting runnable commands.
 
 ## Engineering standards
 

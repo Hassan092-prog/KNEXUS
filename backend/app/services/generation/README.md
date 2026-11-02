@@ -2,30 +2,19 @@
 
 This package accepts canonical GenerationRequest evidence already authorized by the backend and returns GenerationResult. It selects no tenant/actor, reads no DB and executes no actions. The adapter is published in main; the non-streaming query route (`POST /api/v1/query`) calls it through the canonical `run_generation` boundary. The API owns all HTTP mapping (below); generation raises typed Python errors only.
 
-## Construction and H01 injection
+## Approved target: hosted generation
 
-~~~python
-from app.core.generation import run_generation
-from app.services.generation.generator import GenerationService
+The revised plan uses hosted APIs for generation and embeddings, not local models or model tunnels. Naveed selectively adapts relevant provider code from [enterprise-knowledge-bot at the pinned revision](https://github.com/Hassan092-prog/enterprise-knowledge-bot/tree/e67771a15f49a79443a365fbce85b8559ef43fb7), preserving licences, accurate authorship and KNEXUS's boundary. [TRD](../../../../docs/TRD.md) owns shared choices.
 
-service = GenerationService(
-    provider="ollama",
-    url="http://127.0.0.1:11434",
-    model="llama3.2:3b",
-    timeout=30,
-    num_ctx=8192,
-    num_predict=512,
-    max_prompt_chars=12000,
-)
-# Inside an async caller with a canonical request:
-# result = await run_generation(service, request)
-~~~
+The hosted adapter, provider/model/endpoint and credential settings are pending. Do not assume an OpenAI-compatible protocol, invent environment names or present existing OLLAMA_* settings as hosted configuration. Use mocked HTTP until reviewed adapters and live-call authorization exist. No new SDK, billable call or model substitution is authorized by these instructions.
 
-Offline checks explicitly select `provider="fake"`. It proves shape/boundary behavior only. Missing or unknown providers fail configuration.
+Preserve async generate(GenerationRequest) -> GenerationResult and app.core.generation.run_generation(service, request). Backend-authorized evidence only; no DB access, identity selection or tool execution. Keep explicit provider selection, finite positive network/overall deadlines, external cancellation, strict parsing and typed failures. Frontend clients call KNEXUS, never providers directly.
 
-Constructor arguments override process environment: `OLLAMA_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT`, `OLLAMA_NUM_CTX`, `OLLAMA_NUM_PREDICT`, `GENERATION_MAX_PROMPT_CHARS`; the optional sampling `seed` and the httpx `transport` are constructor-only (no env names, no hidden defaults).
+## Existing implementation (historical)
 
-The generator reads `os.environ`, not root `.env` directly. Application Settings loads root `.env` but does not export it to the process or declare all generation controls. Pass explicit constructor values or export variables in the invoking shell; changing `.env` alone does not configure the standalone harness.
+PR #12 merged prompt v4, constructor-only seed propagation and evaluation attribution. Current concrete providers remain fake and Ollama; hosted support is not implemented by this documentation change. OLLAMA_PROVIDER, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT, OLLAMA_NUM_CTX, OLLAMA_NUM_PREDICT and GENERATION_MAX_PROMPT_CHARS describe that existing code, not the hosted target. seed and httpx transport are constructor-only.
+
+The generator reads process environment, not root .env directly. Pydantic Settings does not export loaded values. Preserve this distinction when implementing explicit hosted configuration. Offline tests select fake deliberately; no silent fallback.
 
 ## Prompts and context budget
 
@@ -55,7 +44,7 @@ Typed failures stay exceptions: `GenerationConfigurationError`, `ProviderTimeout
 
 Offline commands are in [CONTRIBUTING](../../../../CONTRIBUTING.md); recorded evidence is in [status](../../../../docs/PROJECT_STATUS.md). Use mocked HTTP for regressions. Regression-focused subsets: `backend/tests/test_h01_boundaries.py` and `backend/tests/phase1/generation/`.
 
-## Recorded live evaluation (llama3.2:3b, Naveed's machine, 2026-11-01)
+## Historical local evaluation (llama3.2:3b, 2026-11-01; superseded deployment)
 
 Bounded seeded runs (seed 42, 3 repeats each) are preserved outside the repository; raw artifacts and hashes are with the branch review. Headline outcomes, split by the layers above:
 
@@ -64,20 +53,14 @@ Bounded seeded runs (seed 42, 3 repeats each) are preserved outside the reposito
 - Injection case: layer 1–3 outcomes varied by prompt version; one stable mode produces an authorized-ID answer with renumbered inline markers, which layer 3 fail-closes as `MalformedOutputError`.
 - Prompt-iteration record and dead ends are documented in the branch's PR description; only a small number of hypothesis-driven iterations were tried and the best-verified version (`v4`) kept.
 
-Known limits remain open items; larger-model substitution is a separate decision for Hassan.
+These remain historical failures, not hosted acceptance results. The next decision is hosted provider/model selection; do not resume laptop-model tuning.
 
-## Live harness
+## Harness transition
 
-Live inference is opt-in and needs an approved running local Ollama/model. From the root, POSIX example:
+The existing live_harness.py explicitly targets Ollama. Its --run-live flag is not a hosted API switch; do not execute it as hosted acceptance or start local inference to satisfy the revised plan.
 
-~~~bash
-OLLAMA_BASE_URL=http://127.0.0.1:11434 OLLAMA_TIMEOUT=30 backend/venv/bin/python backend/tests/phase1/generation/live_harness.py --run-live --model llama3.2:3b --timeout 40 --output /tmp/knexus-generation-run/results.jsonl
-~~~
+Naveed must adapt reusable harness logic to an explicitly selected hosted adapter, with approved endpoint/model, secure credentials and bounded live-call/cost authorization. Preserve incremental JSONL, fresh output paths (the historical runner overwrites its target), exact citation-set expectations, prompt/configuration attribution, repeats, separate error/semantic outcomes, failing exit status, monotonic attempted-case timing and null latency for skipped inference.
 
-Choose a fresh output path: the harness opens its target in write mode. On Windows, export variables with PowerShell and use the existing Windows interpreter and a unique directory outside the repo.
+Do not silently translate Ollama num_ctx/num_predict/seed semantics into another API or assume deterministic hosted output. Validate provider-specific token limits and structured-output capabilities. Mock rate limits, authentication, unavailable, timeout and invalid responses before approved live calls.
 
-Optional flags for reproducibility: `--repeat N` (complete bounded passes; each record carries `run_id`/`run_index`/`repeat_count`) and `--seed` (constructor-only sampling seed that reaches the Ollama `options`). Every record also carries `prompt_version`, `system_prompt_sha256`, `provider_url` and the effective Ollama options.
-
-The live flag selects Ollama explicitly. The harness incrementally writes supported/unsupported/conflict/injection outcomes, requires exact expected citation sets, reports provider/harness deadlines as timeout and fails its exit status on failure/skip. Attempted cases use monotonic elapsed time; skipped cases have no measured inference. External cancellation propagates.
-
-The harness does not judge all claims; factual support is reviewed separately from raw results. Baseline live quality limits above are known and preserved. See [evaluation](../../../../docs/EVALUATION_STRATEGY.md) and [tunnel setup](../../../../CONTRIBUTING.md).
+Historical local runs above remain evidence about their own configuration only; they do not establish hosted quality. See [evaluation](../../../../docs/EVALUATION_STRATEGY.md).

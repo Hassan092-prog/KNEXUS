@@ -30,4 +30,4 @@ backend/venv/bin/python contracts/phase1/check.py --write-schema
 
 All examples are synthetic; timing values of zero and similarity values are illustrative, not evaluation results. Files ending in `query-*`, `document-*`, `upload-*` and `*-error` are HTTP-boundary mocks. `generation-*` are the internal backend/generator boundary. `actor-context.json` is server-controlled fixture identity, never a client payload.
 
-Backend code imports canonical classes through app.schemas; do not duplicate them. Generation and persistence are implemented; document/query HTTP routes remain pending. Update the reference, export, fixtures and callers together when the accepted contract changes.
+Backend code imports canonical classes through app.schemas; do not duplicate them. Generation boundaries, persistence and document/query HTTP routes are implemented; hosted generation/embedding adapters remain pending under [TRD](../../docs/TRD.md). Provider migration preserves canonical fields. Update the reference, export, fixtures and callers together when the accepted contract changes.

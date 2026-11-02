@@ -4,6 +4,14 @@
 
 Offline boundary/generation/persistence coverage and a disposable database run exist. A full retrieval benchmark, frontend suite, load harness and CI workflow do not. Do not copy illustrative metrics or test pseudocode into a results report.
 
+## Hosted acceptance target
+
+Evaluate the agreed hosted generation and embedding models after implementation. Historical MiniLM/Ollama results cannot satisfy this gate. Ordinary tests use mocked HTTP; live synthetic calls need explicit access and bounded call/cost approval.
+
+Record provider/model/version, endpoint identity without secrets, embedding dimension/token policy, usage/cost where exposed, deadlines and rate limits. Hosted weight digests/hardware may be unavailable: mark unavailable rather than inventing them. Re-evaluate retrieval thresholds after changing embeddings.
+
+Test supported answers, unsupported/conflicting evidence, injected source instructions and citation preservation through the actual API. A safe error passes only an intentional failure case, never a supported-answer case. Preserve failed attempts and raw evidence; hashes alone cannot establish unseen file contents.
+
 ## Data selection
 
 Begin with a small labeled synthetic PDF/DOCX corpus for the complete pipeline. EnterpriseRAG-Bench remains the proposed broader corpus: [upstream repository](https://github.com/onyx-dot-app/EnterpriseRAG-Bench) and [dataset card](https://huggingface.co/datasets/onyx-dot-app/EnterpriseRAG-Bench).
@@ -63,9 +71,9 @@ Record all attempts, repetitions and failures under fixed parameters. Do not ret
 For every run retain:
 - Source commit plus dirty-file/sanitized-snapshot fingerprints when applicable.
 - Dataset/question/source IDs, label revision and development/held-out assignment.
-- Model tag/digest, prompt version/hash, embedding/chunker/tokenizer revision, vector dimension and retrieval settings.
+- Provider/model/version and digest only if exposed, prompt version/hash, embedding/chunker/tokenizer revision, vector dimension and retrieval settings.
 - Actual provider parameters, deadlines and context policy/limitations.
-- Hardware, available RAM, runtime versions and concurrency.
+- Client runtime/concurrency and hosted service metadata actually exposed; historical local runs also record hardware and RAM.
 - Raw input/output where safe, expected/actual outcomes and validation failures.
 - Monotonic elapsed time for attempted cases; skipped cases have null latency and no measured inference.
 - Cold/warm labels only when controlled and measured, not inferred from case order.

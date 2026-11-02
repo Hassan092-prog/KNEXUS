@@ -7,7 +7,7 @@ KNEXUS is an academic knowledge assistant with evidence-grounded answers and lat
 | Phase | Exit evidence |
 |---|---|
 | 0 - Foundation | Agreed schemas, environments, role boundaries and academic problem statement; setup is maintained in CONTRIBUTING |
-| 1 - Core RAG and frontend | Synthetic PDF/DOCX -> persisted status -> chunks/384-dimensional vectors -> permitted retrieval -> cited answer or abstention -> browser, with failure evidence |
+| 1 - Core RAG and frontend | Synthetic PDF/DOCX -> persisted status -> chunks/hosted embeddings compatible with the reviewed schema -> permitted retrieval -> cited answer or abstention -> browser, with failure evidence |
 | 2 - Identity and governed actions | Reviewed authentication/session behavior, tenant/role isolation, one allow-listed typed sandbox action, exact-payload approval, expiry/idempotency/concurrency controls and append-only audit |
 | 3 - Evaluation and integration | Reproducible held-out retrieval/answer/security/UI results, measured runtime/load, dependency/CI decisions and integrated report |
 | 4 - Submission | Rehearsed reproducible demo, verified results/limitations, completed report/abstract/slides and required hardcopies |
@@ -18,7 +18,7 @@ Hassan coordinates backend/data/runtime/integration; Naveed generation/tools/res
 
 ## Scope after the core path
 
-Provider hosting, connectors and broader business modules are later reviewed decisions. Preserve adapter boundaries and a single PostgreSQL store, but do not add platform breadth, queues or agents simply to match a future blueprint. No commercial readiness is claimed by the academic prototype.
+Hosted generation and embeddings, with selective reuse from the pinned personal project in [TRD](TRD.md), are now the Phase 1 target. Provider/model selection and implementation remain pending. Connectors and broader business modules remain later reviewed decisions. Preserve adapter boundaries and a single PostgreSQL store, but do not add platform breadth, queues or agents simply to match a future blueprint. No commercial readiness is claimed by the academic prototype.
 
 ## Academic prerequisites
 

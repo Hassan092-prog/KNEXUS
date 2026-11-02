@@ -8,7 +8,7 @@ Read [project status](PROJECT_STATUS.md), [setup/workflow](../CONTRIBUTING.md), 
 |---|---|
 | [README](../README.md) | Introduction and source layout |
 | [PROJECT_STATUS](PROJECT_STATUS.md) | Published checkpoint, evidence, next tasks and branch transition |
-| [CONTRIBUTING](../CONTRIBUTING.md) | Setup, configuration, Git/PR workflow and tunnels |
+| [CONTRIBUTING](../CONTRIBUTING.md) | Setup, hosted transition, configuration and Git/PR workflow |
 | [TEAM_RESPONSIBILITIES](TEAM_RESPONSIBILITIES.md) | Identity and ownership |
 | [PHASE_1_TEAM_GUIDE](PHASE_1_TEAM_GUIDE.md) | H01-H07, N01-N06, Z01-Z06 and completion gates |
 | [PHASE_1_CONTRACT](PHASE_1_CONTRACT.md) | Accepted Phase 1 semantics, limits and boundaries |
@@ -16,7 +16,7 @@ Read [project status](PROJECT_STATUS.md), [setup/workflow](../CONTRIBUTING.md), 
 | [API_SPEC](API_SPEC.md) | Implemented routes and future API scope |
 | [DATABASE_SCHEMA](DATABASE_SCHEMA.md) | Tables, constraints, migration and seeding |
 | [ARCHITECTURE](ARCHITECTURE.md) | Components and data flow |
-| [TRD](TRD.md) | Technical decisions and engineering standards |
+| [TRD](TRD.md) | Approved hosted plan, pinned source-reuse policy and engineering standards |
 | [PRD](PRD.md) | Product requirements |
 | [SECURITY_MODEL](SECURITY_MODEL.md) | Current boundary, risks and later controls |
 | [EVALUATION_STRATEGY](EVALUATION_STRATEGY.md) | Corpus, metrics and reproducibility |

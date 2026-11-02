@@ -4,6 +4,16 @@
 
 Read [status](PROJECT_STATUS.md) for completion, [CONTRIBUTING](../CONTRIBUTING.md) for setup/branches and [ownership](TEAM_RESPONSIBILITIES.md) before selecting work. [Canonical contracts](PHASE_1_CONTRACT.md) and [models](../contracts/phase1/models.py) define interfaces.
 
+## Revised execution order
+
+1. Inspect the exact personal-project revision in [TRD](TRD.md) and selectively adapt useful features; preserve licences, authorship and existing work.
+2. Agree hosted generation/embedding providers, models, privacy/cost controls, embedding dimension and token policy. Do not independently switch schema or model names.
+3. Hassan implements hosted embedding integration; Naveed hosted generation; Zaid adapts/redesigns frontend against canonical examples in parallel. Use mocked HTTP until live access is approved.
+4. Review adapters, vector provenance, context limits, errors and database compatibility; authorize bounded live synthetic calls.
+5. Verify hosted upload-to-answer/abstention and browser flow. Historical local-model results do not close hosted acceptance gates.
+
+No local model hosting, downloads or reverse model tunnels belong to this revised plan.
+
 ## Common rules
 
 - Follow current user instructions and AGENTS.md. Hassan's server workspace uses SSH.
@@ -23,25 +33,25 @@ Do not restart implemented H01/H02 or N01 because an old member branch lacks the
 | H01 - Boundary | Implemented: `app.schemas` re-exports canonical types, `build_demo_actor()` is synthetic and `run_generation` validates an injected async result. Preserve these interfaces. |
 | H02 - Persistence | Implemented and merged in PR #4: six tables, tenant ownership, lifecycle constraints, UUIDs, 384-dimensional vectors, Alembic and explicit seed helper. Offline/disposable checks passed; shared DB is unmigrated. |
 | H03 - Upload/parse/chunk | Validate one PDF/DOCX up to 10 MiB and repeated multipart roles. Commit document/job before 202. Use private ignored storage and safe keys. Preserve page/source metadata. Count embedding-tokenizer tokens with the initial 240/32-overlap policy and actual special-token limits. Move blocking work off the event loop; persist safe failures/interruptions. Background tasks are not a durable queue. |
-| H04 - Embed/index | Reuse all-MiniLM-L6-v2 at 384 dimensions, deterministic fake embeddings offline, explicit model/revision and duplicate/retry policy. Mark complete only after indexing succeeds; exclude partial failures. |
+| H04 - Embed/index | Adapt reusable embedding code to an agreed hosted API; coordinate vector(384) compatibility, re-embedding/migrations and hosted token limits. Preserve deterministic fakes offline, model/revision and duplicate/retry policy. Mark complete only after indexing succeeds; exclude partial failures. |
 | H05 - Authorized retrieval | Apply organization, effective roles, current parent permissions, active embedding model, completion and deletion filters before generation. Use stable source UUIDs and query-scoped citation IDs. Empty/weak evidence abstains before inference. Prove restricted nearest neighbors and other tenants do not leak. |
 | H06 - API | Implement canonical document/query routes and safe errors. Build public citations from backend metadata; keep provider failure distinct from abstention. Verify CORS, polling and OpenAPI using fakes. Correlation IDs do not imply chat history. |
 | H07 - Integration | Tiny corpus/labels, Naveed's live adapter and Zaid's UI. Verify real browser upload -> status -> retrieval -> citations/abstention, permissions/failures and fresh-setup procedure. Record versions and gaps. |
 
-H03-H06 backend implementation is merged into main via PR #7. Covered database checks passed against disposable PostgreSQL/pgvector. Real embedding inference on weights, live Ollama generation service evaluation (Naveed), and browser verification (Zaid) remain pending. H07 remains open until the team completes the browser-to-answer flow.
+H03-H06 backend implementation is merged into main via PR #7. Covered database checks passed against disposable PostgreSQL/pgvector. Historical cached MiniLM inference passed, but hosted adapters, live hosted embedding/generation evaluation and browser verification remain pending. H07 remains open until the team completes the browser-to-answer flow.
 
 ## Naveed: N01-N06
 
 | Task | Behavior and completion gate |
 |---|---|
-| N01 - Service | Baseline async fake/Ollama service is implemented and H01-compatible. Verify concrete injection and canonical types; never restore old heuristics. No DB reads, identity selection, routes or tools in generation. |
+| N01 - Service | Historical fake/Ollama service is H01-compatible; adapt hosted-provider code around the same boundary. Verify concrete injection and canonical types; never restore old heuristics. No DB reads, identity selection, routes or tools in generation. |
 | N02 - Prompt/context | Preserve all authorized evidence and source IDs. Treat document instructions as untrusted. Version prompt/settings; test relevant conflict, irrelevant/adversarial content and oversized input without fixture-specific rules or request mutation. The character ceiling is not token counting; real context fit remains unresolved. |
-| N03 - Adapter | Preserve explicit selection, propagated URL/model/limits, strict parsing, network/overall deadlines and cancellation. Offline HTTP coverage exists; record a bounded live laptop run separately. |
+| N03 - Adapter | Preserve explicit selection, propagated URL/model/limits, strict parsing, network/overall deadlines and cancellation. Offline HTTP coverage exists; add mocked hosted-HTTP coverage, then record an authorized bounded hosted run. |
 | N04 - Result | Preserve answer/abstention, inline-marker and evidence-membership validation. Keep malformed output as typed failure. Evaluate factual support separately; never drop invalid citations or disguise errors as abstention. |
-| N05 - Evaluation | Labeled development/held-out cases. Record tag/digest, prompt hash/version, parameters, evidence, raw output and measured latency. Report failures, unsupported claims and false abstentions; no tuning against held-out cases. |
-| N06 - Handoff | Give Hassan exact imports, construction/configuration, typed errors and H01 injection. Verify live answer/abstention through the integrated API after it exists and explicit unavailable state after approved disconnection. Document actual service/tunnel procedure. |
+| N05 - Evaluation | Labeled development/held-out cases. Record provider/model/version (digest only if exposed), prompt hash/version, parameters, evidence, raw output and measured latency. Report failures, unsupported claims and false abstentions; no tuning against held-out cases. |
+| N06 - Handoff | Give Hassan exact imports, construction/configuration, typed errors and H01 injection. Verify hosted live answer/abstention through the existing query API after the hosted adapter is wired and explicit unavailable state after approved disconnection. Document secure backend hosted configuration; no model tunnel or laptop inference. |
 
-See [generation](../backend/app/services/generation/README.md) and [evaluation](EVALUATION_STRATEGY.md). Local evaluation can proceed now; endpoint/browser evidence depends on Hassan/Zaid. Do not create another query route.
+See [generation](../backend/app/services/generation/README.md) and [evaluation](EVALUATION_STRATEGY.md). Offline mocked evaluation can proceed now; hosted calls require approved configuration/access, and browser evidence depends on Hassan/Zaid. Do not create another query route.
 
 ## Zaid: Z01-Z06
 
@@ -51,7 +61,7 @@ See [generation](../backend/app/services/generation/README.md) and [evaluation](
 | Z02 - Client/mocks | Canonical examples/schema including nullable fields and all states. One configurable API boundary; visible mock/live mode. No authoritative caller identity, silent renaming or fixture fallback after a live error. |
 | Z03 - Upload/status | One file and repeated roles, document/status views, safe failure messages and bounded polling stopped on terminal state/unmount. Avoid duplicate uploads on retry; backend validation is authoritative. |
 | Z04 - Chat | Send `stream=false`. Safely render answer/citations with real IDs/metadata, separate abstention/errors, keyboard/focus/responsive states and readable announcements. |
-| Z05 - Live API | Agree URL with Hassan; authorized tunnel if needed. Real browser flow without mock fallback. Report mismatches rather than editing backend contracts independently. |
+| Z05 - Live API | Agree backend URL with Hassan; an approved browser-to-backend forward if needed, never a model tunnel. Real browser flow without mock fallback. Report mismatches rather than editing backend contracts independently. |
 | Z06 - Handoff | Run actual typecheck/test/build scripts and meaningful UI checks. Review keyboard/mobile/desktop behavior; document real setup and gaps. |
 
 Login/admin/approval UI and streaming are later-phase work. See [frontend](../frontend/README.md).

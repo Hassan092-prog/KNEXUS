@@ -2,6 +2,10 @@
 
 KNEXUS is a modular FastAPI application with PostgreSQL/pgvector persistence and an injected generation adapter. [Project status](PROJECT_STATUS.md) records what is published; [ownership](TEAM_RESPONSIBILITIES.md) assigns modules.
 
+## Target versus implemented architecture
+
+The approved target uses hosted APIs for generation and embeddings. Existing local MiniLM and fake/Ollama code remains historical implementation; hosted provider/model choices and adapters are pending. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior. The diagram is the hosted target; the local adapters described below still need migration.
+
 ## Implemented components
 
 - `main.py` registers root, health, CORS and generated API docs. Startup logs initialization; shutdown disposes the engine. It does not create tables, seed data or load models.
@@ -15,19 +19,21 @@ KNEXUS is a modular FastAPI application with PostgreSQL/pgvector persistence and
 
 ## Phase 1 flow
 
-The document/query API and ingestion/retrieval services below are implemented as modular FastAPI services.
+The document/query API and ingestion/retrieval services exist as modular FastAPI services. This flow shows the revised hosted target; the embedding and generation adapters labeled pending are not implemented.
 
 ~~~mermaid
 flowchart LR
     UI["Zaid: upload/chat/status UI"] --> API["Hassan: document/query API"]
     API --> JOB["Persist document + ingestion job"]
-    JOB --> ING["Parse, tokenize, embed"]
-    ING --> DB["PostgreSQL + pgvector"]
+    JOB --> ING["Parse, preserve source, chunk"]
+    ING --> EMB["Hosted embedding API (target; adapter pending)"]
+    EMB --> DB["PostgreSQL + pgvector"]
     API --> RET["Authorize and retrieve"]
+    RET --> QEMB["Hosted query embedding (same model/revision)"]
     RET --> DB
     RET --> BOUNDARY["H01 run_generation"]
     BOUNDARY --> GEN["Naveed: structured generator"]
-    GEN --> OLL["Ollama on laptop"]
+    GEN --> HOSTED["Hosted generation API (target; adapter pending)"]
     GEN --> API
     API --> UI
 ~~~
@@ -42,7 +48,7 @@ The [database document](DATABASE_SCHEMA.md) maps actual tables/constraints. Comp
 
 ## Deployment boundary
 
-Compose currently starts PostgreSQL only. The API runs as an explicitly started local process. Naveed's laptop serves Ollama over loopback, optionally forwarded to the server through the authorized reverse tunnel in [CONTRIBUTING](../CONTRIBUTING.md). The browser talks only to the backend.
+Compose currently starts PostgreSQL only. The API runs as an explicitly started local process. The target makes outbound backend calls to hosted embedding/generation APIs, without local inference or model tunnels. Existing adapters require migration. The browser talks only to the backend and never holds provider keys.
 
 No live server/tunnel is assumed from a historical check. Keep synthetic local data until authentication and authorization are verified. Compose's current DB port publication and health diagnostics need hardening before external exposure.
 
@@ -50,4 +56,4 @@ No live server/tunnel is assumed from a historical check. Keep synthetic local d
 
 Authentication/session management, append-only audit and one typed sandbox action form Phase 2. An action requires server policy, immutable reviewed envelope, authorized approval, expiry/replay/concurrency protection, execution-time recheck, idempotency and outcome verification. The LLM only proposes.
 
-Broader platform modules, hosted providers, streaming, queues and connectors are separate reviewed decisions after the core path is complete. No Redis/Celery, ChromaDB or speculative duplicate application tree is part of the current baseline.
+Hosted providers are now the Phase 1 target, pending selection and implementation. Broader platform modules, streaming, queues and connectors remain separate reviewed decisions. No Redis/Celery, ChromaDB or speculative duplicate application tree is part of the current baseline.

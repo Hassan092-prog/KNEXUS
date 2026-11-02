@@ -46,23 +46,11 @@ def test_asyncpg_wrapped_error_offline():
         _assert_pg_constraint(error, "23514", "wrong_constraint")
 
 
+from tests.postgres_guard import DatabaseGuardError, guard_disposable_database_url
+
+
 def _guard_database_url():
-    url = os.environ.get("DATABASE_URL")
-    expected = os.environ.get("KNEXUS_VERIFY_EXPECTED_DATABASE_URL")
-    if not url or url != expected:
-        raise AssertionError("DATABASE_URL does not match KNEXUS_VERIFY_EXPECTED_DATABASE_URL")
-    parsed = urlsplit(url)
-    if parsed.scheme != "postgresql+asyncpg":
-        raise AssertionError(f"Expected postgresql+asyncpg, got {parsed.scheme}")
-    if parsed.hostname != "127.0.0.1":
-        raise AssertionError(f"Loopback target required (127.0.0.1), got {parsed.hostname}")
-    if parsed.path == "/knexus" and parsed.port == 5435 and parsed.username == "knexus_admin":
-        raise AssertionError("Guarded check rejected target: points to shared development database!")
-    assert parsed.username == os.environ.get("POSTGRES_USER")
-    assert parsed.password == os.environ.get("POSTGRES_PASSWORD")
-    assert parsed.path == "/" + os.environ.get("POSTGRES_DB")
-    assert parsed.port == int(os.environ.get("POSTGRES_PORT"))
-    return url
+    return guard_disposable_database_url()
 
 
 @pytest_asyncio.fixture

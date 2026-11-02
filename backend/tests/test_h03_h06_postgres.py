@@ -30,41 +30,76 @@ from app.services.retrieval.service import RetrievalService
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
+from tests.postgres_guard import DatabaseGuardError, guard_disposable_database_url
+
+
 def _guard_database_url():
-    url = os.environ.get("DATABASE_URL")
-    expected = os.environ.get("KNEXUS_VERIFY_EXPECTED_DATABASE_URL")
-    if not url or url != expected:
-        raise AssertionError("DATABASE_URL does not match KNEXUS_VERIFY_EXPECTED_DATABASE_URL")
-    parsed = urlsplit(url)
-    if parsed.scheme != "postgresql+asyncpg":
-        raise AssertionError(f"Expected postgresql+asyncpg, got {parsed.scheme}")
-    if parsed.hostname != "127.0.0.1":
-        raise AssertionError(f"Loopback target required (127.0.0.1), got {parsed.hostname}")
-    if parsed.path == "/knexus" and parsed.port == 5435 and parsed.username == "knexus_admin":
-        raise AssertionError("Guarded check rejected target: points to shared development database!")
-    assert parsed.username == os.environ.get("POSTGRES_USER")
-    assert parsed.password == os.environ.get("POSTGRES_PASSWORD")
-    assert parsed.path == "/" + os.environ.get("POSTGRES_DB")
-    assert parsed.port == int(os.environ.get("POSTGRES_PORT"))
-    return url
+    return guard_disposable_database_url()
 
 
 def test_offline_harness_synthetic_identity_guard():
     """Exercise the harness target guard without creating an engine or connecting."""
-    keys = ("DATABASE_URL", "KNEXUS_VERIFY_EXPECTED_DATABASE_URL", "POSTGRES_DB",
-            "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT")
+    run_id = "guardtest123"
+    port = 35678
+    db_user = f"knx_user_{run_id}"
+    db_name = f"knx_test_{run_id}"
+    target = f"postgresql+asyncpg://{db_user}:synthetic@127.0.0.1:{port}/{db_name}"
+
+    inspect_mock = {
+        "State": {"Running": True},
+        "Config": {
+            "Image": "pgvector/pgvector:pg16",
+            "Labels": {
+                "com.knexus.pgverify.owner": "hassan-phase1-verification",
+                "com.knexus.pgverify.run": run_id,
+            },
+        },
+        "HostConfig": {"Binds": []},
+        "Mounts": [
+            {
+                "Type": "volume",
+                "Name": f"knx-vol-{run_id}",
+                "Destination": "/var/lib/postgresql/data",
+                "RW": True,
+            }
+        ],
+        "NetworkSettings": {
+            "Networks": {f"knx-net-{run_id}": {}},
+            "Ports": {"5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": str(port)}]},
+        },
+    }
+
+    keys = (
+        "DATABASE_URL", "KNEXUS_VERIFY_EXPECTED_DATABASE_URL", "POSTGRES_DB",
+        "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT",
+        "KNEXUS_DISPOSABLE_RUN_ID", "KNEXUS_DISPOSABLE_CONTAINER",
+        "KNEXUS_DISPOSABLE_VOLUME", "KNEXUS_DISPOSABLE_NETWORK",
+    )
     old = {key: os.environ.get(key) for key in keys}
     try:
-        target = "postgresql+asyncpg://synthetic:synthetic@127.0.0.1:1/knx_offline"
         os.environ.update({
-            "DATABASE_URL": target, "KNEXUS_VERIFY_EXPECTED_DATABASE_URL": target,
-            "POSTGRES_DB": "knx_offline", "POSTGRES_USER": "synthetic",
-            "POSTGRES_PASSWORD": "synthetic", "POSTGRES_PORT": "1",
+            "DATABASE_URL": target,
+            "KNEXUS_VERIFY_EXPECTED_DATABASE_URL": target,
+            "POSTGRES_DB": db_name,
+            "POSTGRES_USER": db_user,
+            "POSTGRES_PASSWORD": "synthetic",
+            "POSTGRES_PORT": str(port),
+            "KNEXUS_DISPOSABLE_RUN_ID": run_id,
+            "KNEXUS_DISPOSABLE_CONTAINER": f"knx-db-{run_id}",
+            "KNEXUS_DISPOSABLE_VOLUME": f"knx-vol-{run_id}",
+            "KNEXUS_DISPOSABLE_NETWORK": f"knx-net-{run_id}",
         })
-        assert _guard_database_url().endswith("/knx_offline")
+        assert guard_disposable_database_url(inspect_fn=lambda n: inspect_mock) == target
         os.environ["DATABASE_URL"] = target.rsplit("/", 1)[0] + "/wrong"
-        with pytest.raises(AssertionError):
-            _guard_database_url()
+        with pytest.raises(DatabaseGuardError, match="DATABASE_URL does not match"):
+            guard_disposable_database_url(inspect_fn=lambda n: inspect_mock)
+        protected = f"postgresql+asyncpg://{db_user}:synthetic@127.0.0.1:5435/{db_name}"
+        os.environ.update({
+            "DATABASE_URL": protected,
+            "KNEXUS_VERIFY_EXPECTED_DATABASE_URL": protected,
+        })
+        with pytest.raises(DatabaseGuardError, match="protected port 5435"):
+            guard_disposable_database_url(inspect_fn=lambda n: inspect_mock)
     finally:
         for key, value in old.items():
             if value is None:
@@ -760,7 +795,7 @@ async def test_confirmed_restart_recovers_abandoned_jobs_and_explicit_retry(pg_s
 
 @pytest.mark.integration
 async def test_real_minilm_synthetic_corpus_e2e_flow(api, pg_sessions):
-    """Sprint 3: End-to-end verification with cached real MiniLM model weights over synthetic corpus."""
+    """Sprint 3: End-to-end verification with cached real MiniLM model weights, vector retrieval, and API integration with fake generation."""
     from pathlib import Path
     from app.services.ingestion.embedding import get_default_embedder
     from app.services.ingestion.processor import process_document
@@ -840,7 +875,7 @@ async def test_real_minilm_synthetic_corpus_e2e_flow(api, pg_sessions):
     q1_data = q1_resp.json()
     assert q1_data["abstained"] is False
     assert len(q1_data["citations"]) > 0
-    assert any("annual leave" in c["excerpt"].lower() or "20" in c["excerpt"] for c in q1_data["citations"])
+    assert any("annual leave" in c["excerpt"].lower() and "20 working days" in c["excerpt"].lower() for c in q1_data["citations"])
 
     # Query 2: Irrelevant question (SYN-Q03) -> must abstain due to weak/absent evidence
     q2_resp = await client.post(

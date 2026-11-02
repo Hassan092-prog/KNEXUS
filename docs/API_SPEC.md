@@ -2,9 +2,9 @@
 
 [Canonical Phase 1 contracts](PHASE_1_CONTRACT.md) own wire fields, limits and error codes. [Reference examples](../contracts/phase1/examples/manifest.json) provide complete success, abstention, lifecycle and failure payloads; do not create a second schema.
 
-The routes below are implemented on dev-hassan, based on main 84f0eb284f0b59adf96d053f72a36129c832cb13. They are published for review on dev-hassan and have not yet been merged into main. Main remains at H01/H02 until this review implementation is merged.
+The routes below are implemented in the Phase 1 backend application. See [Project status](PROJECT_STATUS.md) for pull request history and dated verification evidence.
 
-## Registered routes on dev-hassan
+## Registered routes
 
 | Method/path | Actual behavior |
 |---|---|
@@ -36,7 +36,7 @@ Health returns HTTP 200 even when a dependency is unavailable. It now reports ge
 
 ## Verification limits
 
-The dev-hassan review implementation has offline fake/mock route and service tests (including OpenAPI and CORS checks), and covered route/database scenarios have passed against disposable PostgreSQL/pgvector. Real embedding inference on model weights, live Ollama generation service evaluation, and Zaid's browser integration remain pending. The shared database remains unmigrated; the demo seed is explicit.
+Offline fake/mock route and service tests (including OpenAPI and CORS checks) run without database access. Reusable disposable database integration tests cover migration round trips, upload failure rollback, and role-filtered retrieval against an isolated loopback PostgreSQL/pgvector container. Real embedding inference on model weights, live Ollama generation service evaluation, and browser UI integration remain separate verification milestones. The shared database remains unmigrated; the demo seed is explicit.
 
 ## Later contracts
 

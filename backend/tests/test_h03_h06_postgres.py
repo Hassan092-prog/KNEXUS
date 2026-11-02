@@ -756,3 +756,111 @@ async def test_confirmed_restart_recovers_abandoned_jobs_and_explicit_retry(pg_s
     assert [(item.attempt_number, item.status) for item in attempts] == [
         (1, "failed"), (2, "complete")
     ]
+
+
+@pytest.mark.integration
+async def test_real_minilm_synthetic_corpus_e2e_flow(api, pg_sessions):
+    """Sprint 3: End-to-end verification with cached real MiniLM model weights over synthetic corpus."""
+    from pathlib import Path
+    from app.services.ingestion.embedding import get_default_embedder
+    from app.services.ingestion.processor import process_document
+
+    client, state, _, _ = api
+    generator = EchoGenerator()
+    state["generator"] = generator
+
+    # Use real sentence-transformers MiniLM embedder loaded offline from local cache
+    embedder = get_default_embedder()
+    state["retrieval"] = RetrievalService(embedder, minimum_similarity=0.35)
+
+    # Load synthetic handbook docx fixture
+    repo_root = Path(__file__).resolve().parents[2]
+    handbook_path = repo_root / "backend/tests/fixtures/phase1/synthetic_handbook.docx"
+    assert handbook_path.is_file(), f"Fixture missing: {handbook_path}"
+    raw_docx = handbook_path.read_bytes()
+
+    # Create tenant & uploader in disposable DB
+    org_id, user_id = uuid4(), uuid4()
+    suffix = uuid4().hex[:8]
+    async with pg_sessions() as session:
+        session.add(Organization(id=org_id, name="Acme Corp", slug=f"acme-synthetic-{suffix}"))
+        await session.flush()
+        session.add(User(id=user_id, org_id=org_id, email=f"uploader-{suffix}@acme.test",
+                         full_name="Acme Admin", role="orgadmin", is_active=True))
+        await session.commit()
+
+    # Set demo actor
+    state["actor"] = ActorContext(
+        org_id=org_id, user_id=user_id,
+        effective_roles=["employee", "manager", "orgadmin"]
+    )
+
+    # Upload via API
+    resp = await client.post(
+        "/api/v1/documents/upload",
+        files=[
+            ("file", ("synthetic_handbook.docx", raw_docx, DOCX_MIME)),
+            ("title", (None, "Acme Employee Handbook")),
+            ("allowed_roles", (None, "employee")),
+            ("allowed_roles", (None, "manager")),
+        ],
+    )
+    assert resp.status_code == 202
+    body = resp.json()
+    doc_id, job_id = UUID(body["document_id"]), UUID(body["task_id"])
+
+    # Execute real ingestion processing with real MiniLM embedder
+    success = await process_document(doc_id, session_factory=pg_sessions, embedder=embedder)
+    assert success is True
+
+    # Verify stored document, chunks, and 384-dimensional embeddings
+    async with pg_sessions() as session:
+        doc = await session.get(Document, doc_id)
+        job = await session.get(IngestionJob, job_id)
+        assert doc.status == job.status == "complete"
+        assert doc.chunk_count > 0
+
+        chunks = (await session.execute(
+            select(DocumentChunk).where(DocumentChunk.document_id == doc_id)
+            .order_by(DocumentChunk.chunk_index)
+        )).scalars().all()
+        embeddings = (await session.execute(
+            select(Embedding).where(Embedding.document_id == doc_id)
+        )).scalars().all()
+        assert len(embeddings) == len(chunks)
+        assert all(len(emb.embedding) == 384 for emb in embeddings)
+        assert all(emb.model_name == "sentence-transformers/all-MiniLM-L6-v2" for emb in embeddings)
+
+    # Query 1: Relevant question from questions.json (SYN-Q01)
+    q1_resp = await client.post(
+        "/api/v1/query",
+        json={"question": "How many annual leave days do full-time employees receive?"}
+    )
+    assert q1_resp.status_code == 200
+    q1_data = q1_resp.json()
+    assert q1_data["abstained"] is False
+    assert len(q1_data["citations"]) > 0
+    assert any("annual leave" in c["excerpt"].lower() or "20" in c["excerpt"] for c in q1_data["citations"])
+
+    # Query 2: Irrelevant question (SYN-Q03) -> must abstain due to weak/absent evidence
+    q2_resp = await client.post(
+        "/api/v1/query",
+        json={"question": "What is the organization's health insurance vendor?"}
+    )
+    assert q2_resp.status_code == 200
+    q2_data = q2_resp.json()
+    assert q2_data["abstained"] is True
+    assert len(q2_data["citations"]) == 0
+
+    # Query 3: Unauthorized actor (different tenant) -> zero evidence leaks, must abstain
+    state["actor"] = ActorContext(
+        org_id=uuid4(), user_id=uuid4(), effective_roles=["employee"]
+    )
+    q3_resp = await client.post(
+        "/api/v1/query",
+        json={"question": "How many annual leave days do full-time employees receive?"}
+    )
+    assert q3_resp.status_code == 200
+    q3_data = q3_resp.json()
+    assert q3_data["abstained"] is True
+    assert len(q3_data["citations"]) == 0

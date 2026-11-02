@@ -1,6 +1,6 @@
 # Generation service
 
-This package accepts canonical `GenerationRequest` evidence already authorized by Hassan's backend and returns `GenerationResult`. It selects no tenant/actor, reads no DB and executes no actions. The HTTP query route is still pending.
+This package accepts canonical GenerationRequest evidence already authorized by the backend and returns GenerationResult. It selects no tenant/actor, reads no DB and executes no actions. The adapter is published in main; Hassan's local H03-H06 draft calls it from the non-streaming query route, but that route is not yet published.
 
 ## Construction and H01 injection
 

@@ -58,14 +58,17 @@ py -3.12 -m venv backend/venv
 Linux/macOS, from the root:
 
 ~~~bash
-backend/venv/bin/python -B -m pytest backend/tests/test_h01_boundaries.py backend/tests/phase1/generation backend/tests/test_persistence_models.py -q -p no:cacheprovider
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=backend backend/venv/bin/python -B -m pytest backend/tests -q -p no:cacheprovider
 backend/venv/bin/python -B contracts/phase1/check.py
 ~~~
 
 PowerShell:
 
 ~~~powershell
-.\backend\venv\Scripts\python.exe -B -m pytest backend/tests/test_h01_boundaries.py backend/tests/phase1/generation backend/tests/test_persistence_models.py -q -p no:cacheprovider
+$env:HF_HUB_OFFLINE = "1"
+$env:TRANSFORMERS_OFFLINE = "1"
+$env:PYTHONPATH = "backend"
+.\backend\venv\Scripts\python.exe -B -m pytest backend/tests -q -p no:cacheprovider
 .\backend\venv\Scripts\python.exe -B contracts/phase1/check.py
 ~~~
 
@@ -160,5 +163,5 @@ Delete a temporary branch only when its commits are reachable from a retained br
 | DB cannot connect | Verify explicit URL/host/port without printing credentials; never reset the volume |
 | Application tables missing | Obtain approval for the migration target; startup creates no tables |
 | Tags work, generation fails | Check exact tag, provider configuration and typed failure |
-| Upload/query returns 404 | Feature routes are not implemented |
+| Upload/query returns 404 | Those routes are absent from published main; Hassan's local draft registers them. Check the exact checkout and branch first |
 | Old generator heuristics on a member branch | Preserve edits and coordinate a clean baseline handoff |

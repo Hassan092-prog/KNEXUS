@@ -9,11 +9,13 @@ KNEXUS is a modular FastAPI application with PostgreSQL/pgvector persistence and
 - Canonical schemas live in `contracts/phase1/models.py` and are re-exported by `app.schemas`.
 - `build_demo_actor` provides fixed synthetic identity and effective roles; it authenticates nobody.
 - `run_generation` awaits an injected concrete service and validates result/evidence membership.
-- Generation implements explicit fake/Ollama providers, complete structured evidence, schema validation, typed errors and deadlines. It is not yet called by an HTTP feature route.
-- Six ORM tables, an initial Alembic revision and explicit seed helper implement storage structure. They do not run a worker or retrieval pipeline.
+- Generation implements explicit fake/Ollama providers, structured evidence, schema validation, typed errors and deadlines. Published main has no feature route; Hassan's isolated local review implementation calls it through the canonical run_generation boundary.
+- Six ORM tables, an initial Alembic revision and explicit seed helper implement published storage structure. Hassan's isolated local review implementation adds processing and pgvector retrieval; the background task is not durable. Recovery marks queued/processing jobs only after the operator confirms all old workers stopped.
 - The frontend has no committed app, manifest or build.
 
-## Planned Phase 1 flow
+## Phase 1 flow
+
+The document/query API and ingestion/retrieval services below are implemented in Hassan's isolated local review implementation based on main. They have not been published or merged into main.
 
 ~~~mermaid
 flowchart LR

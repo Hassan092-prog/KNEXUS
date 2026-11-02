@@ -28,7 +28,7 @@ Do not restart implemented H01/H02 or N01 because an old member branch lacks the
 | H06 - API | Implement canonical document/query routes and safe errors. Build public citations from backend metadata; keep provider failure distinct from abstention. Verify CORS, polling and OpenAPI using fakes. Correlation IDs do not imply chat history. |
 | H07 - Integration | Tiny corpus/labels, Naveed's live adapter and Zaid's UI. Verify real browser upload -> status -> retrieval -> citations/abstention, permissions/failures and fresh-setup procedure. Record versions and gaps. |
 
-Hassan's next task is H03. New database runs and shared migration require separate approval for the exact target.
+H03-H06 implementation is present in Hassan's isolated local review implementation based on main; it has not been published or merged into main. Covered database checks passed against disposable PostgreSQL/pgvector. Real embedding inference, live Ollama generation service evaluation, and Zaid's browser verification remain pending. H07 remains open until the team completes the browser-to-answer flow.
 
 ## Naveed: N01-N06
 
@@ -59,7 +59,7 @@ Login/admin/approval UI and streaming are later-phase work. See [frontend](../fr
 ## Integration order
 
 1. Agreed H01/H02 and generation foundation; Zaid develops typed mocks in parallel.
-2. H03/H04, Naveed's live prompt/adapter evaluation, Zaid's upload/chat states.
+2. Review and publish Hassan's local H03-H06 review implementation; Naveed completes generation evaluation; Zaid confirms the frontend framework and starts upload/chat states.
 3. H05/H06 consumes the concrete service; Zaid connects the API.
 4. H07/N06/Z06 record the full browser flow and failure/permission evidence.
 
@@ -86,4 +86,4 @@ Do not install, start services, access DBs, commit, push or merge without
 authorization covering that action.
 ~~~
 
-Hassan starts at H03, Naveed finishes N02-N06 evidence/gaps, and Zaid starts Z01. Report checkout/branch/HEAD, task IDs, behavior, all files, interface changes, exact checks/results, fake versus live evidence, blockers, next task and authorized Git/PR status. Retain raw evaluation results without secrets.
+Hassan completes review and publication of the local H03-H06 implementation; live embedding/generation and browser verification remain pending; Naveed finishes N02-N06 evidence/gaps; Zaid starts Z01.

@@ -1,6 +1,6 @@
 # Persistence schema
 
-The reviewed persistence foundation is merged through PR #4 and PR #5 into main. [Project status](PROJECT_STATUS.md) owns exact revisions and evidence. The shared database has not been migrated. This document describes actual ORM/migration definitions, not a second executable DDL proposal.
+The reviewed persistence foundation is merged through PR #4 and PR #5 into main. In Hassan's isolated, unpublished backend draft (not merged into main), the H03-H06 ingestion pipeline, composite foreign key constraints and retrieval filtering have been verified against disposable PostgreSQL/pgvector across complete migration round trips (upgrade, repeat, downgrade to base, re-upgrade). [Project status](PROJECT_STATUS.md) owns exact revisions and evidence. The shared database has not been migrated. This document describes actual ORM/migration definitions, not a second executable DDL proposal.
 
 Authoritative definitions:
 - [Core models](../backend/app/models/core.py)
@@ -38,7 +38,7 @@ Embedding permissions are not duplicated into the embedding table. Future retrie
 - `failure_message ~ '[^[:space:]]'` requires at least one non-whitespace character. The policy covers space, tab, LF, vertical tab, form feed and CR; ORM/migration definitions match.
 - Counters are nonnegative and processed cannot exceed a known total.
 
-These checks validate stored row states. Services must implement allowed transitions, consistent document/job updates, interruption handling and retry semantics; the constraints alone are not a worker or durable queue. Job UUID becomes public task_id when routes are implemented.
+These checks validate stored row states. Services must implement allowed transitions, consistent document/job updates, interruption handling and retry semantics; the constraints alone are not a worker or durable queue. In Hassan's local API draft the accepted upload returns the persisted job UUID as task_id; the route is not yet published in main.
 
 ## Alembic
 

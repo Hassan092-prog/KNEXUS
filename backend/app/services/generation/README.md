@@ -29,7 +29,7 @@ The generator reads `os.environ`, not root `.env` directly. Application Settings
 
 ## Prompts and context budget
 
-The prompt is versioned (`_GENERATION_PROMPT_VERSION`, currently `v4`). It is deterministic JSON: the question plus **every** supplied evidence item with citation IDs and source metadata, ended by the user-prompt marker reminder; the system prompt treats evidence as untrusted data and shows the exact required answer/abstention JSON shape. Nothing is filtered or reordered by heuristics: evidence containing phrases such as "user input:" is passed verbatim; conflict-vs-answer decisions belong to the model, not to service code.
+The prompt is versioned (`_GENERATION_PROMPT_VERSION`, currently `v4-hosted-1`: the shared v4 prompt text, suffixed to record that the chat-completions transport is in use). It is deterministic JSON: the question plus **every** supplied evidence item with citation IDs and source metadata, ended by the user-prompt marker reminder; the system prompt treats evidence as untrusted data and shows the exact required answer/abstention JSON shape. Nothing is filtered or reordered by heuristics: evidence containing phrases such as "user input:" is passed verbatim; conflict-vs-answer decisions belong to the model, not to service code.
 
 Send the complete prompt or fail with `ContextBudgetExceededError` (before any provider call). The character ceiling is only a fail-closed size guard, not model token counting or proof of context fit. No compatible generation tokenizer has been selected. Explicit `num_ctx`/`num_predict` values do not resolve this limitation.
 
@@ -50,6 +50,24 @@ Structural and citation validation are fail-closed: malformed JSON, invented IDs
 Typed failures stay exceptions: `GenerationConfigurationError`, `ProviderTimeoutError`, `ProviderUnavailableError`, `MalformedOutputError` and `ContextBudgetExceededError`. Network and overall async deadlines are enforced; timeout must be finite and positive; external cancellation propagates.
 
 `POST /api/v1/query` maps them as published: `ProviderTimeoutError` → 504/`PROVIDER_UNAVAILABLE`; `ProviderUnavailableError` → 503/`PROVIDER_UNAVAILABLE`; `GenerationConfigurationError` and `ContextBudgetExceededError` currently → 503/`PROVIDER_UNAVAILABLE`; `MalformedOutputError` → 502/`INVALID_CITATIONS`. Generation does not perform that mapping itself.
+
+## Hosted providers (chat-completions adapter)
+
+`hosted_provider.py` adds explicit hosted selection over OpenAI-compatible `/chat/completions` endpoints, adapted from Hassan's `enterprise-knowledge-bot` (source revision `e67771a15f49a79443a365fbce85b8559ef43fb7`; that repository ships no LICENSE file at this revision, and the adapted provider-selection concept is credited here rather than copied wholesale). The same canonical `GenerationRequest`/`GenerationResult` contract, v4 prompt text, evidence authorization, `run_generation` boundary and typed failures apply unchanged; only the transport and configuration differ.
+
+~~~python
+service = GenerationService(
+    provider="openai",            # or "groq" / "mistral"
+    model="<provider model name>",
+    api_key="<secret>",           # or env GENERATION_API_KEY
+    api_base_url="https://hosted.example/v1",  # optional override
+    timeout=30, num_predict=512, seed=42, temperature=0.0,
+)
+~~~
+
+Default endpoints when `api_base_url` is not given: OpenAI `https://api.openai.com/v1`, Groq `https://api.groq.com/openai/v1`, Mistral `https://api.mistral.ai/v1`. Proposed environment names (documented proposal pending Hassan's `Settings` wiring; constructor values always win): `GENERATION_API_KEY` (Bearer token; never appears in the request payload or logs), `GENERATION_API_BASE_URL`, `GENERATION_MODEL`, `GENERATION_TEMPERATURE` (default `0.0`). The `OLLAMA_*` environment names remain reserved for the ollama/fake paths; `OLLAMA_PROVIDER` stays the explicit provider selector for all providers.
+
+Request details: `response_format` is a strict JSON schema derived from the canonical `GenerationResult` (`abstention_reason` becomes required and default-less to satisfy strict structured-output validation); `max_tokens` maps from `num_predict`; `seed` is included only when explicitly set; evidence and question are sent verbatim as the user message; the API key is sent only in the `Authorization: Bearer` header. Typed failures: invalid output/contract violations → `MalformedOutputError` (HTTP 502 via the published mapping), `httpx` errors/timeouts → `ProviderUnavailableError`/`ProviderTimeoutError` (503/504), missing key/unknown provider → `GenerationConfigurationError` before any call. Deliberate differences from the source: no LangChain dependency, no built-in retry/backoff (bounded retries deferred for review), no semantic cache or streaming. No billable API call may be made without explicit authorization; all verification so far is mocked HTTP (`backend/tests/phase1/generation/test_hosted_service.py`).
 
 ## Verification
 

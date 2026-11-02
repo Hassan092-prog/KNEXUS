@@ -35,7 +35,10 @@ def test_provider_selection_must_be_explicit(monkeypatch):
 
 
 def test_unknown_provider_is_rejected():
-    with pytest.raises(GenerationConfigurationError, match="either 'fake' or 'ollama'"):
+    with pytest.raises(
+        GenerationConfigurationError,
+        match=r"must be one of: fake, groq, mistral, ollama, openai",
+    ):
         GenerationService(provider="automatic")
 
 

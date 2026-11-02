@@ -92,11 +92,11 @@ The initial revision includes ingestion_jobs and tenant constraints and passed d
 
 Parsing/indexing failures discovered after 202 update the persisted job/document to failed and appear through the status resource; they cannot retroactively change the accepted upload response. Use safe status failure fields, not raw exceptions.
 
-The public error shape is detail/code/request_id, with a server-owned correlation UUID. The canonical Phase 1 error envelope is implemented in Hassan's isolated local review implementation; published main still has only root/health routes. FastAPI defaults are mapped to safe contract-shaped errors in that implementation. Provider failure is an error state, not a fabricated answer or an evidence abstention.
+The public error shape is detail/code/request_id, with a server-owned correlation UUID. The canonical Phase 1 error envelope is implemented on dev-hassan; main still has only root/health routes. FastAPI defaults are mapped to safe contract-shaped errors on dev-hassan. Provider failure is an error state, not a fabricated answer or an evidence abstention.
 
 ## Current handoffs
 
-- Hassan: H03-H06 code exists as an isolated local review implementation based on main; review before publishing.
+- Hassan: H03-H06 code is published on dev-hassan for review; review and merge to main remain.
 - Naveed: preserve the reviewed provider boundary and complete context policy, live evaluation and the backend handoff.
 - Zaid: initialize frontend and use query/document/status/error fixtures as typed mocks, then integrate only the accepted APIs.
 

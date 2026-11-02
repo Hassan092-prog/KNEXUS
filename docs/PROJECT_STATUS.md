@@ -10,11 +10,11 @@ The accepted baseline includes the canonical H01 boundary, async fake/Ollama gen
 
 ## Hassan backend draft
 
-Hassan's H03-H06 implementation is an **isolated local review implementation** at /tmp/knexus-hassan-phase1-next, based on main commit 84f0eb284f0b59adf96d053f72a36129c832cb13. It has not been published or merged into main. Review and approve it before publication.
+Hassan's H03-H06 implementation is published on **dev-hassan** for review, based on main commit 84f0eb284f0b59adf96d053f72a36129c832cb13. It has not been merged into main.
 
-The review implementation registers canonical upload, document list/detail/status and non-streaming query routes. It adds PDF/DOCX parsing, bounded tokenizer-aware chunking, local-only MiniLM embedding code, persisted ingestion processing, SQL-filtered retrieval, server-owned demo identity and contract-shaped errors.
+The dev-hassan branch registers canonical upload, document list/detail/status and non-streaming query routes. It adds PDF/DOCX parsing, bounded tokenizer-aware chunking, local-only MiniLM embedding code, persisted ingestion processing, SQL-filtered retrieval, server-owned demo identity and contract-shaped errors.
 
-The review implementation has completed disposable PostgreSQL/pgvector integration verification (21/21 tests passed across migrations, upload lifecycle, role-filtered retrieval, and query endpoints). The shared database remains unmigrated, fake providers were used for generation/embeddings, and no live model inference or external background worker service was started.
+The dev-hassan implementation has completed disposable PostgreSQL/pgvector integration verification (21/21 tests passed across migrations, upload lifecycle, role-filtered retrieval, and query endpoints). The shared database remains unmigrated, fake providers were used for generation/embeddings, and no live model inference or external background worker service was started.
 
 ## Phase 1 progress
 
@@ -23,11 +23,11 @@ The review implementation has completed disposable PostgreSQL/pgvector integrati
 | H01 boundary | Published in main | Reuse canonical schemas, synthetic actor and run_generation |
 | H02 persistence | Published in main; separate disposable migration/test run passed | Shared database remains unmigrated; attempt-5 source-snapshot fingerprint is unavailable |
 | Generation | Published in main; offline tests passed | Naveed: live Ollama quality, context policy/evaluation handoff |
-| H03 upload/parse/chunk | Implemented in Hassan's local review implementation; disposable PostgreSQL/pgvector verification passed | File cleanup on DB error and rollback assertions confirmed; background task runs in-process; abandoned-job recovery is manual only |
+| H03 upload/parse/chunk | Published on dev-hassan for review; disposable PostgreSQL/pgvector verification passed | File cleanup on DB error and rollback assertions confirmed; background task runs in-process; abandoned-job recovery is manual only |
 | H04 embed/index | Local-only 384-dimensional MiniLM implementation and fake embedder verified in disposable DB suite | Actual sentence-transformers inference on real weights and full corpus indexing remain separate verification steps |
 | H05 retrieval | Tenant/role/current-parent/status/deletion/model SQL filters before top-k verified against disposable PostgreSQL | Relevance threshold, document join, and evidence formatting verified; full corpus evaluation remains |
 | H06 API | Canonical document routes (upload, list, detail, status) and query route verified against disposable DB | Evidence citations, abstention, and safe 502/503/504 error mapping verified; browser and live LLM integration remain separate |
-| H07 integrated demo | Small synthetic DOCX and labeled questions are in the review implementation | Complete real upload -> processing -> authorized retrieval -> answer/abstention -> browser flow remains |
+| H07 integrated demo | Small synthetic DOCX and labeled questions are on dev-hassan | Complete real upload -> processing -> authorized retrieval -> answer/abstention -> browser flow remains |
 | Authentication, audit, governed actions | Not implemented | Later phase; do not use demo identity for sensitive data |
 | Frontend | Zaid owns it; accepted main has no frontend application | Coordinate API types and verify with Zaid's actual frontend branch |
 
@@ -35,7 +35,7 @@ Naveed's older unpushed work cannot be established from GitHub. Do not restore t
 
 ## Verification evidence
 
-For Hassan's current local review implementation:
+For Hassan's published dev-hassan implementation:
 
 ### Offline verification baseline
 
@@ -66,7 +66,7 @@ The earlier disposable H02 verification was a separate run against a disposable 
 
 ### Remaining limitations
 
-- The review implementation has not been published or merged into main.
+- The dev-hassan implementation is published for review but has not been merged into main.
 - The shared database (`knexus-postgres`) has not been migrated.
 - Deterministic fake providers were used for embedding and generation in the integration tests; live MiniLM embedding inference and Naveed's Ollama generation service remain separate verification steps.
 - Ingestion runs in-process via FastAPI background tasks; a durable worker queue remains future work.
@@ -79,7 +79,7 @@ The persistent team branches are:
 | Branch | Owner/purpose | Next step |
 |---|---|---|
 | main | Accepted shared implementation | Use the published revision as baseline |
-| dev-hassan | Hassan's implementation/publication branch | Preserve the original checkout's existing pending changes; final review and publication of the database-verified H03-H06 review implementation |
+| dev-hassan | Hassan's implementation/publication branch | Preserve the original checkout's existing pending changes; draft PR opened for review into main |
 | dev-naveed | Naveed's generation branch | Coordinate a reviewed sync from main and report live evaluation evidence |
 | dev-zaid | Zaid's frontend | Coordinate a reviewed sync from main and confirm framework/API fixtures |
 
@@ -87,7 +87,7 @@ Temporary integration and review branches were retired only after their merged w
 
 ## Next sequence
 
-1. Final review and publication of Hassan's already database-verified H03-H06 review implementation. Do not repeat passed disposable database checks.
+1. Review the draft PR from dev-hassan into main. Do not repeat passed disposable database checks.
 2. Naveed completes and reports the agreed generation evaluation against the reviewed baseline.
 3. Zaid confirms the frontend framework and connects the published API contract using mock and live failure states.
 4. Live embedding and generation service verification and browser end-to-end integration remain pending, requiring explicit approval when components are published and ready.

@@ -11,10 +11,7 @@ router = APIRouter()
 
 @router.get("/health", summary="Health Check")
 async def health_check(db: AsyncSession = Depends(get_db)):
-    """
-    System health check endpoint.
-    Verifies API status, PostgreSQL connection (with pgvector), and Ollama reachability.
-    """
+    """Return a non-sensitive dependency diagnostic; this is not readiness."""
     health_status = {
         "status": "healthy",
         "app": settings.APP_NAME,
@@ -24,34 +21,28 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         "ollama": "unknown",
     }
 
-    # Check Database connection & pgvector extension
     try:
-        result = await db.execute(text("SELECT 1;"))
+        result = await db.execute(text("SELECT 1"))
         if result.scalar() == 1:
             health_status["database"] = "connected"
-
-        # Check if vector extension is active
-        vector_res = await db.execute(
-            text("SELECT extname FROM pg_extension WHERE extname = 'vector';")
+        vector_result = await db.execute(
+            text("SELECT extname FROM pg_extension WHERE extname = 'vector'")
         )
-        if vector_res.scalar() == "vector":
-            health_status["pgvector_extension"] = "installed"
-        else:
-            health_status["pgvector_extension"] = "not_installed (run 'CREATE EXTENSION vector;')"
-    except Exception as e:
-        health_status["database"] = f"error: {str(e)}"
+        health_status["pgvector_extension"] = (
+            "installed" if vector_result.scalar() == "vector" else "not_installed"
+        )
+    except Exception:
+        health_status["database"] = "unavailable"
+        health_status["pgvector_extension"] = "unknown"
         health_status["status"] = "degraded"
 
-    # Check Ollama reachability (non-blocking / soft check)
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
-            resp = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
-            if resp.status_code == 200:
-                models = [m.get("name") for m in resp.json().get("models", [])]
-                health_status["ollama"] = f"online (available models: {len(models)})"
-            else:
-                health_status["ollama"] = f"unhealthy (HTTP {resp.status_code})"
+            response = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
+            health_status["ollama"] = (
+                "online" if response.status_code == 200 else "unhealthy"
+            )
     except Exception:
-        health_status["ollama"] = "offline (check if ollama service is running)"
+        health_status["ollama"] = "offline"
 
     return health_status

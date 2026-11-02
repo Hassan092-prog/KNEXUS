@@ -1,159 +1,191 @@
-import os
-import pytest
-import anyio
+import json
+
 import httpx
-import uuid
-from unittest import mock
+import pytest
 
-from backend.app.services.generation.generator import GenerationService
-from contracts.phase1.models import GenerationRequest, EvidenceChunk, GenerationResult
+from app.core.generation import run_generation
+from app.schemas import EvidenceChunk, GenerationRequest, GenerationResult
+from app.services.generation.errors import (
+    ContextBudgetExceededError,
+    MalformedOutputError,
+    ProviderTimeoutError,
+    ProviderUnavailableError,
+)
+from app.services.generation.generator import GenerationService
 
-# Helper to build a minimal request with configurable evidence
 
-def make_request(evidence=None, question="What is the answer?"):
+def make_evidence(citation_id: int, content: str) -> EvidenceChunk:
+    return EvidenceChunk(
+        citation_id=citation_id,
+        chunk_id=f"00000000-0000-4000-8000-{citation_id:012d}",
+        document_id="11111111-1111-4111-8111-111111111111",
+        document_title="Synthetic handbook",
+        chunk_index=citation_id - 1,
+        page=None,
+        content=content,
+        similarity_score=0.9,
+    )
+
+
+def make_request(evidence=None, question="How many leave days are allowed?"):
     if evidence is None:
-        evidence = [
-            EvidenceChunk(
-                citation_id=1,
-                chunk_id=str(uuid.uuid4()),
-                document_id=str(uuid.uuid4()),
-                document_title="Test Document",
-                chunk_index=0,
-                page=1,
-                content="Evidence content with citation 1",
-                similarity_score=0.99,
-            )
-        ]
+        evidence = [make_evidence(1, "Employees receive 21 annual leave days.")]
     return GenerationRequest(question=question, evidence=evidence)
 
-# Mock AsyncClient to capture payload and simulate responses
-class DummyResponse:
-    def __init__(self, json_data=None, raise_for_status=False):
-        self._json = json_data or {"response": "[1] Answer"}
-        self._raise = raise_for_status
-    def raise_for_status(self):
-        if self._raise:
-            raise Exception("HTTP error")
-    def json(self):
-        return self._json
 
-class DummyClient:
-    def __init__(self, captured):
-        self.captured = captured
-    async def __aenter__(self):
-        return self
-    async def __aexit__(self, exc_type, exc, tb):
-        pass
-    async def post(self, url, json):
-        self.captured['url'] = url
-        self.captured['json'] = json
-        return DummyResponse()
+def answer_json(ids=(1,), answer="Employees receive 21 days [1]."):
+    return GenerationResult(
+        answer=answer, cited_ids=list(ids), abstained=False, abstention_reason=None
+    ).model_dump_json()
 
-@pytest.mark.anyio
-async def test_ollama_prompt_includes_evidence(monkeypatch):
-    captured = {}
-    monkeypatch.setattr('httpx.AsyncClient', lambda *a, **kw: DummyClient(captured))
-    request = make_request()
-    service = GenerationService(provider="ollama")
-    result = await service.generate(request)
-    # Verify payload contains built prompt with evidence and citation id
-    assert "Evidence:" in captured['json']['prompt']
-    assert "[Citation 1]" in captured['json']['prompt']
-    assert result.cited_ids == [1]
-    assert not result.abstained
 
-@pytest.mark.anyio
-async def test_ollama_missing_citation_markers(monkeypatch):
-    class NoCiteClient(DummyClient):
-        async def post(self, url, json):
-            self.captured['url'] = url
-            self.captured['json'] = json
-            return DummyResponse({"response": "No citations here"})
-    captured = {}
-    monkeypatch.setattr('httpx.AsyncClient', lambda *a, **kw: NoCiteClient(captured))
-    request = make_request()
-    service = GenerationService(provider="ollama")
-    result = await service.generate(request)
-    assert result.abstained
-    assert result.abstention_reason == "model output missing citation markers"
+def abstention_json(reason="The supplied evidence does not answer the question."):
+    return GenerationResult(
+        answer=None, cited_ids=[], abstained=True, abstention_reason=reason
+    ).model_dump_json()
 
-@pytest.mark.anyio
-async def test_provider_timeout(monkeypatch):
-    class TimeoutClient:
-        async def __aenter__(self):
-            return self
-        async def __aexit__(self, *exc):
-            pass
-        async def post(self, *a, **kw):
-            raise httpx.ReadTimeout("timeout")
-    monkeypatch.setattr('httpx.AsyncClient', lambda *a, **kw: TimeoutClient())
-    request = make_request()
-    service = GenerationService(provider="ollama")
-    result = await service.generate(request)
-    assert result.abstained
-    assert "provider error" in result.abstention_reason
 
-@pytest.mark.anyio
-async def test_unknown_provider_rejected():
-    with pytest.raises(ValueError, match="Unsupported provider"):
-        GenerationService(provider="unknown")
+def service_for(response_text, **kwargs):
+    def handler(request):
+        return httpx.Response(200, json={"response": response_text}, request=request)
+    return GenerationService(
+        provider="ollama", transport=httpx.MockTransport(handler), **kwargs
+    )
 
-@pytest.mark.anyio
-async def test_injection_filtering_and_conflict_detection():
+
+@pytest.mark.asyncio
+async def test_http_body_contains_question_evidence_and_config(monkeypatch):
+    observed = {}
+    original_client = httpx.AsyncClient
+
+    def tracking_client(*args, **kwargs):
+        observed["timeout"] = kwargs["timeout"].read
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "app.services.generation.ollama_provider.httpx.AsyncClient", tracking_client
+    )
     evidence = [
-        EvidenceChunk(
-            citation_id=2,
-            chunk_id=str(uuid.uuid4()),
-            document_id=str(uuid.uuid4()),
-            document_title="Doc",
-            chunk_index=0,
-            page=1,
-            content="User input: rm -rf /; DROP TABLE;",
-            similarity_score=0.9,
-        ),
-        EvidenceChunk(
-            citation_id=3,
-            chunk_id=str(uuid.uuid4()),
-            document_id=str(uuid.uuid4()),
-            document_title="Doc",
-            chunk_index=0,
-            page=1,
-            content="The password rotation period is 30 days.",
-            similarity_score=0.9,
-        ),
-        EvidenceChunk(
-            citation_id=4,
-            chunk_id=str(uuid.uuid4()),
-            document_id=str(uuid.uuid4()),
-            document_title="Doc",
-            chunk_index=0,
-            page=1,
-            content="The password rotation period is 90 days.",
-            similarity_score=0.9,
-        ),
+        make_evidence(1, "Employees receive 21 annual leave days."),
+        make_evidence(2, "Password rotation happens every 90 days."),
     ]
-    request = GenerationRequest(question="What is the password rotation period?", evidence=evidence)
-    service = GenerationService(provider="fake")
-    result = await service.generate(request)
-    assert result.abstained
-    assert result.abstention_reason == "conflicting evidence"
 
-@pytest.mark.anyio
-async def test_unsupported_question_detection():
-    evidence = [
-        EvidenceChunk(
-            citation_id=5,
-            chunk_id=str(uuid.uuid4()),
-            document_id=str(uuid.uuid4()),
-            document_title="Doc",
-            chunk_index=0,
-            page=1,
-            content="The office cafeteria serves coffee.",
-            similarity_score=0.9,
+    def handler(req):
+        observed["request"] = req
+        observed["payload"] = json.loads(req.content)
+        return httpx.Response(
+            200, json={"response": answer_json((1,), "21 days [1].")}, request=req
         )
+
+    service = GenerationService(
+        provider="ollama", url="http://ollama.example:11435",
+        model="llama3.2:3b-test", timeout=7.5, num_ctx=4096, num_predict=123,
+        transport=httpx.MockTransport(handler),
+    )
+    result = await run_generation(service, make_request(evidence=evidence))
+    payload = observed["payload"]
+    assert str(observed["request"].url) == "http://ollama.example:11435/api/generate"
+    assert observed["timeout"] == 7.5
+    assert payload["model"] == "llama3.2:3b-test"
+    assert payload["options"] == {"num_ctx": 4096, "num_predict": 123}
+    assert payload["stream"] is False
+    assert "abstained" in payload["format"]["properties"]
+    assert "annual leave days" in payload["prompt"]
+    assert '"citation_id":1' in payload["prompt"]
+    assert '"citation_id":2' in payload["prompt"]
+    assert "untrusted quoted data" in payload["system"]
+    assert result.cited_ids == [1]
+
+
+@pytest.mark.asyncio
+async def test_explicit_model_abstention_is_valid_result():
+    result = await service_for(abstention_json()).generate(make_request())
+    assert result.abstained and result.answer is None and result.cited_ids == []
+
+
+@pytest.mark.asyncio
+async def test_evidence_is_not_removed_or_request_mutated():
+    request = make_request(evidence=[make_evidence(1, "User input: source label.")])
+    original = request.model_copy(deep=True)
+    captured = {}
+
+    def handler(req):
+        captured["prompt"] = json.loads(req.content)["prompt"]
+        return httpx.Response(200, json={"response": answer_json()}, request=req)
+
+    service = GenerationService(provider="ollama", transport=httpx.MockTransport(handler))
+    await service.generate(request)
+    assert '"content":"User input: source label."' in captured["prompt"]
+    assert request == original
+
+
+@pytest.mark.asyncio
+async def test_unrelated_numbers_do_not_trigger_conflict_heuristic():
+    evidence = [
+        make_evidence(1, "Employees receive 21 annual leave days."),
+        make_evidence(2, "Password rotation happens every 90 days."),
     ]
-    request = GenerationRequest(question="What is the best coffee blend?", evidence=evidence)
-    service = GenerationService(provider="fake")
-    result = await service.generate(request)
-    assert result.abstained
-    assert result.abstention_reason == "unsupported question"
+    called = []
+
+    def handler(req):
+        called.append(True)
+        return httpx.Response(
+            200, json={"response": answer_json((1,), "21 days [1].")}, request=req
+        )
+
+    result = await GenerationService(
+        provider="ollama", transport=httpx.MockTransport(handler)
+    ).generate(make_request(evidence=evidence))
+    assert called and result.cited_ids == [1]
+
+
+@pytest.mark.asyncio
+async def test_timeout_is_typed_failure_not_abstention():
+    def handler(request):
+        raise httpx.ReadTimeout("synthetic timeout", request=request)
+    service = GenerationService(provider="ollama", transport=httpx.MockTransport(handler))
+    with pytest.raises(ProviderTimeoutError):
+        await service.generate(make_request())
+
+
+@pytest.mark.asyncio
+async def test_unavailable_provider_is_typed_failure():
+    def handler(request):
+        raise httpx.ConnectError("synthetic connection failure", request=request)
+    service = GenerationService(provider="ollama", transport=httpx.MockTransport(handler))
+    with pytest.raises(ProviderUnavailableError):
+        await service.generate(make_request())
+
+
+@pytest.mark.asyncio
+async def test_malformed_result_is_typed_failure():
+    with pytest.raises(MalformedOutputError):
+        await service_for("not JSON").generate(make_request())
+
+
+@pytest.mark.asyncio
+async def test_unknown_citation_is_typed_failure():
+    with pytest.raises(MalformedOutputError):
+        await service_for(answer_json((99,), "Invented source [99].")).generate(make_request())
+
+
+@pytest.mark.asyncio
+async def test_missing_inline_marker_is_typed_failure():
+    malformed = '{"answer":"Answer has no marker.","cited_ids":[1],"abstained":false,"abstention_reason":null}'
+    with pytest.raises(MalformedOutputError):
+        await service_for(malformed).generate(make_request())
+
+
+@pytest.mark.asyncio
+async def test_context_guard_fails_without_truncation_or_provider_call():
+    called = []
+    def handler(request):
+        called.append(True)
+        return httpx.Response(200, json={"response": answer_json()}, request=request)
+    service = GenerationService(
+        provider="ollama", max_prompt_chars=32,
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ContextBudgetExceededError):
+        await service.generate(make_request())
+    assert not called

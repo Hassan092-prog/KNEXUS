@@ -1,14 +1,7 @@
-# Ensure the repository root is on PYTHONPATH for test imports
+"""Test import setup; asynchronous tests use pytest-asyncio explicitly."""
 import sys
-import pathlib
+from pathlib import Path
 
-repo_root = pathlib.Path(__file__).resolve().parents[2]
-if str(repo_root) not in sys.path:
-    sys.path.append(str(repo_root))
-
-# Configure anyio to use asyncio backend (trio is not installed)
-import pytest
-
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))

@@ -1,53 +1,25 @@
-# Team responsibilities and delivery ownership
+# Team responsibilities
 
-**Effective: 19 October 2026.** This is the source of truth for KNEXUS member identity, task ownership and branch names. The project plan and phase guides must follow it.
+This is the source of truth for identity, ownership and persistent branches. [Project status](PROJECT_STATUS.md) records completion; the [Phase 1 playbook](PHASE_1_TEAM_GUIDE.md) defines task acceptance.
 
-| Member | Name | Branch | Primary responsibility |
-| --- | --- | --- | --- |
-| 1 | Hassan | `dev-hassan` | Architecture, backend/API, database/migrations, ingestion/retrieval, security/governance, data/runtime, integration and release |
-| 2 | Naveed | `dev-naveed` | LLM adapter, prompts/context, citation validation, tool definitions/handlers, answer-quality evaluation and research |
-| 3 | Zaid | `dev-zaid` | Entire frontend: React/TypeScript/Vite, design system, upload/chat/citation screens, login/admin/approval UI, accessibility and UI documentation |
+| Member | Name / GitHub | Branch | Ownership |
+|---|---|---|---|
+| 1 | Hassan / Hassan092-prog | `dev-hassan` | Architecture, backend/API, models/migrations, ingestion/embeddings/retrieval, identity/authorization, approval/audit persistence, data/runtime, integration and release |
+| 2 | Naveed / MrMax3757 | `dev-naveed` | Generation adapters, prompts/context, result/citation validation, model evaluation, typed tool definitions/handlers and research |
+| 3 | Zaid / MohammedZaid1946 | `dev-zaid` | Entire frontend, framework/build setup, API types/client/mocks, upload/chat/citations, later login/admin/approval screens, accessibility, UI evidence and user guidance |
 
-See [PHASE_1_TEAM_GUIDE.md](PHASE_1_TEAM_GUIDE.md) for numbered implementation tasks, agent start prompts, dependencies and completion checks for each role.
+The target is these branches plus `main`. Transitional branches follow [contribution guidance](../CONTRIBUTING.md); they do not change ownership.
 
-## Work packages
+## File boundaries
 
-Each package has one accountable owner. Coordinate shared interfaces before implementation and have a teammate review completed changes.
-
-| Phase | Owner | Included work |
-| --- | --- | --- |
-| 0 | Hassan | Requirements/API/service contracts; schema/runtime baseline and delivery coordination |
-| 0 | Naveed | Literature/model/prompt baseline and quality rubric |
-| 0 | Zaid | Frontend flow map, wireframes and UI/API-state inventory |
-| 1 | Hassan | Models/migrations/vector storage; parsing/chunking/embeddings; filtered retrieval; API/import fixtures/integration |
-| 1 | Naveed | Ollama adapter; versioned prompt and context builder; citation/abstention validation and answer cases |
-| 1 | Zaid | Frontend foundation/design system; upload/status UI; chat/citation/abstention UI; UI states and component checks |
-| 2 | Hassan | Authentication/tenant authorization; approval transactions/idempotency/audit persistence; security/integration verification |
-| 2 | Naveed | Typed tool registry/sandbox handlers; action-envelope integrity helpers and tool cases; prompt/model regression cases |
-| 2 | Zaid | Login/navigation/session UI; approval/admin screens; document/citation/permission UI states |
-| 3 | Hassan | CI/integration automation; deployment/configuration; retrieval/load measurement; final-report compilation/API/runtime documentation |
-| 3 | Naveed | Controlled model/prompt experiments; research/methodology/results sections; evidence-grounded demo narrative |
-| 3 | Zaid | Frontend integration/accessibility/usability; UI manual/screenshots/report contribution; presentation visuals |
-| 4 | Hassan | Full-pipeline regression/release/archive; final report integration and defense coordination |
-| 4 | Naveed | Research/metrics/demo rehearsal; limitations and results verification |
-| 4 | Zaid | Frontend polish/demo presentation; UI screenshots and submission/hardcopy assembly |
-
-## File and interface ownership
-
-These paths include proposed modules that do not exist yet; ownership does not imply implementation.
-
-| Owner | Primary paths and contracts |
+| Owner | Primary paths |
 |---|---|
-| Hassan | `backend/app/api/`, `backend/app/core/`, `backend/app/models/`, `backend/app/schemas/`, `backend/alembic/`, ingestion/retrieval services, approval/audit persistence, database and API/integration tests, `docker/`, `docker-compose.yml`, backend dependencies, dataset import/fixtures, CI and deployment docs; shared contracts in `contracts/phase1/` with Naveed/Zaid reviewing consumer impacts |
-| Naveed | `backend/app/services/generation/`, tool registry/typed sandbox handlers in `backend/app/services/tools/`, versioned prompts, answer-quality cases/rubrics and literature/research sections |
-| Zaid | Entire `frontend/` tree, UI components/pages/hooks/API client/types/mock payloads, frontend dependencies/build configuration, UI/component tests, accessibility/user manual and presentation visuals |
+| Hassan | `backend/app/api/`, `core/`, `models/`, `db/`, `schemas/`, `backend/alembic/`, ingestion/retrieval, persistence/API/security tests, runtime/dependencies and corpus provenance |
+| Naveed | `backend/app/services/generation/`, generation tests, future typed tool handlers, prompt/evaluation cases and research |
+| Zaid | Entire `frontend/`, its dependencies/tests, UI screenshots/manual and presentation visuals |
 
-Naveed owns tool definitions and safe handler behavior; Hassan owns the authorization, approval state machine, concurrency/idempotency, and audit boundary around execution. Coordinate those files before adding a shared tools directory. Hassan owns imported corpus provenance/security fixtures; Naveed supplies answer labels and Zaid owns frontend-only API mocks. Zaid consumes agreed API contracts; a UI permission indicator cannot enforce backend access.
+Hassan coordinates `contracts/phase1/` changes with both consumers reviewing impact. Ownership does not authorize silently changing an interface.
 
-Each member commits/pushes their own persistent branch. Integrate with one PR at a time per branch using merge commits; synchronize with `origin/main` before starting the next task. A file owner implements the change and another member reviews it. Coordinate shared contracts before editing another owner's paths.
+Naveed supplies typed tool definitions and sandbox handlers; Hassan owns authorization, approval, expiry, integrity, duplicate-execution protection and audit around them. The model never grants permission or approves an action.
 
-## Coordination and review
-
-At the weekly check-in, review task status, blockers, dependencies and completion evidence. Record interface decisions and update this document and affected phase guides when ownership changes. Each member explains their implementation and reviews a teammate's changes before integration.
-
-The repository is still a backend scaffold. These responsibilities describe planned delivery and do not imply that application features, frontend screens, migrations or evaluation results already exist.
+Hassan maintains corpus provenance, Naveed answer labels/rubrics and Zaid frontend mocks. Each member explains actual contributions and reviews another member's work. Use the [project plan](KNEXUS_Project_Plan.md) for later phases and [setup/workflow](../CONTRIBUTING.md) for Git commands.

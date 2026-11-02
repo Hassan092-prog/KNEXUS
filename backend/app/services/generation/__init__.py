@@ -1,1 +1,1 @@
-# Generation services package
+"""Generation providers and shared service implementation."""

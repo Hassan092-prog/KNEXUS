@@ -1,1 +1,1 @@
-# Backend package initializer
+"""KNEXUS backend application package."""

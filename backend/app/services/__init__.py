@@ -1,1 +1,1 @@
-# Initialize services package
+"""Application services."""

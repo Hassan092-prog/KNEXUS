@@ -570,4 +570,3 @@ def test_default_chunk_overlap_remains_32_tokens():
     assert all(start < end for start, end in spans)
     assert all(chunk.content == source[start:end] for chunk, (start, end) in zip(chunks, spans))
     assert all(chunk.token_count <= 240 for chunk in chunks)
-

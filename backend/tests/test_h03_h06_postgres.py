@@ -30,7 +30,7 @@ from app.services.retrieval.service import RetrievalService
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
-from tests.postgres_guard import DatabaseGuardError, guard_disposable_database_url
+from tests.postgres_guard import APPROVED_IMAGE_ID, DatabaseGuardError, guard_disposable_database_url
 
 
 def _guard_database_url():
@@ -46,7 +46,9 @@ def test_offline_harness_synthetic_identity_guard():
     target = f"postgresql+asyncpg://{db_user}:synthetic@127.0.0.1:{port}/{db_name}"
 
     inspect_mock = {
+        "Name": f"/knx-db-{run_id}",
         "State": {"Running": True},
+        "Image": APPROVED_IMAGE_ID,
         "Config": {
             "Image": "pgvector/pgvector:pg16",
             "Labels": {
@@ -54,7 +56,7 @@ def test_offline_harness_synthetic_identity_guard():
                 "com.knexus.pgverify.run": run_id,
             },
         },
-        "HostConfig": {"Binds": []},
+        "HostConfig": {"Binds": [], "PortBindings": {"5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": str(port)}]}},
         "Mounts": [
             {
                 "Type": "volume",
@@ -68,6 +70,30 @@ def test_offline_harness_synthetic_identity_guard():
             "Ports": {"5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": str(port)}]},
         },
     }
+    vol_mock = {
+        "Name": f"knx-vol-{run_id}",
+        "Driver": "local",
+        "Labels": {
+            "com.knexus.pgverify.owner": "hassan-phase1-verification",
+            "com.knexus.pgverify.run": run_id,
+        },
+    }
+    net_mock = {
+        "Name": f"knx-net-{run_id}",
+        "Driver": "bridge",
+        "Labels": {
+            "com.knexus.pgverify.owner": "hassan-phase1-verification",
+            "com.knexus.pgverify.run": run_id,
+        },
+    }
+    def mock_inspect(kind, name):
+        if kind == "container":
+            return inspect_mock
+        elif kind == "volume":
+            return vol_mock
+        elif kind == "network":
+            return net_mock
+        raise ValueError(kind)
 
     keys = (
         "DATABASE_URL", "KNEXUS_VERIFY_EXPECTED_DATABASE_URL", "POSTGRES_DB",
@@ -89,17 +115,17 @@ def test_offline_harness_synthetic_identity_guard():
             "KNEXUS_DISPOSABLE_VOLUME": f"knx-vol-{run_id}",
             "KNEXUS_DISPOSABLE_NETWORK": f"knx-net-{run_id}",
         })
-        assert guard_disposable_database_url(inspect_fn=lambda n: inspect_mock) == target
+        assert guard_disposable_database_url(inspect_fn=mock_inspect) == target
         os.environ["DATABASE_URL"] = target.rsplit("/", 1)[0] + "/wrong"
         with pytest.raises(DatabaseGuardError, match="DATABASE_URL does not match"):
-            guard_disposable_database_url(inspect_fn=lambda n: inspect_mock)
+            guard_disposable_database_url(inspect_fn=mock_inspect)
         protected = f"postgresql+asyncpg://{db_user}:synthetic@127.0.0.1:5435/{db_name}"
         os.environ.update({
             "DATABASE_URL": protected,
             "KNEXUS_VERIFY_EXPECTED_DATABASE_URL": protected,
         })
         with pytest.raises(DatabaseGuardError, match="protected port 5435"):
-            guard_disposable_database_url(inspect_fn=lambda n: inspect_mock)
+            guard_disposable_database_url(inspect_fn=mock_inspect)
     finally:
         for key, value in old.items():
             if value is None:

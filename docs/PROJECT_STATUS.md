@@ -28,12 +28,13 @@ The end-to-end verification (`test_real_minilm_synthetic_corpus_e2e_flow`) prove
 
 Disposable PostgreSQL tests require explicit opt-in (`KNEXUS_ENABLE_DISPOSABLE_PG_TESTS=1`). A hardened shared guard (`backend/tests/postgres_guard.py`) enforces strict isolation gates before any database connection:
 - Rejects protected port 5435 unconditionally, regardless of database or username.
-- Requires a valid unique run identity (`KNEXUS_DISPOSABLE_RUN_ID` / `KNEXUS_RUN_TAG`).
-- Requires synthetic naming for both database and user incorporating the unique run identity.
-- Performs bounded container inspection (5s timeout) to verify that the target URL matches the owned disposable container's inspected runtime port.
-- Verifies image (`pgvector/pgvector:pg16`), volume mount (`/var/lib/postgresql/data`), absence of host bind mounts, network attachment, and ownership labels (`com.knexus.pgverify.owner` and `com.knexus.pgverify.run`).
-- Fails closed with explicit `DatabaseGuardError` exceptions on any missing evidence, mismatch, or inspection error.
-- Dedicated offline regressions (`backend/tests/test_postgres_guard.py`) verify all negative rejection paths and positive acceptance without connecting to any database.
+- Requires non-empty expected settings (`KNEXUS_DISPOSABLE_CONTAINER`, `KNEXUS_DISPOSABLE_VOLUME`, `KNEXUS_DISPOSABLE_NETWORK`, `KNEXUS_DISPOSABLE_RUN_ID`), failing closed if any are missing or malformed.
+- Rejects protected resource names unconditionally (`knexus-postgres`, `knexus_postgres_data`, `knexus`, `knexus_admin`).
+- Removed `KNEXUS_DISPOSABLE_INSPECT_JSON` environment bypass from runtime behavior; retains `inspect_fn` injection solely for offline unit tests.
+- Requires exact approved tag (`pgvector/pgvector:pg16`) AND immutable image ID (`sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a`).
+- Verifies ownership labels on container, volume, and network (`com.knexus.pgverify.owner` and `com.knexus.pgverify.run`).
+- Enforces exactly one volume mount to `/var/lib/postgresql/data` (rejecting host bind mounts) and loopback publication.
+- Dedicated offline regressions (`backend/tests/test_postgres_guard.py`: 18 tests) verify all 4 confirmed reviewer bypasses and safety assertions without Docker or database calls.
 
 ## Phase 1 progress
 
@@ -54,24 +55,29 @@ Disposable PostgreSQL tests require explicit opt-in (`KNEXUS_ENABLE_DISPOSABLE_P
 
 ### Offline verification baseline
 
-- Full backend pytest suite: **136 passed, 18 skipped** (in ~2.5s; database integration tests skipped cleanly when no disposable DB is configured; all 13 guard regressions pass offline).
+- Full backend pytest suite: **100 passed, 18 skipped** (in ~2.1s; database integration tests skipped cleanly when no disposable DB is configured; all 18 guard regressions pass offline).
 - Canonical contract checker (`contracts/phase1/check.py`): **17 examples and 24 negative cases passed**.
 - Offline Alembic SQL rendering with synthetic settings: **passed**.
 - `git diff --check` and whitespace check: **passed** (0 errors).
 
 ### Disposable PostgreSQL/pgvector integration verification
 
-Executed against an isolated disposable container (`pgvector/pgvector:pg16`) on loopback:
-- Full disposable test suite: **22 passed, 0 failed** (persistence, H03-H06 integration, real MiniLM embedding and retrieval flow).
+Executed against an isolated disposable container (`pgvector/pgvector:pg16`) on loopback via hardened runner `verify_phase1_tooling_hardened.sh`:
+- Full disposable test suite: **40 passed, 0 failed** in 19.04s:
+  - 18 offline guard regressions (`test_postgres_guard.py`).
+  - 6 persistence & pgvector integration tests (`test_persistence_postgres.py`).
+  - 16 H03-H06 API, role-filtering, and real MiniLM synthetic corpus tests (`test_h03_h06_postgres.py`).
+- Full Alembic upgrade/downgrade/re-upgrade lifecycle verified against disposable database.
 - Complete absence of all disposable containers, networks, and volumes verified post-run. Protected `knexus-postgres` (port 5435) untouched.
-- Historical log preserved at `/home/hassan/verification_archive/run_sprint3_success.log`. Fresh hardened run log recorded at `/home/hassan/verification_archive/run_hardened_guard_success.log`.
+- Fresh run log recorded at `/home/hassan/verification_archive/run_tooling_hardened_success.log`.
+- SHA-256 manifests preserved at `/home/hassan/verification_archive/manifest_tooling_hardened_20261102.sha256` and `/home/hassan/verification_archive/tested-source-20261102_hardened_3440601e.sha256`.
 
 ## Teammate Handoff & Dependencies
 
 ### Naveed (Generation Service: N01-N06)
 - **Current status**: `origin/dev-naveed` remains at published commit `be967583426495ee70b0d6c49bc364ba2aa8ef78` (Oct 26), which diverged before the Phase 1 canonical contracts and merged backend baseline. His branch is preserved without rebasing, force-pushing, or overwriting.
 - **Specific inputs needed**:
-  1. Provide Naveed's actual generation patch/commit resolving merge conflicts against `origin/main` (`52e7c18`).
+  1. Provide Naveed's actual generation patch/commit resolving merge conflicts against `origin/main`.
   2. Provide the reachable approved Ollama endpoint and model configuration agreed with Naveed (`llama3.2:3b` default per `backend/app/services/generation/README.md`, or his specified alternative).
   3. Provide live generation evaluation results (N02-N06) documenting citation retention, response shaping, and abstention behavior on contradictory evidence.
 
@@ -101,7 +107,7 @@ The persistent team branches are:
 - [x] Sentence-transformers MiniLM-L6-v2 embeddings with 384-dim pgvector index (`backend/app/services/ingestion/embedding.py`).
 - [x] Tenant- and role-isolated vector retrieval (`backend/app/services/retrieval/`).
 - [x] Document and Query REST endpoints (`backend/app/api/routes/`).
-- [x] Hardened disposable PostgreSQL/pgvector integration suite with container ownership proof and protected-port rejection (`backend/tests/`).
+- [x] Hardened disposable PostgreSQL/pgvector integration suite with container/volume/network ownership proof, immutable image ID, and protected-port rejection (`backend/tests/`).
 - [x] End-to-end synthetic corpus flow verified with real MiniLM embeddings, vector search, and fake generation (`test_real_minilm_synthetic_corpus_e2e_flow`).
 - [ ] Live LLM generation quality evaluation (blocked on external input; assigned to Naveed).
 - [ ] Browser-based UI application (blocked on external input; assigned to Zaid).

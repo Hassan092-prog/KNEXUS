@@ -1,5 +1,9 @@
 # Data and fixtures
 
+## Hosted data policy
+
+Hosted embeddings send document text off-host; generation sends authorized evidence. Use synthetic data until retention/privacy and costs are approved. Reusing code from the pinned personal project in [TRD](../docs/TRD.md) does not authorize copying its uploads, credentials, data stores or corpora. Preserve model/revision/dimension provenance; never mix incompatible vector spaces.
+
 No corpus, importer or measured benchmark is committed here. Existing synthetic wire fixtures are in [contracts](../contracts/phase1/examples/manifest.json); live generation cases are under `backend/tests/phase1/generation/`.
 
 Hassan owns imports/provenance, Naveed answer labels/rubrics and Zaid frontend mocks. Start with a small synthetic PDF/DOCX corpus.

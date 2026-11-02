@@ -10,6 +10,16 @@ This is the source of truth for identity, ownership and persistent branches. [Pr
 
 The target is these branches plus `main`. Transitional branches follow [contribution guidance](../CONTRIBUTING.md); they do not change ownership.
 
+## Hosted migration and source reuse
+
+All members inspect and selectively adapt the exact personal-project revision in [TRD](TRD.md), preserving licence notices and actual authorship. This instruction is not evidence that every reusable feature has been migrated.
+
+- Hassan: backend/ingestion/retrieval/API adaptation, hosted embeddings, token policy, vector model/dimension compatibility, migrations and integration.
+- Naveed: hosted generation/provider adaptation, structured results, deadlines/cancellation, safe errors and API-based quality evaluation.
+- Zaid: reusable frontend components with redesigned UI and typed KNEXUS backend client. No provider secrets or direct model API calls in the browser.
+
+No local inference, downloads or Ollama tunnels. Coordinate provider/model/settings and embedding dimensions before shared changes. Use mocked HTTP pending credential and spending authorization.
+
 ## File boundaries
 
 | Owner | Primary paths |

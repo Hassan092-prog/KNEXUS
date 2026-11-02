@@ -2,6 +2,14 @@
 
 This document separates implemented controls from required protections. [Project status](PROJECT_STATUS.md) records evidence; [Phase 1 contract](PHASE_1_CONTRACT.md) owns role vocabulary, identity boundaries and safe public errors.
 
+## Hosted API boundary
+
+Hosted embedding sends document text off-host; hosted generation sends already-authorized evidence. Review provider retention/training, region, acceptable data and cost before live calls; start with synthetic material. See [TRD](TRD.md).
+
+Credentials stay on the backend, never in browser bundles, fixtures, Git, chat, logs or public errors. Do not copy secrets/data stores from the reference project. Preserve permission filtering, bounded deadlines/cancellation and typed failures; never silently fall back to local inference or another model.
+
+Existing local adapters and the Ollama health probe are historical code, not hosted readiness/privacy evidence. Test credential failures, quotas/rate limits, timeouts and malformed responses with mocked HTTP; authorize real API checks separately.
+
 ## Current boundary
 
 Implemented:

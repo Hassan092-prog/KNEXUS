@@ -8,7 +8,7 @@ Employees ask questions over accessible documents; managers later review action 
 
 Phase 1 delivers a local synthetic PDF/DOCX upload-to-answer flow with a server-owned demo actor. It is not authenticated multi-tenant deployment. Phase 2 adds real identity, governance and audit before sensitive/shared data is accepted.
 
-Ollama on a team laptop is the current generation baseline. A hosted provider is an optional later adapter decision requiring cost, privacy and contract review; it is not implemented. No cloud credential is required for the current baseline.
+The approved target uses hosted APIs for generation and embeddings. Existing local MiniLM and fake/Ollama code remains historical implementation; hosted provider/model choices and adapters are pending. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior.
 
 ## Functional requirements
 
@@ -21,7 +21,7 @@ Existing identifiers remain stable for future issue/test traceability. Priority 
 | F-ING-06..08 | Document permissions, real processing status and an explicit re-ingestion policy |
 | F-RET-01..05 | Same query/document embedder, ranked cosine retrieval, pre-generation tenant/role filtering, low-evidence abstention and source IDs |
 | F-RET-06 | Optional later hybrid retrieval/reranking after the dense baseline is measured |
-| F-GEN-01..03 | Configured local provider, evidence-only answer policy and validated citations |
+| F-GEN-01..03 | Configured hosted provider, evidence-only answer policy and validated citations |
 | F-GEN-04 | Streaming deferred until a separate reviewed wire contract |
 | F-GEN-05..06 | Abstention on insufficient evidence; optional later organization-specific prompts |
 | F-AUTH-01..05 | Reviewed authentication/session policy, role hierarchy, tenant isolation and server-side query authorization |

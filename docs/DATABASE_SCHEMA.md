@@ -8,6 +8,10 @@ Authoritative definitions:
 - [Initial revision](../backend/alembic/versions/0001_phase1_persistence.py)
 - [Explicit demo seed](../backend/app/db/demo_seed.py)
 
+## Hosted embedding transition
+
+The revised target uses hosted embeddings; the schema remains vector(384) until a reviewed change. Provider/model/dimension selection is pending. Use identical model/revision for documents and queries; validate finite values and vector lengths. Re-embed for any model change, even at 384 dimensions; a new dimension additionally requires migration/index changes. Never mix MiniLM document vectors with hosted query vectors. This update performs no database migration. [TRD](TRD.md) owns the coordinated decision.
+
 ## Tables and integrity
 
 | Table | Implemented rules |

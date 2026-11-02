@@ -2,6 +2,12 @@
 
 Knowledge Network for EXploration and Unified Services is a three-member academic project for cited answers over permitted organizational documents, followed by one human-approved sandbox action.
 
+## Approved direction
+
+KNEXUS will use hosted APIs for generation and embeddings and selectively adapt code/features from Hassan's [pinned personal project](https://github.com/Hassan092-prog/enterprise-knowledge-bot/tree/e67771a15f49a79443a365fbce85b8559ef43fb7). No local model hosting, downloads or Ollama tunnels belong to the revised setup. [Technical decisions](docs/TRD.md) owns reuse, privacy, provider selection and embedding migration policy.
+
+Existing code still contains fake/Ollama generation and local 384-dimensional MiniLM embeddings. Hosted adapters are not implemented by this documentation update. Provider/model choices, credentials and hosted acceptance remain pending; Phase 1 is incomplete.
+
 ## Start here
 
 - [Project status](docs/PROJECT_STATUS.md): delivered work, evidence and next tasks.
@@ -13,7 +19,7 @@ Knowledge Network for EXploration and Unified Services is a three-member academi
 
 The backend foundation is merged into `main` through PR #4, PR #5, and [PR #7](https://github.com/Hassan092-prog/KNEXUS/pull/7). See [Project status](docs/PROJECT_STATUS.md) for pull request history and dated verification evidence.
 
-Implemented capabilities:
+Implemented capabilities before the hosted migration:
 - Canonical Phase 1 contracts and schemas in `contracts/phase1/models.py`.
 - Async generation boundary (`run_generation`) with explicit fake/Ollama providers, structured evidence validation, and safe error mapping.
 - Six PostgreSQL/pgvector ORM tables, Alembic migrations, and explicit demo identity seeding.
@@ -21,9 +27,9 @@ Implemented capabilities:
 - In-process processor lifecycle (`queued`, `processing`, `complete`, `failed`) with guarded operator recovery.
 - SQL-level tenant isolation and role-filtered retrieval before pagination/top-k ranking.
 - Canonical document management routes (`POST /upload`, `GET /documents`, `GET /{id}`, `GET /{id}/status`) and query route (`POST /query`).
-- Offline test suite (123 passed) and opt-in disposable PostgreSQL/pgvector integration suite (17 database cases).
+- Offline checks and opt-in disposable PostgreSQL/pgvector tests; dated evidence is recorded in project status, not recomputed by this documentation update.
 
-The shared database remains unmigrated. Real embedding model inference on weights, live Ollama generation evaluation (Naveed), and the browser frontend (Zaid) remain separate verification milestones.
+The shared database remains unmigrated. Historical MiniLM verification does not satisfy the revised hosted-embedding gate. Hosted embedding/generation integration, live quality and browser acceptance remain incomplete.
 
 ## Local development
 

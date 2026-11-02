@@ -97,37 +97,17 @@ curl --fail --max-time 10 http://127.0.0.1:8000/
 curl --fail --max-time 10 http://127.0.0.1:8000/api/v1/health
 ~~~
 
-Health always returns HTTP 200 and checks Ollama tags, not generation. See [current API behavior](docs/API_SPEC.md).
+The historical health implementation always returns HTTP 200 and probes Ollama tags, not hosted readiness. It needs adaptation; do not run Ollama to satisfy it. See [current API behavior](docs/API_SPEC.md).
 
-## 5. Connect laptop inference
+## 5. Configure hosted APIs (migration pending)
 
-Naveed's laptop is the selected Ollama host; the shared Linux server hosts API/database services. Hassan can use the same adapter locally without transferring implementation ownership.
+The revised plan uses hosted generation and embeddings. Do not start Ollama, download model weights or establish reverse model tunnels. Existing OLLAMA_* and local MiniLM settings describe historical code, not hosted configuration.
 
-Use the existing installed model. Installations, downloads and service changes require approval. Do not start a second daemon if Ollama is running.
+Read [technical decisions](docs/TRD.md). Agree provider/model, endpoint, privacy/retention, embedding dimension/token policy, credentials and spending authorization. Current storage is vector(384); changing the model name alone cannot make vectors compatible.
 
-~~~bash
-ollama --version
-ollama list
-ollama ps
-~~~
+Hassan owns hosted embedding and storage integration; Naveed hosted generation; Zaid the backend client. Selectively adapt the pinned source in TRD, preserving licences and actual authorship. Never copy source secrets or data stores.
 
-The [generation README](backend/app/services/generation/README.md) owns provider configuration, injection and live-harness commands. Root `.env` does not automatically export settings to the standalone generator.
-
-Naveed runs this authorized tunnel on his laptop while Ollama listens on loopback:
-
-~~~powershell
-ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R 127.0.0.1:11435:127.0.0.1:11434 hassan@192.168.1.92
-~~~
-
-API-side generation uses `http://127.0.0.1:11435`; laptop-local checks use `http://127.0.0.1:11434`. GitHub access does not grant SSH access. Use approved accounts/keys; never share secrets.
-
-While that tunnel is intentionally active, server-side reachability can be checked with:
-
-~~~bash
-curl --fail --max-time 10 http://127.0.0.1:11435/api/tags
-~~~
-
-Tags prove reachability only. Use the opt-in generation harness for structured answers/abstentions. Sleeping the laptop or closing the tunnel makes shared inference unavailable.
+Credentials stay in approved backend secret configuration, never browser variables, Git, chat or logs. Hosted settings are not implemented yet: no live command or provider variable names are invented here. Use fakes/mocked HTTP until reviewed adapters and explicit live-call authorization exist.
 
 ## 6. Prepare frontend development
 
@@ -141,7 +121,7 @@ When Hassan runs the API on server port 8002, Zaid can use this authorized tunne
 ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8000:127.0.0.1:8002 hassan@192.168.1.92
 ~~~
 
-The frontend API base is then `http://127.0.0.1:8000/api/v1`. Choose another local port if occupied. The browser calls the API, never Ollama. Keep mock mode visible; never substitute fixtures for live errors.
+The frontend API base is then `http://127.0.0.1:8000/api/v1`. Choose another local port if occupied. The browser calls the backend, never hosted model APIs. This browser-to-backend forward is separate from the retired Ollama reverse tunnel. Keep mock mode visible; never substitute fixtures for live errors.
 
 ## 7. Review and integrate
 
@@ -162,6 +142,6 @@ Delete a temporary branch only when its commits are reachable from a retained br
 | Environment changes ignored | Restart; exported variables override root `.env` |
 | DB cannot connect | Verify explicit URL/host/port without printing credentials; never reset the volume |
 | Application tables missing | Obtain approval for the migration target; startup creates no tables |
-| Tags work, generation fails | Check exact tag, provider configuration and typed failure |
-| Upload/query returns 404 | Those routes are absent from published main; Hassan's local draft registers them. Check the exact checkout and branch first |
+| Hosted access unavailable | Use mocks; agree provider/model, secure credentials and live-call approval |
+| Upload/query returns 404 | Routes exist in main; check checkout, configured prefix and running process |
 | Old generator heuristics on a member branch | Preserve edits and coordinate a clean baseline handoff |

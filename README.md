@@ -11,17 +11,17 @@ Knowledge Network for EXploration and Unified Services is a three-member academi
 
 ## What exists
 
-The reviewed generation and persistence baseline is merged into `main` through [PR #5](https://github.com/Hassan092-prog/KNEXUS/pull/5) at `5104a19e61f35d4a10e38000737e68513069f2a5`, preserving the persistence work reviewed in PR #4. See [project status](docs/PROJECT_STATUS.md) for remaining tasks.
+The reviewed generation and persistence baseline is merged into `main` through [PR #5](https://github.com/Hassan092-prog/KNEXUS/pull/5) at `5104a19e61f35d4a10e38000737e68513069f2a5`. Hassan's H03-H06 routes and services are published on dev-hassan for review, but are not yet merged into main. See project status for exact state.
 
-Implemented code includes FastAPI root/health routes, canonical contract models, a server-owned synthetic actor, an injectable async generation boundary with explicit fake/Ollama providers, six PostgreSQL/pgvector ORM tables, an initial Alembic migration and offline tests. Persistence was also verified using a separate disposable database. The shared database has not been migrated.
+Published main includes FastAPI root/health routes, canonical contract models, a server-owned synthetic actor, an injectable async generation boundary with explicit fake/Ollama providers, six PostgreSQL/pgvector ORM tables, an initial Alembic migration and offline tests. Persistence was also verified against a separate disposable database. The shared database has not been migrated.
 
-Upload, parsing, embedding inference, retrieval and query APIs, authentication, approval/audit features and the frontend application remain to be implemented. The generation adapter is not wired into an HTTP query route. Live Ollama quality and an end-to-end browser flow remain unverified.
+Hassan's H03-H06 review implementation on dev-hassan adds upload, parsing, embedding, retrieval and query API code; it has not been merged into main. Covered database checks have passed against disposable PostgreSQL/pgvector. Real embedding inference on model weights, live Ollama generation service evaluation, production authentication, approval/audit features and the browser frontend application remain pending.
 
 ## Local development
 
 Use Python 3.12 for the backend. Docker is needed for a local PostgreSQL instance; offline generator checks need neither Docker nor Ollama. Follow [CONTRIBUTING.md](CONTRIBUTING.md) for Linux and Windows commands. Existing shared services and databases require explicit approval before changes.
 
-Implemented application routes are `GET /` and `GET /api/v1/health`, with Swagger at `/docs`, ReDoc at `/redoc` and OpenAPI at `/api/v1/openapi.json`. Health HTTP 200 is a diagnostic response, not proof of generation, migrations or readiness.
+Routes in main are `GET /` and `GET /api/v1/health`, with Swagger at `/docs`, ReDoc at `/redoc` and OpenAPI at `/api/v1/openapi.json`. The dev-hassan branch registers the Phase 1 document/query routes.
 
 ## Source layout
 

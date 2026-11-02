@@ -86,3 +86,6 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+# Private local document uploads
+.knexus-private-storage/

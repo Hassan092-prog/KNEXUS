@@ -10,12 +10,14 @@ Implemented:
 - Generation accepts authorized evidence only, validates structured output/citation membership, sends evidence as untrusted data and preserves typed failures.
 - Demo seeding rejects conflicting/inactive reserved records without automatic reactivation.
 
-Not implemented:
-- Login/session/JWT authentication, API role enforcement, authorized retrieval or PostgreSQL row-level security.
+Not implemented in published main:
+- Login/session/JWT authentication or PostgreSQL row-level security.
 - Approval/execution controls, audit tables or append-only runtime permissions.
 - Production readiness, rate limiting or a dependency lock/CI security workflow.
 
-Root/health have no authentication. Health can expose raw DB exception text and return HTTP 200 while required dependencies fail. DEBUG enables SQL echo. Compose's current PostgreSQL mapping does not restrict the host interface, and its bootstrap admin is not a least-privilege application role.
+Hassan's dev-hassan implementation adds server-demo-actor route checks and SQL-filtered retrieval. Covered tenant/role filtering and API scenarios passed against disposable PostgreSQL/pgvector with synthetic fixtures; this code is published on dev-hassan for review and has not been merged into main. This does not establish production authentication or live-model safety.
+
+Root/health have no authentication. Health returns HTTP 200 with generic availability fields, so it is diagnostic rather than readiness. DEBUG enables SQL echo. Compose's current PostgreSQL mapping does not restrict the host interface, and its bootstrap admin is not a least-privilege application role.
 
 Use local synthetic data only until these gaps are resolved. CORS, UI badges, valid foreign keys and a public health response do not establish access control.
 
@@ -62,4 +64,4 @@ Database verification uses only approved disposable resources; [testing guidance
 
 Verify cross-tenant parent rejection and request isolation independently; restricted direct reads/lists/retrieval; permissions changed after indexing; failed/deleted/partial documents excluded; prompt injection; unavailable/timeout/malformed generation; inactive identity; and governed-action tamper/expiry/replay/concurrency cases.
 
-Only storage constraints and offline generation boundaries have been checked so far. No general security guarantee follows from those tests. Sophisticated poisoning, inversion and denial-of-service protections are not claimed by this local academic prototype.
+The published baseline has persistence constraint and offline generation-boundary evidence. The dev-hassan review implementation adds covered tenant/role SQL filters and API scenarios verified against disposable PostgreSQL/pgvector with synthetic fixtures; live provider behavior and production authentication remain unverified. No general security guarantee follows from these tests.

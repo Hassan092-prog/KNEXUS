@@ -99,3 +99,34 @@ async def test_external_cancellation_is_not_converted_to_provider_timeout():
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+@pytest.mark.parametrize("seed", [True, 1.5, "3"])
+def test_seed_configuration_must_be_an_integer(seed):
+    with pytest.raises(GenerationConfigurationError, match="integer"):
+        GenerationService(provider="fake", seed=seed)
+
+
+@pytest.mark.asyncio
+async def test_seed_is_optional_and_accepted_when_integer():
+    service = GenerationService(provider="fake", seed=42)
+    result = await service.generate(make_request())
+    assert result.cited_ids == [1]
+
+
+@pytest.mark.asyncio
+async def test_prompt_assembly_is_deterministic():
+    request = make_request()
+    service = GenerationService(provider="ollama")
+    assert service._build_prompt(request) == service._build_prompt(request)
+    system_prompt, prompt = service._build_prompt(request)
+    assert '"question":"How many annual leave days are allowed?"' in prompt
+    assert '"content":"Employees receive 21 leave days per year."' in prompt
+    assert system_prompt.startswith("You answer questions using only the supplied evidence")
+
+
+def test_prompt_requires_inline_citation_markers():
+    from app.services.generation.generator import _SYSTEM_PROMPT, _GENERATION_PROMPT_VERSION
+    assert '"cited_ids": [1]' in _SYSTEM_PROMPT
+    assert '"abstained": false' in _SYSTEM_PROMPT and '"abstained": true' in _SYSTEM_PROMPT
+    assert _GENERATION_PROMPT_VERSION.startswith("v")

@@ -1,11 +1,19 @@
 import asyncio
+import hashlib
 import json
 
 import pytest
 
 from app.schemas import EvidenceChunk, GenerationRequest, GenerationResult
 from app.services.generation.errors import ProviderTimeoutError, ProviderUnavailableError
-from tests.phase1.generation.live_harness import HarnessCase, _matches, run_harness
+from app.services.generation.generator import _SYSTEM_PROMPT, _GENERATION_PROMPT_VERSION
+from tests.phase1.generation.live_harness import (
+    HarnessCase,
+    SYSTEM_PROMPT_SHA256,
+    _matches,
+    run_harness,
+    synthetic_cases,
+)
 
 class StubService:
     def __init__(self, outcomes, output_path=None):
@@ -152,3 +160,57 @@ async def test_harness_timeout_must_be_finite_and_positive(tmp_path, timeout):
         await run_harness([make_case("supported", smoke=True, cited_ids=(1,))],
                           StubService([answer()]), tmp_path / "invalid.jsonl",
                           timeout_seconds=timeout)
+
+
+def test_synthetic_fixtures_are_valid_canonical_requests():
+    cases = synthetic_cases()
+    assert len(cases) == 4
+    assert all(case.request.question for case in cases)
+    assert all(case.request.evidence for case in cases)
+
+
+def test_harness_prompts_are_versioned_and_hashed():
+    assert isinstance(_GENERATION_PROMPT_VERSION, str)
+    assert _GENERATION_PROMPT_VERSION.startswith("v")
+    assert hashlib.sha256(_SYSTEM_PROMPT.encode("utf-8")).hexdigest() == SYSTEM_PROMPT_SHA256
+
+
+@pytest.mark.asyncio
+async def test_harness_rejects_non_positive_repeat(tmp_path):
+    with pytest.raises(ValueError, match="positive integer"):
+        await run_harness([make_case("supported", smoke=True, cited_ids=(1,))],
+                          StubService([answer()]), tmp_path / "x.jsonl", repeat=0)
+
+
+@pytest.mark.asyncio
+async def test_harness_repeat_reruns_all_cases_with_run_index(tmp_path):
+    output = tmp_path / "repeat.jsonl"
+    service = StubService([answer(), abstention(), answer(), abstention()])
+    cases = [make_case("supported", smoke=True, cited_ids=(1,)),
+             make_case("unsupported", smoke=True, abstained=True)]
+    exit_code = await run_harness(cases, service, output, repeat=2)
+    rows = [json.loads(line) for line in output.read_text().splitlines()]
+    assert exit_code == 0
+    assert [row["run_index"] for row in rows] == [0, 0, 1, 1]
+    assert all(row["repeat_count"] == 2 for row in rows)
+    assert len({row["run_id"] for row in rows}) == 1
+
+
+@pytest.mark.asyncio
+async def test_harness_records_service_configuration(tmp_path):
+    output = tmp_path / "config.jsonl"
+    service = StubService([answer()])
+    service.model = "llama3.2:3b-test"
+    service.url = "http://127.0.0.1:11434"
+    service.num_ctx = 4096
+    service.num_predict = 256
+    service.seed = 42
+    exit_code = await run_harness(
+        [make_case("supported", smoke=True, cited_ids=(1,))], service, output
+    )
+    row = json.loads(output.read_text().splitlines()[0])
+    assert exit_code == 0
+    assert row["prompt_version"] == _GENERATION_PROMPT_VERSION
+    assert row["system_prompt_sha256"] == SYSTEM_PROMPT_SHA256
+    assert row["provider_url"] == "http://127.0.0.1:11434"
+    assert row["ollama_options"] == {"num_ctx": 4096, "num_predict": 256, "seed": 42}

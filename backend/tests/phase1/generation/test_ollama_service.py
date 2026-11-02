@@ -158,6 +158,32 @@ async def test_unavailable_provider_is_typed_failure():
 
 
 @pytest.mark.asyncio
+async def test_http_error_status_is_typed_unavailable_failure():
+    def handler(request):
+        return httpx.Response(500, request=request)
+    service = GenerationService(provider="ollama", transport=httpx.MockTransport(handler))
+    with pytest.raises(ProviderUnavailableError):
+        await service.generate(make_request())
+
+
+@pytest.mark.asyncio
+async def test_seed_reaches_the_provider_options():
+    captured = {}
+
+    def handler(req):
+        captured["payload"] = json.loads(req.content)
+        return httpx.Response(
+            200, json={"response": answer_json()}, request=req
+        )
+
+    service = GenerationService(
+        provider="ollama", seed=42, transport=httpx.MockTransport(handler)
+    )
+    await service.generate(make_request())
+    assert captured["payload"]["options"]["seed"] == 42
+
+
+@pytest.mark.asyncio
 async def test_malformed_result_is_typed_failure():
     with pytest.raises(MalformedOutputError):
         await service_for("not JSON").generate(make_request())

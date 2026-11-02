@@ -19,16 +19,20 @@ async def ollama_generate(
     timeout: float,
     num_ctx: int,
     num_predict: int,
+    seed: int | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> GenerationResult:
     """Send the complete prompt and parse a canonical GenerationResult."""
+    options: dict[str, int] = {"num_ctx": num_ctx, "num_predict": num_predict}
+    if seed is not None:
+        options["seed"] = seed
     payload = {
         "model": model,
         "system": system_prompt,
         "prompt": prompt,
         "stream": False,
         "format": GenerationResult.model_json_schema(),
-        "options": {"num_ctx": num_ctx, "num_predict": num_predict},
+        "options": options,
     }
     try:
         async with httpx.AsyncClient(

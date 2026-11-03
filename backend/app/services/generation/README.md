@@ -6,7 +6,7 @@ This package accepts canonical GenerationRequest evidence already authorized by 
 
 The revised plan uses hosted APIs for generation and embeddings, not local models or model tunnels. Naveed selectively adapts relevant provider code from [enterprise-knowledge-bot at the pinned revision](https://github.com/Hassan092-prog/enterprise-knowledge-bot/tree/e67771a15f49a79443a365fbce85b8559ef43fb7), preserving licences, accurate authorship and KNEXUS's boundary. [TRD](../../../../docs/TRD.md) owns shared choices.
 
-The hosted adapter, provider/model/endpoint and credential settings are pending. Do not assume an OpenAI-compatible protocol, invent environment names or present existing OLLAMA_* settings as hosted configuration. Use mocked HTTP until reviewed adapters and live-call authorization exist. No new SDK, billable call or model substitution is authorized by these instructions.
+The hosted chat-completions adapter is now merged (PR #13), with Groq at its default endpoint recorded as the first hosted provider in the adapter section below; the concrete model, backend credential-settings wiring and spending authorization remain pending. Do not assume other providers share that OpenAI-compatible protocol, invent additional environment names, or present existing OLLAMA_* settings as hosted configuration. Use mocked HTTP until live-call authorization exists. No new SDK, billable call or model substitution is authorized by these instructions.
 
 Preserve async generate(GenerationRequest) -> GenerationResult and app.core.generation.run_generation(service, request). Backend-authorized evidence only; no DB access, identity selection or tool execution. Keep explicit provider selection, finite positive network/overall deadlines, external cancellation, strict parsing and typed failures. Frontend clients call KNEXUS, never providers directly.
 
@@ -80,5 +80,15 @@ The existing live_harness.py explicitly targets Ollama. Its --run-live flag is n
 Naveed must adapt reusable harness logic to an explicitly selected hosted adapter, with approved endpoint/model, secure credentials and bounded live-call/cost authorization. Preserve incremental JSONL, fresh output paths (the historical runner overwrites its target), exact citation-set expectations, prompt/configuration attribution, repeats, separate error/semantic outcomes, failing exit status, monotonic attempted-case timing and null latency for skipped inference.
 
 Do not silently translate Ollama num_ctx/num_predict/seed semantics into another API or assume deterministic hosted output. Validate provider-specific token limits and structured-output capabilities. Mock rate limits, authentication, unavailable, timeout and invalid responses before approved live calls.
+
+`hosted_harness.py` (same directory) does exactly this for the hosted adapter. Selection and construction default to the recorded Groq decision:
+
+~~~bash
+GENERATION_API_KEY=<server secret backend/venv/bin/python backend/tests/phase1/generation/hosted_harness.py \
+  --run-live --model "<approved Groq model>" --repeat 3 \
+  --output /tmp/knexus-hosted-run/hosted_results.jsonl
+~~~
+
+Fail-closed gating: no call is made without `--run-live`, a model (`--model` or `GENERATION_MODEL`), and `GENERATION_API_KEY` in the process environment; the API key is never accepted as a CLI argument and never recorded. An existing output path is refused, never overwritten. `--cases` selects `development` (the four v4 cases), `held-out` (four distinct synthetic facts, recorded for reporting only — never tuned against) or `all`; every record carries `case_group`, `provider`, endpoint URL, model, `hosted_options` (max_tokens/temperature/optional seed), prompt version/system-prompt hash, monotonic elapsed time for attempted cases and null latency for skipped ones, with separate error/semantic statuses and a failing exit code. Response shapes and failure behaviors are pinned by `test_hosted_harness.py` using mocked HTTP only. Provider-specific token limits and determinism remain unvalidated until an authorized live run; the character-ceiling limitation above is unchanged.
 
 Historical local runs above remain evidence about their own configuration only; they do not establish hosted quality. See [evaluation](../../../../docs/EVALUATION_STRATEGY.md).

@@ -14,13 +14,19 @@ from app.services.generation.errors import (
     ProviderTimeoutError,
 )
 from app.services.generation.fake_provider import fake_generate
+from app.services.generation.hosted_provider import DEFAULT_ENDPOINTS, hosted_generate
 from app.services.generation.ollama_provider import ollama_generate
 
-_GENERATION_PROMPT_VERSION = "v4"
+_HOSTED_PROVIDERS = {"openai", "groq", "mistral"}
+_ALL_PROVIDERS = {"fake", "ollama", *_HOSTED_PROVIDERS}
+
+_GENERATION_PROMPT_VERSION = "v4-hosted-1"
 """Version tag for the combined baseline prompts below.
 
 Bump this whenever `_SYSTEM_PROMPT` or the user-prompt wrapper changes in a
 way that can influence model output, so evaluation records stay comparable.
+The hosted adapter shares the v4 prompt text; the suffix records that the
+chat-completions transport is in use so evaluation runs stay comparable.
 """
 
 _SYSTEM_PROMPT = """You answer questions using only the supplied evidence.
@@ -63,23 +69,54 @@ class GenerationService:
         max_prompt_chars: int | None = None,
         seed: int | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        api_key: str | None = None,
+        api_base_url: str | None = None,
+        temperature: float | None = None,
     ) -> None:
         selected = provider if provider is not None else os.getenv("OLLAMA_PROVIDER")
         if selected is None or not selected.strip():
             raise GenerationConfigurationError(
-                "Set OLLAMA_PROVIDER explicitly to 'fake' or 'ollama'"
+                "Set OLLAMA_PROVIDER explicitly to one of: "
+                + ", ".join(sorted(_ALL_PROVIDERS))
             )
         self.provider = selected.strip().lower()
-        if self.provider not in {"fake", "ollama"}:
+        if self.provider not in _ALL_PROVIDERS:
             raise GenerationConfigurationError(
-                "OLLAMA_PROVIDER must be either 'fake' or 'ollama'"
+                "OLLAMA_PROVIDER must be one of: "
+                + ", ".join(sorted(_ALL_PROVIDERS))
             )
-        self.url = url if url is not None else os.getenv(
-            "OLLAMA_BASE_URL", "http://127.0.0.1:11434"
-        )
-        self.model = model if model is not None else os.getenv(
-            "OLLAMA_MODEL", "llama3.2:3b"
-        )
+        hosted = self.provider in _HOSTED_PROVIDERS
+        if hosted:
+            self.api_key = (
+                api_key if api_key is not None else os.getenv("GENERATION_API_KEY")
+            )
+            base = (
+                api_base_url if api_base_url is not None
+                else os.getenv("GENERATION_API_BASE_URL")
+            )
+            if base is None:
+                base = DEFAULT_ENDPOINTS.get(self.provider)
+            if base is None:
+                raise GenerationConfigurationError(
+                    f"No default endpoint for hosted provider {self.provider!r}"
+                )
+            self.url = base
+            self.model = (
+                model if model is not None else os.getenv("GENERATION_MODEL")
+            )
+            self.temperature = float(
+                temperature if temperature is not None
+                else os.getenv("GENERATION_TEMPERATURE", "0.0")
+            )
+        else:
+            self.api_key = None
+            self.url = url if url is not None else os.getenv(
+                "OLLAMA_BASE_URL", "http://127.0.0.1:11434"
+            )
+            self.model = model if model is not None else os.getenv(
+                "OLLAMA_MODEL", "llama3.2:3b"
+            )
+            self.temperature = 0.0
         self.timeout = float(
             timeout if timeout is not None else os.getenv("OLLAMA_TIMEOUT", "30")
         )
@@ -98,6 +135,10 @@ class GenerationService:
             raise GenerationConfigurationError("timeout must be finite and positive")
         if self.num_ctx <= 0 or self.num_predict <= 0:
             raise GenerationConfigurationError("Ollama limits must be positive")
+        if not math.isfinite(self.temperature) or self.temperature < 0:
+            raise GenerationConfigurationError(
+                "temperature must be finite and non-negative"
+            )
         if self.max_prompt_chars <= 0:
             raise GenerationConfigurationError(
                 "GENERATION_MAX_PROMPT_CHARS must be positive"
@@ -105,8 +146,14 @@ class GenerationService:
         if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
             raise GenerationConfigurationError("seed must be an integer or None")
         self.seed = seed
-        if not self.url.strip() or not self.model.strip():
-            raise GenerationConfigurationError("Ollama URL and model must be non-empty")
+        if hosted and self.api_key is not None and not self.api_key.strip():
+            raise GenerationConfigurationError("GENERATION_API_KEY must be non-empty")
+        if not self.url.strip() or not self.model or not self.model.strip():
+            raise GenerationConfigurationError(
+                "Provider URL and model must be non-empty; hosted providers "
+                "additionally need a model via the model argument or "
+                "GENERATION_MODEL"
+            )
         self.transport = transport
 
     def _build_prompt(self, request: GenerationRequest) -> tuple[str, str]:
@@ -147,6 +194,27 @@ class GenerationService:
             async with asyncio.timeout(self.timeout):
                 if self.provider == "fake":
                     result = await fake_generate(request)
+                elif self.provider in _HOSTED_PROVIDERS:
+                    api_key = self.api_key
+                    if api_key is None or not api_key.strip():
+                        raise GenerationConfigurationError(
+                            "Set GENERATION_API_KEY (or pass api_key) for "
+                            f"hosted provider {self.provider!r}"
+                        )
+                    system_prompt, prompt = self._build_prompt(request)
+                    result = await hosted_generate(
+                        request,
+                        system_prompt=system_prompt,
+                        prompt=prompt,
+                        url=self.url,
+                        model=self.model,
+                        timeout=self.timeout,
+                        api_key=api_key,
+                        num_predict=self.num_predict,
+                        temperature=self.temperature,
+                        seed=self.seed,
+                        transport=self.transport,
+                    )
                 else:
                     system_prompt, prompt = self._build_prompt(request)
                     result = await ollama_generate(

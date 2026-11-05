@@ -1,8 +1,12 @@
 # Phase 1 implementation baseline
 
-**Version 0.1 - initial baseline merged in [PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1).** Hassan owns integration/schema contracts, Naveed owns generation and Zaid owns the frontend. Use these field shapes for implementation and review later contract changes together before updating consumers. These definitions describe the implementation target; they do not mean routes or tables already exist.
+**Version 0.1 - initial baseline merged in [PR #1](https://github.com/Hassan092-prog/KNEXUS/pull/1).** Hassan owns integration/schema contracts, Naveed owns generation and Zaid owns the frontend. Use these field shapes for implementation and review later contract changes together before updating consumers. Document/query HTTP routes are implemented; hosted-provider wiring remains pending. The generation boundary and initial persistence schema are implemented in the reviewed shared baseline on main; see [current status](PROJECT_STATUS.md).
 
-For Phase 1 details below, this baseline narrows the broader [API proposal](API_SPEC.md) and [database draft](DATABASE_SCHEMA.md). Future streaming/actions/admin contracts remain design proposals. Scope changes need a reviewed update to this baseline, [reference models](../contracts/phase1/models.py), [schema export](../contracts/phase1/schema.json) and examples together.
+For Phase 1 details below, this baseline narrows the broader [API proposal](API_SPEC.md) and [database implementation](DATABASE_SCHEMA.md). Future streaming/actions/admin contracts remain design proposals. Scope changes need a reviewed update to this baseline, [reference models](../contracts/phase1/models.py), [schema export](../contracts/phase1/schema.json) and examples together.
+
+## Hosted migration decision
+
+The approved target uses hosted APIs for generation and embeddings. Existing local MiniLM and fake/Ollama code remains historical implementation; hosted provider/model choices and adapters are pending. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior. This revises deployment/provider policy only: canonical fields, validation, identity and H01 compatibility remain unchanged.
 
 ## First vertical slice
 
@@ -48,11 +52,25 @@ Naveed's generator receives GenerationRequest with the question and 1-20 already
 
 The generator returns GenerationResult with answer, cited_ids, abstained and abstention_reason. It cannot invent document metadata, choose a tenant, grant permissions or execute tools. `validate_generation_result` rejects IDs outside the supplied evidence. The backend assembles public Citation records from its own retrieved objects, not model-provided filenames/excerpts. Inline marker consistency is checked too; actual claim support still requires evaluation.
 
-The context builder must respect the chosen LLM's real token/context budget; the per-field limits in reference types do not replace token counting. Use MiniLM 384-dimensional embeddings, tokenizer-aware chunks starting at 240 tokens / overlap 32, and cosine retrieval. Larger embeddings require a schema/index migration and full re-embedding.
+The context builder must respect the chosen LLM's real token/context budget; the per-field limits in reference types do not replace token counting. Use the agreed hosted embedding model with cosine retrieval. Storage currently enforces vector(384); historical chunk defaults are 240 tokens / overlap 32, pending validation against hosted limits. Any model change requires corpus re-embedding; a dimension change additionally requires schema/index migration. Do not mix old and new vector spaces.
+
+## Runtime imports and accepted generator handoff
+
+The canonical Pydantic definitions remain in `contracts/phase1/models.py`; do not create parallel application model classes. Backend code imports the accepted request/response types through `app.schemas`. That package re-exports the canonical classes and validators.
+
+The team accepted the async call boundary `app.core.generation.GenerationService`:
+
+```python
+async def generate(self, request: GenerationRequest) -> GenerationResult: ...
+```
+
+The backend calls `run_generation(service, request)` to await an injected implementation and validate that cited IDs belong to the already-authorized evidence. A generator must not read the database, choose a tenant, grant permissions or execute tools. The reviewed shared baseline on main includes a compatible provider. Historical HTTP integration has fake/local-provider evidence; hosted integration and live quality remain unverified.
+
+The local synthetic actor helper is `app.core.demo_identity.build_demo_actor()`. It returns the fixed actor in `contracts/phase1/examples/actor-context.json`, using the documented orgadmin-to-manager-to-employee expansion. It is demo identity only and does not authenticate requests. Public query/upload metadata continues to reject identity fields; upload `allowed_roles` remains document metadata.
 
 ## Initial persistence contract
 
-Hassan owns the migration implementation. Use organizations/users for a server-owned demo actor, documents, document_chunks, embeddings, and an ingestion-job record. Align the existing DDL with these invariants before autogeneration:
+Hassan owns the migration implementation. Use organizations/users for a server-owned demo actor, documents, document_chunks, embeddings, and an ingestion-job record. The reviewed ORM and initial Alembic revision implement the storage foundation; services must preserve these invariants:
 
 - Each tenant-owned child references a parent in the same organization; enforce composite ownership constraints and service checks.
 - Document lifecycle is queued -> processing -> complete or failed. Only complete, nondeleted, currently authorized documents can be retrieved.
@@ -61,7 +79,7 @@ Hassan owns the migration implementation. Use organizations/users for a server-o
 - Upload returns 202 only after a job/document record is committed. Failed/partial indexing cannot be presented as complete. Keep raw parser/DB/provider diagnostics out of public error fields.
 - Migrations are reviewed revisions, not SQL pasted manually into the shared development database. Test migration round trips only on a disposable database.
 
-The existing database draft does not yet include ingestion_jobs or all tenant constraints. Those are explicit implementation requirements, not already-applied schema changes. Refresh sessions, conversation history, controlled-action persistence and durable queues are outside this first slice.
+The initial revision includes ingestion_jobs and tenant constraints and passed disposable verification. It has not been applied to the shared database; service orchestration remains pending. Refresh sessions, conversation history, controlled-action persistence and durable queues are outside this first slice.
 
 ## Error behavior
 
@@ -71,19 +89,19 @@ The existing database draft does not yet include ingestion_jobs or all tenant co
 | 413 | FILE_TOO_LARGE | File exceeds 10 MiB |
 | 422 | VALIDATION_ERROR | Metadata/query/limit validation, unsupported stream=true |
 | 403 / 404 | FORBIDDEN / NOT_FOUND | Role denial / absent or cross-tenant resource |
-| 503 | PROVIDER_UNAVAILABLE | Ollama unavailable/overloaded |
+| 503 | PROVIDER_UNAVAILABLE | Generation provider unavailable/overloaded |
 | 504 | PROVIDER_UNAVAILABLE | Bounded generation timeout |
 | 502 | INVALID_CITATIONS | Provider output fails source-ID/answer contract after validation |
 | 500 | INTERNAL_ERROR | Unexpected error with safe public detail |
 
 Parsing/indexing failures discovered after 202 update the persisted job/document to failed and appear through the status resource; they cannot retroactively change the accepted upload response. Use safe status failure fields, not raw exceptions.
 
-The public error shape is detail/code/request_id, with a server-owned correlation UUID. These error handlers are to be implemented with the routes; FastAPI defaults remain on the current scaffold. Provider failure is an error state, not a fabricated answer or an evidence abstention.
+The public error shape is detail/code/request_id, with a server-owned correlation UUID. The canonical Phase 1 error envelope is implemented across all API routes; FastAPI defaults are mapped to safe contract-shaped errors. Provider failure is an error state, not a fabricated answer or an evidence abstention.
 
-## Independent first PRs
+## Current handoffs
 
-- Hassan: adopt reviewed data/service types and implement migration/storage foundation with tenant-consistency checks.
-- Naveed: implement provider-independent prompt/result handling against generation fixtures, then the Ollama adapter on his computer.
+- Hassan: H03-H06 backend capabilities merged into main via PR #7; test suite and opt-in database tests maintainable.
+- Naveed: preserve the reviewed provider boundary and complete context policy, live evaluation and the backend handoff.
 - Zaid: initialize frontend and use query/document/status/error fixtures as typed mocks, then integrate only the accepted APIs.
 
 Run [the contract check](../contracts/phase1/README.md) before changing shared fields. One member implements a contract change; the other two review their consumer impact. Do not silently change fields in parallel branches.

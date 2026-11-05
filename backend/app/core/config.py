@@ -1,5 +1,13 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+from pathlib import Path
+
+from pydantic import Field, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+REPOSITORY_ENV_FILE = REPOSITORY_ROOT / ".env"
+DEFAULT_STORAGE_ROOT = REPOSITORY_ROOT / ".knexus-private-storage"
 
 
 class Settings(BaseSettings):
@@ -18,12 +26,45 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://knexus_admin:knexus_password@localhost:5435/knexus"
     DATABASE_SYNC_URL: str = "postgresql://knexus_admin:knexus_password@localhost:5435/knexus"
 
-    # Ollama LLM
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "llama3.2"
+    # Generation provider configuration.
+    # GENERATION_PROVIDER takes precedence over legacy OLLAMA_PROVIDER when set.
+    GENERATION_PROVIDER: str | None = None
+    GENERATION_MODEL: str | None = None
+    GENERATION_API_KEY: SecretStr | None = None
+    GENERATION_BASE_URL: str | None = None
+    GENERATION_TIMEOUT: float = Field(default=30.0, gt=0)
+    GENERATION_MAX_TOKENS: int = Field(default=1024, gt=0)
+    GENERATION_TEMPERATURE: float = Field(default=0.0, ge=0.0)
+    # Fail-closed prompt character boundary (~4,000-5,300 tokens); not a guaranteed token count.
+    GENERATION_MAX_PROMPT_CHARS: int = Field(default=16000, gt=0)
+    GENERATION_SEED: int | None = None
 
-    # Embedding Model
-    EMBEDDING_MODEL_NAME: str = "all-MiniLM-L6-v2"
+    # Legacy Ollama provider settings (preserved for backward compatibility)
+    OLLAMA_PROVIDER: str | None = None
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
+    OLLAMA_MODEL: str = "llama3.2:3b"
+    OLLAMA_TIMEOUT: float = Field(default=30.0, gt=0)
+    OLLAMA_NUM_CTX: int = Field(default=8192, gt=0)
+    OLLAMA_NUM_PREDICT: int = Field(default=512, gt=0)
+
+    # Embedding and ingestion configuration
+    # Supported providers: 'local' (sentence-transformers), 'google', 'fake'
+    EMBEDDING_PROVIDER: str = "local"
+    EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
+    EMBEDDING_MODEL_REVISION: str = "main"
+    EMBEDDING_DIMENSIONS: int = Field(default=384, gt=0)
+    EMBEDDING_API_KEY: SecretStr | None = None
+    EMBEDDING_BASE_URL: str | None = None
+    EMBEDDING_TIMEOUT: float = Field(default=20.0, gt=0)
+    EMBEDDING_TASK_TYPE: str = "RETRIEVAL_DOCUMENT"
+
+    DOCUMENT_STORAGE_ROOT: Path = DEFAULT_STORAGE_ROOT
+    MAX_UPLOAD_BYTES: int = Field(default=10 * 1024 * 1024, gt=0, le=10 * 1024 * 1024)
+    MAX_PDF_PAGES: int = Field(default=1000, gt=0)
+    MAX_EXTRACTED_CHARS: int = Field(default=5_000_000, gt=0)
+    CHUNK_TOKEN_LIMIT: int = Field(default=240, gt=33)
+    CHUNK_TOKEN_OVERLAP: int = Field(default=32, ge=0, lt=240)
+    RETRIEVAL_MIN_SIMILARITY: float = Field(default=0.35, ge=-1, le=1)
 
     # Security & Auth
     SECRET_KEY: str = "knexus-super-secret-development-key-change-in-production-123456"
@@ -39,7 +80,7 @@ class Settings(BaseSettings):
     ]
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=REPOSITORY_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore"
     )

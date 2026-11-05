@@ -1,23 +1,19 @@
-# KNEXUS Frontend
+# KNEXUS frontend
 
-**Current state (19 October 2026):** this README is the only tracked frontend file. There is no `package.json`, application source, dev server, or build command yet. The screens below are planned.
+## Source adaptation and hosted boundary
 
-This directory is designated for the user-facing interface built with **React**, **TypeScript**, and **Vite**.
+Inspect reusable components from [enterprise-knowledge-bot at the pinned revision](https://github.com/Hassan092-prog/enterprise-knowledge-bot/tree/e67771a15f49a79443a365fbce85b8559ef43fb7), redesign the UI and adapt to canonical KNEXUS payloads. Preserve licences, authorship and local work; do not copy old API/role assumptions, secrets or unrelated modules.
 
-## Owner and delivery plan
+Generation and embeddings use backend-held hosted API credentials under the revised plan; adapters are pending. No provider keys or direct provider requests in browser code. Mock mode remains explicit and never hides live failures.
 
-**Zaid (Member 3), branch `dev-zaid`, owns the entire frontend**: React/TypeScript/Vite setup, components/pages, API client/types, mock payloads, upload/chat/citation/abstention states, login/admin/approval screens, accessibility and UI checks. Frontend work starts in Phase 1 against agreed typed mocks, then connects to Hassan's APIs; Phase 2 completes protected/admin/approval screens and Phase 3 focuses on integration/usability.
+Only this README is committed in the merged baseline; no manifest, application source or build exists. [Project status](../docs/PROJECT_STATUS.md) records published work, not unpushed laptop progress.
 
-Follow [TEAM_RESPONSIBILITIES.md](../docs/TEAM_RESPONSIBILITIES.md) for the member responsibilities. Hassan owns backend/schema/migrations/data/runtime; Naveed owns LLM/prompt/citation behavior. Zaid consumes their accepted contracts. No frontend manifest, source or live API client exists yet.
+Zaid owns the entire frontend. Use React and TypeScript; confirm Vite versus Next.js before scaffolding because neither is committed. Select compatible runtime/package versions and a lockfile.
 
-## Planned Capabilities
-- **Knowledge Chat Interface:** Streaming token display, citation cards, abstention indicators.
-- **Document Management Panel:** Drag-and-drop document upload, parsing status, permission tags.
-- **Human-in-the-Loop Approval UI:** Pending action proposals, diff view, approve/reject controls.
-- **Admin Dashboard:** Role assignment, organization settings, system health metrics.
+Follow Z01-Z06 in the [playbook](../docs/PHASE_1_TEAM_GUIDE.md): scaffold, typed client/explicit mocks, upload/status screens, chat/citations/abstention, live integration and UI verification.
 
-## Phase 1 initialization precautions
+Use the [canonical schema and fixtures](../contracts/phase1/README.md). Do not invent wire fields or authoritative user/org/role identity. Render model text and excerpts safely. Generate in an empty temporary directory and adapt into this directory without deleting existing work. Document real install/dev/typecheck/test/build scripts only after they exist.
 
-`frontend/` is not empty because this README already exists. Generate the agreed React/TypeScript scaffold in an empty temporary directory, then bring the generated application/configuration files into `frontend/` while preserving this README. Review the file changes before committing; do not approve a generator option that deletes the existing directory contents.
+Keep mock/live mode visible. Distinguish loading, empty, queued, processing, complete, failed, answered and abstained states. Live failures remain errors. Stop polling on terminal states/unmount.
 
-Check the selected generator's Node.js requirements on Zaid's own machine. Commit the selected package versions and lockfile with the scaffold, and document the actual install/dev/build commands after `package.json` exists. There is no valid frontend build to run before that task is completed.
+The browser calls Hassan's backend, never hosted providers. No local model setup is required. Any approved browser-to-backend SSH forward is separate from retired model tunnels; see [setup](../CONTRIBUTING.md). Login/admin/approval screens and streaming are later-phase work.

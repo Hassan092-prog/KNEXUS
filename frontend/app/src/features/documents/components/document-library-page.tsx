@@ -12,15 +12,17 @@ export function DocumentLibraryPage() {
   return (
     <>
       <PageHeader
-        title="Document library"
-        description="Browse and manage documents in your knowledge base. List, upload, and status workflows land in phase Z03."
+        title="Documents"
+        description="Manage documents available to your organization's knowledge base."
       />
-      <DataTable headers={["Type", "Title", "Roles", "Status", "Chunks", "Created"]} />
-      <div className="mt-6">
-        <EmptyState
-          title="No documents yet"
-          description="Documents uploaded through the backend will appear here once visible to the server-side demo actor."
-        />
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <DataTable headers={["Type", "Title", "Roles", "Status", "Chunks", "Created"]} />
+        <div className="p-6">
+          <EmptyState
+            title="Document library not connected"
+            description="List, upload, search, filtering, and pagination workflows are implemented in phase Z03. This view is a visual foundation only."
+          />
+        </div>
       </div>
     </>
   )

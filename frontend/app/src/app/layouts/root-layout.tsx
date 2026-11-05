@@ -27,7 +27,7 @@ export function RootLayout() {
         onMobileOpenChange={setMobileNavOpen}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
+      <div className="flex min-w-0 flex-1 flex-col lg:pl-[248px]">
         <AppHeader onNavOpen={() => setMobileNavOpen(true)} />
         <main id="main-content" className="flex-1">
           <PageContainer>

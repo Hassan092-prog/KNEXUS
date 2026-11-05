@@ -5,8 +5,13 @@ import { useCallback, useEffect, useState } from "react"
 import { ThemeContext, type ThemeContextType } from "@/components/shared/theme-context"
 
 function getStoredTheme(): ThemeContextType["theme"] {
-  const stored = localStorage.getItem("knexus-theme") as ThemeContextType["theme"] | null
-  return stored ?? "light"
+  try {
+    const stored = localStorage.getItem("knexus-theme") as ThemeContextType["theme"] | null
+    if (stored === "light" || stored === "dark") return stored
+  } catch {
+    // localStorage may be unavailable/blocked; fall back to light.
+  }
+  return "light"
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -23,7 +28,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = useCallback((next: ThemeContextType["theme"]) => {
     setThemeState(next)
-    localStorage.setItem("knexus-theme", next)
+    try {
+      localStorage.setItem("knexus-theme", next)
+    } catch {
+      // ignore
+    }
   }, [])
 
   const toggleTheme = useCallback(() => {

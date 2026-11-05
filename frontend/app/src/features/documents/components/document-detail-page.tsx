@@ -2,7 +2,6 @@ import { useParams } from "react-router-dom"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageHeader } from "@/components/shared/page-header"
-import { StatusBadge } from "@/components/shared/status-badge"
 
 /**
  * Document detail — visual foundation only.
@@ -37,23 +36,23 @@ export function DocumentDetailPage() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Source type</p>
-                <p className="text-sm font-medium text-foreground">—</p>
+                <p className="text-sm font-medium text-foreground">Not loaded</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Allowed roles</p>
-                <p className="text-sm font-medium text-foreground">—</p>
+                <p className="text-sm font-medium text-foreground">Not loaded</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Chunk count</p>
-                <p className="text-sm tabular-nums text-foreground">—</p>
+                <p className="text-sm tabular-nums text-foreground">Not available</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Status</p>
-                <p className="text-sm font-medium text-foreground">—</p>
+                <p className="text-sm font-medium text-foreground">Not connected</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Created</p>
-                <p className="text-sm font-mono text-foreground">—</p>
+                <p className="text-sm font-mono text-foreground">Not loaded</p>
               </div>
             </div>
           </CardContent>
@@ -66,7 +65,7 @@ export function DocumentDetailPage() {
           <CardContent className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-foreground">Ingestion</span>
-              <StatusBadge status="queued" />
+              <span className="text-xs font-medium text-muted-foreground">Not connected</span>
             </div>
             <p className="text-xs text-muted-foreground">
               Status polling and failure rendering land in phase Z03.

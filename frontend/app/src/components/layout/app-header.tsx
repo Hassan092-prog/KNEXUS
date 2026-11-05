@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/breadcrumb"
 import { resolveBreadcrumbs } from "@/components/layout/nav-config"
 import { ThemeToggle } from "@/components/shared/theme-toggle"
-import { env } from "@/lib/env"
 
 /**
  * Header with page-context breadcrumbs, a mobile navigation drawer trigger,
@@ -46,14 +45,14 @@ export function AppHeader({
             return (
               <BreadcrumbItem key={`${crumb.label}-${index}`}>
                 {isLast || !crumb.href ? (
-                  <BreadcrumbPage className="text-[10px] font-medium text-muted-foreground">
+                  <BreadcrumbPage className="text-xs font-medium text-muted-foreground">
                     {crumb.label}
                   </BreadcrumbPage>
                 ) : (
                   <BreadcrumbLink asChild>
                     <Link
                       to={crumb.href}
-                      className="text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                     >
                       {crumb.label}
                     </Link>
@@ -70,14 +69,6 @@ export function AppHeader({
 
       <div className="ml-auto flex items-center gap-2">
         <ThemeToggle />
-        <a
-          href={`${env.apiBaseUrl}/docs`}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-md text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring px-2 py-1"
-        >
-          API docs
-        </a>
       </div>
     </header>
   )

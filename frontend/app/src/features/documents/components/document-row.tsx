@@ -21,9 +21,9 @@ export function DocumentRow({ document }: { document: DocumentSummary }) {
         >
           {document.title}
         </Link>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {document.allowed_roles.join(", ")}
-        </p>
+      </td>
+      <td className="px-4 py-3 text-xs text-muted-foreground">
+        {document.allowed_roles.join(", ")}
       </td>
       <td className="px-4 py-3">
         <StatusBadge status={document.status} />

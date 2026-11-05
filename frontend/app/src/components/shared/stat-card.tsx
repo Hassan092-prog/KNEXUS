@@ -1,26 +1,40 @@
 import { cn } from "@/lib/utils"
 
 /**
- * Compact stat card: a prominent value with a label and optional caption.
- * No trend indicators or unsupported analytics — values come from real data only.
+ * Metric card: prominent value with label, optional icon and caption.
+ * Surface, border, and padding are consistent across all instances.
  */
 export function StatCard({
   value,
   label,
   caption,
+  icon,
   className,
 }: {
   value: React.ReactNode
   label: string
   caption?: string
+  icon?: React.ReactNode
   className?: string
 }) {
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
-      <p className="text-sm font-semibold tabular-nums text-foreground">{value}</p>
-      <p className="text-xs text-muted-foreground leading-none">{label}</p>
+    <div
+      className={cn(
+        "flex h-full flex-col justify-between rounded-lg border border-border bg-card p-4",
+        className,
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          {label}
+        </p>
+        {icon ? <span className="text-muted-foreground">{icon}</span> : null}
+      </div>
+      <p className="mt-3 text-2xl font-semibold tabular-nums text-foreground">
+        {value}
+      </p>
       {caption ? (
-        <p className="text-xs text-muted-foreground/70 leading-none">{caption}</p>
+        <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{caption}</p>
       ) : null}
     </div>
   )

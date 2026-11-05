@@ -21,8 +21,11 @@ function BrandMark() {
       <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
         <BookOpenCheckIcon className="size-4" aria-hidden="true" />
       </span>
-      <span className="font-heading text-sm font-semibold tracking-tight text-foreground">
-        KNEXUS
+      <span className="flex flex-col leading-tight">
+        <span className="font-heading text-sm font-semibold tracking-tight text-foreground">
+          KNEXUS
+        </span>
+        <span className="text-[11px] text-muted-foreground">Enterprise knowledge</span>
       </span>
     </Link>
   )
@@ -42,22 +45,37 @@ function SidebarNavLinks({ onNavigate }: { onNavigate?: () => void }) {
       {navSections.map((section) => {
         if (section.items.length === 0) return null
         return (
-          <>
+          <div key={section.key} className="flex flex-col gap-0.5">
             <SectionHeading label={section.label} />
             {section.items.map((item) => {
               const Icon = item.icon
+              if (item.external) {
+                return (
+                  <a
+                    key={item.label}
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={onNavigate}
+                    className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Icon className="size-4 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{item.label}</span>
+                  </a>
+                )
+              }
               return (
                 <NavLink
-                  key={item.to || item.label}
+                  key={item.label}
                   to={item.to}
                   end={item.end}
                   onClick={onNavigate}
                   className={({ isActive }) =>
                     cn(
-                      "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium outline-none transition-colors",
+                      "flex items-center gap-2 rounded-md border-l-2 border-transparent px-2.5 py-2 text-sm font-medium outline-none transition-colors",
                       "focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground border-l-2 border-sidebar-primary pl-2"
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground border-sidebar-primary"
                         : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                     )
                   }
@@ -67,7 +85,7 @@ function SidebarNavLinks({ onNavigate }: { onNavigate?: () => void }) {
                 </NavLink>
               )
             })}
-          </>
+          </div>
         )
       })}
     </nav>
@@ -126,7 +144,7 @@ export function AppSidebar({
 }) {
   return (
     <>
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-sidebar-border bg-sidebar lg:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] border-r border-sidebar-border bg-sidebar lg:block">
         <SidebarBody />
       </aside>
 

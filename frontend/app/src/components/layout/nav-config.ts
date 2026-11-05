@@ -1,8 +1,9 @@
+import { env } from "@/lib/env"
 import {
   LayoutDashboardIcon,
   LibraryBigIcon,
   SparklesIcon,
-  HelpCircleIcon,
+  BookIcon,
   type LucideIcon,
 } from "lucide-react"
 
@@ -16,6 +17,10 @@ export interface NavItem {
   icon: LucideIcon
   /** Section group for sidebar rendering. */
   section?: string
+  /** External link (rendered as an anchor, not a router link). */
+  external?: boolean
+  /** Destination for external items. */
+  href?: string
 }
 
 export interface NavSection {
@@ -28,7 +33,15 @@ export const navItems: NavItem[] = [
   { label: "Overview", to: "/", end: true, icon: LayoutDashboardIcon, section: "workspace" },
   { label: "Documents", to: "/documents", end: false, icon: LibraryBigIcon, section: "workspace" },
   { label: "Assistant", to: "/assistant", end: false, icon: SparklesIcon, section: "workspace" },
-  { label: "API docs", to: "", end: false, icon: HelpCircleIcon, section: "system" },
+  {
+    label: "API documentation",
+    to: "",
+    end: false,
+    icon: BookIcon,
+    section: "system",
+    external: true,
+    href: `${env.apiBaseUrl}/docs`,
+  },
 ]
 
 export const navSections: NavSection[] = [

@@ -4,7 +4,6 @@ import { ArrowRightIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Separator } from "@/components/ui/separator"
 import { PageHeader } from "@/components/shared/page-header"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ErrorState } from "@/components/shared/error-state"
@@ -76,11 +75,11 @@ export function DashboardPage() {
     <>
       <PageHeader
         title="Overview"
-        description="Document counters derived from the KNEXUS backend document list."
+        description="Monitor the state of your organization's knowledge base."
         actions={
           <Button asChild variant="outline" size="sm">
             <Link to="/documents">
-              Open document library
+              View all documents
               <ArrowRightIcon className="ml-1 size-4" aria-hidden="true" />
             </Link>
           </Button>
@@ -101,10 +100,10 @@ export function DashboardPage() {
         />
       ) : data ? (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard
               value={data.total.toLocaleString()}
-              label="Total"
+              label="Total documents"
               caption="Accessible documents"
             />
             {statusOrder.map((status) => (
@@ -137,35 +136,61 @@ export function DashboardPage() {
                 />
               ) : (
                 <>
-                  <p className="mb-2 text-xs font-medium text-muted-foreground">
-                    Most recent documents
-                  </p>
-                  <Separator className="mb-3" />
-                  <ul className="flex flex-col gap-0 border-t border-border">
-                    {data.recent.map((document) => (
-                      <li
-                        key={document.id}
-                        className="flex items-center gap-3 py-3 border-b border-border last:border-0"
-                      >
-                        <DocumentTypeIcon sourceType={document.source_type} />
-                        <div className="min-w-0 flex-1">
-                          <Link
-                            to={`/documents/${document.id}`}
-                            className="min-w-0 flex-1 truncate font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                            Type
+                          </th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                            Title
+                          </th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                            Status
+                          </th>
+                          <th className="px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                            Chunks
+                          </th>
+                          <th className="px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                            Created
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.recent.map((document) => (
+                          <tr
+                            key={document.id}
+                            className="border-b border-border last:border-0 hover:bg-muted/50"
                           >
-                            {document.title}
-                          </Link>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {document.allowed_roles.join(", ")}
-                          </p>
-                        </div>
-                        <StatusBadge status={document.status} />
-                        <span className="ml-auto tabular-nums text-xs text-muted-foreground">
-                          {dateFormatter.format(new Date(document.created_at))}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                            <td className="px-3 py-3">
+                              <DocumentTypeIcon sourceType={document.source_type} />
+                            </td>
+                            <td className="px-3 py-3">
+                              <Link
+                                to={`/documents/${document.id}`}
+                                className="font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                {document.title}
+                              </Link>
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {document.allowed_roles.join(", ")}
+                              </p>
+                            </td>
+                            <td className="px-3 py-3">
+                              <StatusBadge status={document.status} />
+                            </td>
+                            <td className="px-3 py-3 text-right tabular-nums text-xs text-muted-foreground">
+                              {document.chunk_count}
+                            </td>
+                            <td className="px-3 py-3 text-right tabular-nums text-xs text-muted-foreground">
+                              {dateFormatter.format(new Date(document.created_at))}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                   <div className="mt-3">
                     <Button asChild variant="ghost" size="sm">
                       <Link to="/documents">

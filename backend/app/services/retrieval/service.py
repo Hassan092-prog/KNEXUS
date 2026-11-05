@@ -1,6 +1,8 @@
 """PostgreSQL pgvector retrieval with authorization filters before ranking."""
 from __future__ import annotations
 
+import inspect
+
 import asyncio
 import math
 from typing import Sequence
@@ -55,6 +57,21 @@ def build_authorized_statement(
     )
 
 
+def _embed_query_with_task_adaptation(embedder: Embedder, question: str) -> list[list[float]]:
+    """Adapt the embedder task-type interface before dispatch without exception retries."""
+    try:
+        sig = inspect.signature(embedder.embed_texts)
+        supports_task = "task_type" in sig.parameters or any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        )
+    except (ValueError, TypeError):
+        supports_task = False
+
+    if supports_task:
+        return embedder.embed_texts([question], task_type="RETRIEVAL_QUERY")
+    return embedder.embed_texts([question])
+
+
 class RetrievalService:
     def __init__(
         self,
@@ -71,6 +88,8 @@ class RetrievalService:
         if not math.isfinite(self.minimum_similarity) or not -1 <= self.minimum_similarity <= 1:
             raise ValueError("Retrieval threshold must be finite and between -1 and 1")
 
+
+
     async def retrieve(
         self,
         session: AsyncSession,
@@ -79,7 +98,7 @@ class RetrievalService:
         top_k: int,
     ) -> list[EvidenceChunk]:
         query_vector = validate_embeddings(
-            await asyncio.to_thread(self.embedder.embed_texts, [question]), 1
+            await asyncio.to_thread(_embed_query_with_task_adaptation, self.embedder, question), 1
         )[0]
         statement = build_authorized_statement(
             actor,

@@ -1,6 +1,8 @@
 """Persisted, explicitly retriable document-processing lifecycle."""
 from __future__ import annotations
 
+import inspect
+
 import asyncio
 from datetime import datetime, timezone
 import logging
@@ -69,6 +71,21 @@ async def _mark_failed(
         )
 
 
+def _embed_document_chunk_with_task_adaptation(embedder: Embedder, content: str) -> list[list[float]]:
+    """Adapt the embedder task-type interface before dispatch without exception retries."""
+    try:
+        sig = inspect.signature(embedder.embed_texts)
+        supports_task = "task_type" in sig.parameters or any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        )
+    except (ValueError, TypeError):
+        supports_task = False
+
+    if supports_task:
+        return embedder.embed_texts([content], task_type="RETRIEVAL_DOCUMENT")
+    return embedder.embed_texts([content])
+
+
 async def process_document(
     document_id: UUID,
     *,
@@ -129,7 +146,7 @@ async def process_document(
 
             for chunk in chunks:
                 vector_batch = await asyncio.to_thread(
-                    active_embedder.embed_texts, [chunk.content]
+                    _embed_document_chunk_with_task_adaptation, active_embedder, chunk.content
                 )
                 vector = validate_embeddings(vector_batch, 1)[0]
                 row = DocumentChunk(

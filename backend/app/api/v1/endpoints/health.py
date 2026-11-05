@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-import httpx
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -11,14 +10,19 @@ router = APIRouter()
 
 @router.get("/health", summary="Health Check")
 async def health_check(db: AsyncSession = Depends(get_db)):
-    """Return a non-sensitive dependency diagnostic; this is not readiness."""
+    """Return passive dependency diagnostics without outbound network probes."""
+    active_gen_provider = settings.GENERATION_PROVIDER or settings.OLLAMA_PROVIDER
+    active_embed_provider = settings.EMBEDDING_PROVIDER
+
     health_status = {
         "status": "healthy",
         "app": settings.APP_NAME,
         "environment": settings.APP_ENV,
         "database": "unknown",
         "pgvector_extension": "unknown",
-        "ollama": "unknown",
+        "generation": "configured" if active_gen_provider else "not_configured",
+        "embedding": "configured" if active_embed_provider else "not_configured",
+        "ollama": "configured" if active_gen_provider == "ollama" else "disabled",
     }
 
     try:
@@ -35,14 +39,5 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         health_status["database"] = "unavailable"
         health_status["pgvector_extension"] = "unknown"
         health_status["status"] = "degraded"
-
-    try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            response = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
-            health_status["ollama"] = (
-                "online" if response.status_code == 200 else "unhealthy"
-            )
-    except Exception:
-        health_status["ollama"] = "offline"
 
     return health_status

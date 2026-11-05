@@ -1,0 +1,63 @@
+{
+  "data": [
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "title": "Onboarding Checklist — Engineering (Draft)",
+      "source_type": "docx",
+      "status": "queued",
+      "allowed_roles": ["manager", "employee"],
+      "chunk_count": 0,
+      "created_at": "2026-11-05T10:12:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "title": "Expense Reimbursement Procedure",
+      "source_type": "docx",
+      "status": "processing",
+      "allowed_roles": ["employee"],
+      "chunk_count": 6,
+      "created_at": "2026-11-05T08:30:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "title": "Vendor Onboarding Presentation",
+      "source_type": "pdf",
+      "status": "failed",
+      "allowed_roles": ["manager"],
+      "chunk_count": 0,
+      "created_at": "2026-11-04T16:41:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "title": "IT Security Policy v2.4",
+      "source_type": "pdf",
+      "status": "complete",
+      "allowed_roles": ["employee", "manager"],
+      "chunk_count": 30,
+      "created_at": "2026-10-28T14:05:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "title": "Customer Support Playbook",
+      "source_type": "docx",
+      "status": "complete",
+      "allowed_roles": ["employee", "manager"],
+      "chunk_count": 18,
+      "created_at": "2026-10-20T11:00:00Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "title": "Synthetic Employee Handbook",
+      "source_type": "pdf",
+      "status": "complete",
+      "allowed_roles": ["employee"],
+      "chunk_count": 1,
+      "created_at": "2026-10-19T00:00:00Z"
+    }
+  ],
+  "meta": {
+    "total": 6,
+    "limit": 20,
+    "offset": 0
+  }
+}

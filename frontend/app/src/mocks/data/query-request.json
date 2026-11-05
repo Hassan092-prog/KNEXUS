@@ -1,0 +1,5 @@
+{
+  "question": "How many annual leave days does the synthetic handbook allow?",
+  "top_k": 5,
+  "stream": false
+}

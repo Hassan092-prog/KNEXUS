@@ -31,6 +31,16 @@ class ChunkDraft:
 @lru_cache(maxsize=4)
 def load_embedding_tokenizer(model_name: str, revision: str) -> Tokenizer:
     """Load only an already-cached tokenizer; never contact the model hub."""
+    if (
+        model_name in {"gemini-embedding-001", "text-embedding-004", "models/gemini-embedding-001"}
+        or settings.EMBEDDING_PROVIDER == "google"
+    ):
+        raise TokenizerUnavailableError(
+            f"Token counting for hosted model '{model_name}' is not supported: "
+            "no verified offline tokenizer is available. Character approximations "
+            "cannot be persisted as exact token counts."
+        )
+
     try:
         from transformers import AutoTokenizer
         return AutoTokenizer.from_pretrained(
@@ -43,6 +53,7 @@ def load_embedding_tokenizer(model_name: str, revision: str) -> Tokenizer:
         raise TokenizerUnavailableError(
             "The configured embedding tokenizer is not available in the local cache."
         ) from exc
+
 
 
 def _encoded_length(tokenizer: Tokenizer, text: str, *, special: bool) -> int:

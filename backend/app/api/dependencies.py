@@ -13,6 +13,7 @@ from app.core.generation import GenerationService
 from app.schemas import ActorContext
 from app.services.generation.errors import GenerationConfigurationError
 from app.services.generation.generator import GenerationService as ConfiguredGenerationService
+from app.core.token_counter import TokenCounter, get_default_token_counter
 from app.services.ingestion.embedding import Embedder, get_default_embedder
 from app.services.retrieval.service import RetrievalService
 
@@ -45,11 +46,18 @@ def get_embedder() -> Embedder:
     )
 
 
+def get_token_counter() -> TokenCounter | None:
+    if settings.EMBEDDING_PROVIDER == "google":
+        return get_default_token_counter(model_name=settings.EMBEDDING_MODEL_NAME)
+    return None
+
+
 def get_retrieval_service(
     embedder: Embedder = Depends(get_embedder),
+    token_counter: TokenCounter | None = Depends(get_token_counter),
 ) -> RetrievalService:
-    """Dependency override point for offline tests; production uses configured embedder."""
-    return RetrievalService(embedder=embedder)
+    """Dependency override point for offline tests; production uses configured embedder and counter."""
+    return RetrievalService(embedder=embedder, token_counter=token_counter)
 
 
 class _UnconfiguredGenerationService:

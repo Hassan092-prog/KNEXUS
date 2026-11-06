@@ -30,7 +30,12 @@ from app.services.generation.errors import (
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
-from app.services.ingestion.errors import EmbeddingUnavailableError
+from app.core.dispatch_policy import LiveInferenceBlockedError
+from app.services.ingestion.errors import (
+    EmbeddingUnavailableError,
+    InputTokenLimitExceededError,
+    TokenCountingError,
+)
 from app.services.retrieval.service import RetrievalService
 
 
@@ -56,9 +61,23 @@ async def query_documents(
         evidence = await retrieval.retrieve(
             session, actor, payload.question, payload.top_k
         )
-    except EmbeddingUnavailableError:
+    except InputTokenLimitExceededError:
         raise APIProblem(
-            503, "PROVIDER_UNAVAILABLE", "The configured embedding service is unavailable."
+            422,
+            "VALIDATION_ERROR",
+            "The submitted query exceeds the maximum allowed input token limit.",
+        )
+    except (EmbeddingUnavailableError, TokenCountingError):
+        raise APIProblem(
+            503,
+            "PROVIDER_UNAVAILABLE",
+            "The configured embedding service is unavailable.",
+        )
+    except LiveInferenceBlockedError:
+        raise APIProblem(
+            503,
+            "PROVIDER_UNAVAILABLE",
+            "The embedding service is not authorized for live dispatch.",
         )
     retrieval_ms = (perf_counter() - retrieval_started) * 1000
     if not evidence:

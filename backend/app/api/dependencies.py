@@ -13,6 +13,7 @@ from app.core.generation import GenerationService
 from app.schemas import ActorContext
 from app.services.generation.errors import GenerationConfigurationError
 from app.services.generation.generator import GenerationService as ConfiguredGenerationService
+from app.core.token_counter import TokenCounter, get_default_token_counter
 from app.services.ingestion.embedding import Embedder, get_default_embedder
 from app.services.retrieval.service import RetrievalService
 
@@ -39,16 +40,24 @@ def get_current_actor(request: Request) -> ActorContext:
 
 def get_embedder() -> Embedder:
     return get_default_embedder(
-        settings.EMBEDDING_MODEL_NAME,
-        settings.EMBEDDING_MODEL_REVISION,
+        provider=settings.EMBEDDING_PROVIDER,
+        model_name=settings.EMBEDDING_MODEL_NAME,
+        revision=settings.EMBEDDING_MODEL_REVISION,
     )
+
+
+def get_token_counter() -> TokenCounter | None:
+    if settings.EMBEDDING_PROVIDER == "google":
+        return get_default_token_counter(model_name=settings.EMBEDDING_MODEL_NAME)
+    return None
 
 
 def get_retrieval_service(
     embedder: Embedder = Depends(get_embedder),
+    token_counter: TokenCounter | None = Depends(get_token_counter),
 ) -> RetrievalService:
-    """Dependency override point for offline tests; production uses cached MiniLM."""
-    return RetrievalService(embedder=embedder)
+    """Dependency override point for offline tests; production uses configured embedder and counter."""
+    return RetrievalService(embedder=embedder, token_counter=token_counter)
 
 
 class _UnconfiguredGenerationService:
@@ -59,22 +68,45 @@ class _UnconfiguredGenerationService:
 
     async def generate(self, request):
         raise GenerationConfigurationError(
-            "Set OLLAMA_PROVIDER explicitly to 'fake' or 'ollama'"
+            "Set GENERATION_PROVIDER or OLLAMA_PROVIDER explicitly to one of: "
+            "fake, groq, openai, mistral, ollama"
         )
 
 
 @lru_cache(maxsize=1)
 def _configured_generation_service() -> GenerationService:
+    provider = settings.GENERATION_PROVIDER or settings.OLLAMA_PROVIDER
+    if not provider:
+        return _UnconfiguredGenerationService()
     try:
-        return ConfiguredGenerationService(
-            provider=settings.OLLAMA_PROVIDER,
-            url=settings.OLLAMA_BASE_URL,
-            model=settings.OLLAMA_MODEL,
-            timeout=settings.OLLAMA_TIMEOUT,
-            num_ctx=settings.OLLAMA_NUM_CTX,
-            num_predict=settings.OLLAMA_NUM_PREDICT,
-            max_prompt_chars=settings.GENERATION_MAX_PROMPT_CHARS,
-        )
+        if provider in {"openai", "groq", "mistral"}:
+            api_key = (
+                settings.GENERATION_API_KEY.get_secret_value()
+                if settings.GENERATION_API_KEY is not None
+                else None
+            )
+            return ConfiguredGenerationService(
+                provider=provider,
+                url=settings.GENERATION_BASE_URL,
+                model=settings.GENERATION_MODEL,
+                timeout=settings.GENERATION_TIMEOUT,
+                num_predict=settings.GENERATION_MAX_TOKENS,
+                max_prompt_chars=settings.GENERATION_MAX_PROMPT_CHARS,
+                api_key=api_key,
+                api_base_url=settings.GENERATION_BASE_URL,
+                temperature=settings.GENERATION_TEMPERATURE,
+                seed=settings.GENERATION_SEED,
+            )
+        else:
+            return ConfiguredGenerationService(
+                provider=provider,
+                url=settings.OLLAMA_BASE_URL,
+                model=settings.OLLAMA_MODEL,
+                timeout=settings.OLLAMA_TIMEOUT,
+                num_ctx=settings.OLLAMA_NUM_CTX,
+                num_predict=settings.OLLAMA_NUM_PREDICT,
+                max_prompt_chars=settings.GENERATION_MAX_PROMPT_CHARS,
+            )
     except GenerationConfigurationError:
         return _UnconfiguredGenerationService()
 

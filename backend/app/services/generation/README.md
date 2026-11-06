@@ -2,19 +2,21 @@
 
 This package accepts canonical GenerationRequest evidence already authorized by the backend and returns GenerationResult. It selects no tenant/actor, reads no DB and executes no actions. The adapter is published in main; the non-streaming query route (`POST /api/v1/query`) calls it through the canonical `run_generation` boundary. The API owns all HTTP mapping (below); generation raises typed Python errors only.
 
-## Approved target: hosted generation
+## Implementation status (6 November 2026)
 
-The revised plan uses hosted APIs for generation and embeddings, not local models or model tunnels. Naveed selectively adapts relevant provider code from [enterprise-knowledge-bot at the pinned revision](https://github.com/Hassan092-prog/enterprise-knowledge-bot/tree/e67771a15f49a79443a365fbce85b8559ef43fb7), preserving licences, accurate authorship and KNEXUS's boundary. [TRD](../../../../docs/TRD.md) owns shared choices.
+PR #13 merged the hosted chat-completions transport at main 1d4a06100b590a5f2a77830cbb3772eb789f0f47. It supports explicit openai/groq/mistral selection and retains canonical local validation. This is transport implementation, not evidence of live model/account/schema compatibility.
 
-The hosted adapter, provider/model/endpoint and credential settings are pending. Do not assume an OpenAI-compatible protocol, invent environment names or present existing OLLAMA_* settings as hosted configuration. Use mocked HTTP until reviewed adapters and live-call authorization exist. No new SDK, billable call or model substitution is authorized by these instructions.
+[PR #15](https://github.com/Hassan092-prog/KNEXUS/pull/15) remains open draft at e2658b627c8d92f35bd2d6e77b812175985e99d2, one commit ahead of main. Its four-file diff adds hosted_harness.py, test_hosted_harness.py, provider-aware live_harness.py provenance and README guidance. Development/held-out labels and explicit live/model/key gates are implemented in that branch; they do not authorize calls, enforce budgets or mechanically prevent held-out tuning.
 
-Preserve async generate(GenerationRequest) -> GenerationResult and app.core.generation.run_generation(service, request). Backend-authorized evidence only; no DB access, identity selection or tool execution. Keep explicit provider selection, finite positive network/overall deadlines, external cancellation, strict parsing and typed failures. Frontend clients call KNEXUS, never providers directly.
+Naveed's external integration-handoff-20261104.md rev 2 supersedes rev 1 and proposes further corrections. No such implementation or live execution was authorized by that handoff. The latest direction remains free-first with no paid expenditure, billing upgrade, automatic retries or fallback. Groq gpt-oss-120b is proposed, not account-verified; final hosted embeddings/model/dimension and privacy/quotas remain decisions. See [status](../../../../docs/PROJECT_STATUS.md) and [TRD](../../../../docs/TRD.md).
 
-## Existing implementation (historical)
+## Existing constructor and API wiring
 
-PR #12 merged prompt v4, constructor-only seed propagation and evaluation attribution. Current concrete providers remain fake and Ollama; hosted support is not implemented by this documentation change. OLLAMA_PROVIDER, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT, OLLAMA_NUM_CTX, OLLAMA_NUM_PREDICT and GENERATION_MAX_PROMPT_CHARS describe that existing code, not the hosted target. seed and httpx transport are constructor-only.
+GenerationService supports provider, url, model, timeout, num_ctx, num_predict, max_prompt_chars, seed, transport, api_key, api_base_url and temperature. Hosted model/key/base/temperature may resolve from GENERATION_MODEL, GENERATION_API_KEY, GENERATION_API_BASE_URL and GENERATION_TEMPERATURE; provider/timeout/output currently retain legacy OLLAMA_* environment names. Existing controls are code facts, not the agreed future Settings contract.
 
-The generator reads process environment, not root .env directly. Pydantic Settings does not export loaded values. Preserve this distinction when implementing explicit hosted configuration. Offline tests select fake deliberately; no silent fallback.
+The hosted constructor resolves endpoint from api_base_url, its environment value or the provider default; url is used by legacy paths. Inspect this distinction rather than universally requiring url=None. Current API factory passes OLLAMA_PROVIDER, OLLAMA_MODEL, timeout and output settings and does not explicitly pass Settings-held hosted secrets. The legacy model can override hosted environment selection. Agree explicit validated Settings-to-constructor mapping before claiming the route is integrated.
+
+Pydantic loading root .env does not export values into os.environ. A masked Settings secret passed explicitly is valid; whichever delivery is chosen, exclude credentials from logs, settings exports, errors and argv. Tests explicitly select/inject fake. Unconfigured application generation must fail clearly.
 
 ## Prompts and context budget
 
@@ -54,9 +56,16 @@ service = GenerationService(
 )
 ~~~
 
-Default endpoints when `api_base_url` is not given: OpenAI `https://api.openai.com/v1`, Groq `https://api.groq.com/openai/v1`, Mistral `https://api.mistral.ai/v1`. **Team decision (2026-11-02): Groq at the default endpoint is the first hosted provider.** The concrete Groq model is not yet decided and stays pending Hassan's approval; the key is delivered by Hassan via server-side `GENERATION_API_KEY`, and no spending is authorized — live acceptance therefore remains pending. Proposed environment names (documented proposal pending Hassan's `Settings` wiring; constructor values always win): `GENERATION_API_KEY` (Bearer token; never appears in the request payload or logs), `GENERATION_API_BASE_URL`, `GENERATION_MODEL`, `GENERATION_TEMPERATURE` (default `0.0`). The `OLLAMA_*` environment names remain reserved for the ollama/fake paths; `OLLAMA_PROVIDER` stays the explicit provider selector for all providers.
+Default endpoint support in code: OpenAI https://api.openai.com/v1, Groq https://api.groq.com/openai/v1 and Mistral https://api.mistral.ai/v1. Endpoint support does not select a model, prove provider schema compatibility or authorize expenditure.
 
-Request details: `response_format` is a strict JSON schema derived from the canonical `GenerationResult` (`abstention_reason` becomes required and default-less to satisfy strict structured-output validation); `max_tokens` maps from `num_predict`; `seed` is included only when explicitly set; evidence and question are sent verbatim as the user message; the API key is sent only in the `Authorization: Bearer` header. Typed failures: invalid output/contract violations → `MalformedOutputError` (HTTP 502 via the published mapping), `httpx` errors/timeouts → `ProviderUnavailableError`/`ProviderTimeoutError` (503/504), missing key/unknown provider → `GenerationConfigurationError` before any call. Deliberate differences from the source: no LangChain dependency, no built-in retry/backoff (bounded retries deferred for review), no semantic cache or streaming. No billable API call may be made without explicit authorization; all verification so far is mocked HTTP (`backend/tests/phase1/generation/test_hosted_service.py`).
+Current payload uses max_tokens from num_predict and a schema derived from GenerationResult with abstention_reason required/default-less. JSON is parsed and locally validated with citation membership. PR #15 does not implement the following proposed provider corrections:
+- Provider-specific max_completion_tokens/output controls and explicit termination/refusal checks.
+- A reviewed Groq schema compatibility projection if necessary. Undocumented keywords are not confirmed rejected; never recursively drop property names/structure. All canonical local invariants remain enforced.
+- Usage/finish_reason/fingerprint capture before result parsing/validation can fail. A successful response with invalid output may still consume quota/cost.
+- Optional reasoning_effort=low and include_reasoning=false. Hiding reasoning does not establish reduced computation, billing or completion-token consumption.
+- Shared durable reserve-before-dispatch controls and verified generation input-token bounds.
+
+These are bounded change proposals, not completed features. Preserve typed failures, network/overall deadlines, external cancellation and exact citations. Rate-limit diagnostics must be sanitized and bounded rather than copying provider content into public errors.
 
 ## Verification
 
@@ -73,12 +82,14 @@ Bounded seeded runs (seed 42, 3 repeats each) are preserved outside the reposito
 
 These remain historical failures, not hosted acceptance results. The next decision is hosted provider/model selection; do not resume laptop-model tuning.
 
-## Harness transition
+## Harness and live acceptance gate
 
-The existing live_harness.py explicitly targets Ollama. Its --run-live flag is not a hosted API switch; do not execute it as hosted acceptance or start local inference to satisfy the revised plan.
+Main still contains the historical Ollama live_harness.py. PR #15 adds hosted_harness.py with explicit --run-live, provider/model/key selection, fresh output-path protection and development/held-out groups. Do not recreate this work or run either harness as implied authorization.
 
-Naveed must adapt reusable harness logic to an explicitly selected hosted adapter, with approved endpoint/model, secure credentials and bounded live-call/cost authorization. Preserve incremental JSONL, fresh output paths (the historical runner overwrites its target), exact citation-set expectations, prompt/configuration attribution, repeats, separate error/semantic outcomes, failing exit status, monotonic attempted-case timing and null latency for skipped inference.
+Before live execution, agree token/quota policy, account access and privacy. Post-call usage cannot enforce an input-token ceiling. chars/3 is not a guaranteed bound for Unicode, message framing or schema overhead; local Harmony tokenization alone does not establish server representation. Strict input enforcement remains unresolved; use mocks until an approved solution or explicit revised policy exists.
 
-Do not silently translate Ollama num_ctx/num_predict/seed semantics into another API or assume deterministic hosted output. Validate provider-specific token limits and structured-output capabilities. Mock rate limits, authentication, unavailable, timeout and invalid responses before approved live calls.
+A shared ledger must atomically reserve attempts/token/cost allowances under a cross-process lock before dispatch, durably survive crashes/restarts, and retain worst-case reservations for uncertain provider outcomes. Unknown usage is unknown, never zero. Capture available usage even when canonical validation fails. Keep one authoritative transactional state; audit records cannot independently determine allowance or be silently rewritten to imply success. No network/file/authorization side effects at import time.
 
-Historical local runs above remain evidence about their own configuration only; they do not establish hosted quality. See [evaluation](../../../../docs/EVALUATION_STRATEGY.md).
+Report every attempted case, timeout/error, abstention, expected citation set, semantic outcome and measured latency. Denominator is all attempts: all errors is failure. Freeze the development configuration before held-out reporting; labels do not enforce process discipline. N06 can run on an approved isolated checkout before merge, without shared DB access.
+
+Historical local runs remain evidence about their own setup only. No live hosted run or paid spending is authorized by this documentation. See [evaluation](../../../../docs/EVALUATION_STRATEGY.md).

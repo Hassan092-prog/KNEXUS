@@ -1,5 +1,11 @@
 # Backend testing
 
+## Current draft harness evidence
+
+Draft [PR #15](https://github.com/Hassan092-prog/KNEXUS/pull/15), commit e2658b6, adds the hosted harness and mocked regressions. It is not merged or live-approved. Naveed's reported Windows count is 195 passed, 18 skipped, one pre-existing POSIX-permission assertion failure; this status update does not independently verify that output. Keep that platform issue separate and do not weaken security assertions.
+
+New provider corrections and shared atomic ledger tests remain proposed. Cover usage capture even on invalid output, crash/restart reservations, concurrency, unknown usage, termination/refusal, deadline/cancellation and provider-schema structure. No import-time network/filesystem authorization effects. Tests explicitly inject fake; application configuration must fail clearly when missing.
+
 ## Hosted migration verification
 
 The revised target is hosted generation and embeddings; ordinary offline checks use mocked HTTP and fake vectors. Existing MiniLM/Ollama tests and archived runs describe historical implementation, not instructions to start inference.

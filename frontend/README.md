@@ -4,7 +4,7 @@
 
 Inspect reusable components from [enterprise-knowledge-bot at the pinned revision](https://github.com/Hassan092-prog/enterprise-knowledge-bot/tree/e67771a15f49a79443a365fbce85b8559ef43fb7), redesign the UI and adapt to canonical KNEXUS payloads. Preserve licences, authorship and local work; do not copy old API/role assumptions, secrets or unrelated modules.
 
-Generation and embeddings use backend-held hosted API credentials under the revised plan; adapters are pending. No provider keys or direct provider requests in browser code. Mock mode remains explicit and never hides live failures.
+Generation and embeddings use backend-held hosted API credentials under the revised plan. Generation transport (PR #13), offline embedding dispatch protection (PR #16), and hosted input validation (PR #19) are merged; route integration, live token correspondence, and corpus activation remain pending. No provider keys or direct provider requests in browser code. Mock mode remains explicit and never hides live failures.
 
 Only this README is committed in the merged baseline; no manifest, application source or build exists. [Project status](../docs/PROJECT_STATUS.md) records published work, not unpushed laptop progress.
 

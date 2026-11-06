@@ -6,7 +6,7 @@ For Phase 1 details below, this baseline narrows the broader [API proposal](API_
 
 ## Hosted migration decision
 
-The approved target uses hosted APIs for generation and embeddings. Existing local MiniLM and fake/Ollama code remains historical implementation; hosted provider/model choices and adapters are pending. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior. This revises deployment/provider policy only: canonical fields, validation, identity and H01 compatibility remain unchanged.
+The target remains hosted generation and embeddings. PR #13 has merged the hosted generation transport; draft PR #15 supplies the unmerged evaluation harness. PR #16 merged the offline hosted embedding dispatch foundation, and PR #19 merged hosted input token validation and candidate splitting. API wiring and live acceptance remain pending, and historical database vectors still use local MiniLM. No provider account access, paid expenditure or hosted embedding dimension is established by these docs. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior. This revises deployment/provider policy only: canonical fields, validation, identity and H01 compatibility remain unchanged.
 
 ## First vertical slice
 

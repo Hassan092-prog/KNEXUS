@@ -8,6 +8,10 @@ Authoritative definitions:
 - [Initial revision](../backend/alembic/versions/0001_phase1_persistence.py)
 - [Explicit demo seed](../backend/app/db/demo_seed.py)
 
+## Embedding proposal status (6 November 2026)
+
+Storage remains vector(384), with no hosted schema/profile change implemented by this update. Offline hosted embedding foundation (PR #16) and input token validation (PR #19) are merged in main; corpus activation, re-embedding, and any future dimensional migrations remain pending. Final free-tier embedding provider/model/dimension remains undecided. Preserve existing chunks/vectors and plan explicit activation, resumable re-embedding and safe downgrade; no external API calls inside migrations and no silent vector deletion/conversion.
+
 ## Hosted embedding transition
 
 The revised target uses hosted embeddings; the schema remains vector(384) until a reviewed change. Provider/model/dimension selection is pending. Use identical model/revision for documents and queries; validate finite values and vector lengths. Re-embed for any model change, even at 384 dimensions; a new dimension additionally requires migration/index changes. Never mix MiniLM document vectors with hosted query vectors. This update performs no database migration. [TRD](TRD.md) owns the coordinated decision.

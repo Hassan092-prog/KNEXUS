@@ -4,6 +4,18 @@
 
 Offline boundary/generation/persistence coverage and a disposable database run exist. A full retrieval benchmark, frontend suite, load harness and CI workflow do not. Do not copy illustrative metrics or test pseudocode into a results report.
 
+## Current hosted handoff and quota controls (6 November 2026)
+
+Draft PR #15 adds the hosted development/held-out harness, not live acceptance or a budget grant. The latest user direction is free-first; the historical $5/100-attempt envelope and OpenAI-1536 configuration remain unapproved proposals. Free quotas are account-specific and a maximum allowance does not imply it must be consumed in one session or on a paid plan.
+
+Strict input-token enforcement is unresolved. chars/3, calibration and post-call usage are not guaranteed pre-call bounds for arbitrary inputs, schema and framing. Harmony tokenization does not prove the provider's exact server prompt representation. Keep live execution blocked pending an approved enforceable bound or explicit revised policy. Hiding reasoning does not establish that reasoning is outside completion/billing limits.
+
+Future harness and API tests must share atomic reserve-before-dispatch controls under cross-process locking, with durable attempt/token/cost state and crash recovery. Unknown usage never becomes zero; uncertain attempts retain worst-case reservations. Capture usage before output parsing/canonical validation can fail. A provider success followed by invalid output still consumes resources. Define one state authority and auditable reconciliation; do not silently overwrite append-only evidence.
+
+Report all attempted cases and the overall denominator, including errors/timeouts/abstentions and semantic failures. All calls failing must fail acceptance. Freeze tuning before held-out reporting; disjoint group names alone do not prevent tuning leakage. N06 can be verified on an approved isolated integration checkout before merge.
+
+Naveed reports Windows offline results of 195 passed, 18 skipped and one pre-existing storage-permission failure, plus a passing canonical checker. These are teammate-reported, not independently rerun here. No hosted model quality or account availability is established by them.
+
 ## Hosted acceptance target
 
 Evaluate the agreed hosted generation and embedding models after implementation. Historical MiniLM/Ollama results cannot satisfy this gate. Ordinary tests use mocked HTTP; live synthetic calls need explicit access and bounded call/cost approval.

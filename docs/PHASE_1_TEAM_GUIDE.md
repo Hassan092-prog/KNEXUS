@@ -4,6 +4,14 @@
 
 Read [status](PROJECT_STATUS.md) for completion, [CONTRIBUTING](../CONTRIBUTING.md) for setup/branches and [ownership](TEAM_RESPONSIBILITIES.md) before selecting work. [Canonical contracts](PHASE_1_CONTRACT.md) and [models](../contracts/phase1/models.py) define interfaces.
 
+## Current handoff gate (6 November 2026)
+
+PR #15 is open draft at e2658b6 and remains review-only. Naveed's rev-2 handoff proposes generation-owned corrections; it does not authorize implementation or live calls. Hassan coordinates explicit hosted Settings wiring and embeddings/profile decisions.
+
+Use current free-first instructions: the earlier OpenAI-1536/$5 envelope is not a grant. Resolve strict input-token enforcement, reasoning/output accounting, account quotas, provider schema handling and durable shared reservations before live acceptance. Tests explicitly inject fake; application misconfiguration stays a clear error. No fallback, automatic retries or billing upgrade.
+
+N06 may be verified on a reviewed isolated integration checkout before merge. Held-out naming/disjointness is not protection against tuning: freeze development configuration and record every attempted case, errors and overall denominator; all failures must fail acceptance.
+
 ## Revised execution order
 
 1. Inspect the exact personal-project revision in [TRD](TRD.md) and selectively adapt useful features; preserve licences, authorship and existing work.
@@ -38,13 +46,13 @@ Do not restart implemented H01/H02 or N01 because an old member branch lacks the
 | H06 - API | Implement canonical document/query routes and safe errors. Build public citations from backend metadata; keep provider failure distinct from abstention. Verify CORS, polling and OpenAPI using fakes. Correlation IDs do not imply chat history. |
 | H07 - Integration | Tiny corpus/labels, Naveed's live adapter and Zaid's UI. Verify real browser upload -> status -> retrieval -> citations/abstention, permissions/failures and fresh-setup procedure. Record versions and gaps. |
 
-H03-H06 backend implementation is merged into main via PR #7. Covered database checks passed against disposable PostgreSQL/pgvector. Historical cached MiniLM inference passed, but hosted adapters, live hosted embedding/generation evaluation and browser verification remain pending. H07 remains open until the team completes the browser-to-answer flow.
+H03-H06 backend implementation is merged into main via PR #7, PR #16 (offline embedding foundation), and PR #19 (input-token validation and candidate splitting). Covered database checks passed against disposable PostgreSQL/pgvector. Historical cached MiniLM inference passed. Live token correspondence verification against Google countTokens, account eligibility, and existing-corpus transition/activation remain pending. H07 remains open until the team completes the browser-to-answer flow.
 
 ## Naveed: N01-N06
 
 | Task | Behavior and completion gate |
 |---|---|
-| N01 - Service | Historical fake/Ollama service is H01-compatible; adapt hosted-provider code around the same boundary. Verify concrete injection and canonical types; never restore old heuristics. No DB reads, identity selection, routes or tools in generation. |
+| N01 - Service | PR #13 hosted transport and legacy fake/Ollama service are H01-compatible; preserve that boundary and reuse draft PR #15 rather than recreate it. Verify concrete injection and canonical types; never restore old heuristics. No DB reads, identity selection, routes or tools in generation. |
 | N02 - Prompt/context | Preserve all authorized evidence and source IDs. Treat document instructions as untrusted. Version prompt/settings; test relevant conflict, irrelevant/adversarial content and oversized input without fixture-specific rules or request mutation. The character ceiling is not token counting; real context fit remains unresolved. |
 | N03 - Adapter | Preserve explicit selection, propagated URL/model/limits, strict parsing, network/overall deadlines and cancellation. Offline HTTP coverage exists; add mocked hosted-HTTP coverage, then record an authorized bounded hosted run. |
 | N04 - Result | Preserve answer/abstention, inline-marker and evidence-membership validation. Keep malformed output as typed failure. Evaluate factual support separately; never drop invalid citations or disguise errors as abstention. |

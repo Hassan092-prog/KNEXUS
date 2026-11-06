@@ -4,7 +4,7 @@ KNEXUS is a modular FastAPI application with PostgreSQL/pgvector persistence and
 
 ## Target versus implemented architecture
 
-The approved target uses hosted APIs for generation and embeddings. Existing local MiniLM and fake/Ollama code remains historical implementation; hosted provider/model choices and adapters are pending. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior. The diagram is the hosted target; the local adapters described below still need migration.
+The target remains hosted generation and embeddings. PR #13 has merged the hosted generation transport; draft PR #15 supplies the unmerged evaluation harness. PR #16 merged the offline hosted embedding dispatch foundation, and PR #19 merged hosted input token validation and candidate splitting. API wiring and live acceptance remain pending, and historical database vectors remain local MiniLM. No provider account access, paid expenditure or hosted embedding dimension is established by these docs. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior. The diagram is the hosted target; generation transport and embedding validation exist, while API configuration paths and corpus activation still need migration.
 
 ## Implemented components
 
@@ -19,21 +19,21 @@ The approved target uses hosted APIs for generation and embeddings. Existing loc
 
 ## Phase 1 flow
 
-The document/query API and ingestion/retrieval services exist as modular FastAPI services. This flow shows the revised hosted target; the embedding and generation adapters labeled pending are not implemented.
+The document/query API and ingestion/retrieval services exist as modular FastAPI services. This flow shows the revised hosted target; hosted embeddings and generation API wiring remain pending although generation transport is implemented.
 
 ~~~mermaid
 flowchart LR
     UI["Zaid: upload/chat/status UI"] --> API["Hassan: document/query API"]
     API --> JOB["Persist document + ingestion job"]
     JOB --> ING["Parse, preserve source, chunk"]
-    ING --> EMB["Hosted embedding API (target; adapter pending)"]
+    ING --> EMB["Hosted embedding API (offline dispatch & validation merged; activation pending)"]
     EMB --> DB["PostgreSQL + pgvector"]
     API --> RET["Authorize and retrieve"]
     RET --> QEMB["Hosted query embedding (same model/revision)"]
     RET --> DB
     RET --> BOUNDARY["H01 run_generation"]
     BOUNDARY --> GEN["Naveed: structured generator"]
-    GEN --> HOSTED["Hosted generation API (target; adapter pending)"]
+    GEN --> HOSTED["Hosted generation API (transport exists; wiring pending)"]
     GEN --> API
     API --> UI
 ~~~
@@ -48,7 +48,7 @@ The [database document](DATABASE_SCHEMA.md) maps actual tables/constraints. Comp
 
 ## Deployment boundary
 
-Compose currently starts PostgreSQL only. The API runs as an explicitly started local process. The target makes outbound backend calls to hosted embedding/generation APIs, without local inference or model tunnels. Existing adapters require migration. The browser talks only to the backend and never holds provider keys.
+Compose currently starts PostgreSQL only. The API runs as an explicitly started local process. The target makes outbound backend calls to hosted embedding/generation APIs, without local inference or model tunnels. Hosted transport exists, but API Settings wiring and hosted embedding integration still require migration. The browser talks only to the backend and never holds provider keys.
 
 No live server/tunnel is assumed from a historical check. Keep synthetic local data until authentication and authorization are verified. Compose's current DB port publication and health diagnostics need hardening before external exposure.
 
@@ -56,4 +56,4 @@ No live server/tunnel is assumed from a historical check. Keep synthetic local d
 
 Authentication/session management, append-only audit and one typed sandbox action form Phase 2. An action requires server policy, immutable reviewed envelope, authorized approval, expiry/replay/concurrency protection, execution-time recheck, idempotency and outcome verification. The LLM only proposes.
 
-Hosted providers are now the Phase 1 target, pending selection and implementation. Broader platform modules, streaming, queues and connectors remain separate reviewed decisions. No Redis/Celery, ChromaDB or speculative duplicate application tree is part of the current baseline.
+Hosted providers are the Phase 1 target; generation transport (PR #13), offline embedding dispatch foundation (PR #16), and input validation (PR #19) are merged, while final configuration, route integration, live token correspondence, and corpus activation remain pending. Broader platform modules, streaming, queues and connectors remain separate reviewed decisions. No Redis/Celery, ChromaDB or speculative duplicate application tree is part of the current baseline.

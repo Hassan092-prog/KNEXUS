@@ -6,6 +6,8 @@ import os
 
 import httpx
 
+from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy
+from app.core.quota import QuotaLedger
 from app.schemas import GenerationRequest, GenerationResult, validate_generation_result
 from app.services.generation.errors import (
     ContextBudgetExceededError,
@@ -72,6 +74,10 @@ class GenerationService:
         api_key: str | None = None,
         api_base_url: str | None = None,
         temperature: float | None = None,
+        dispatch_policy: DispatchPolicy | None = None,
+        quota_ledger: QuotaLedger | None = None,
+        reasoning_effort: str | None = None,
+        include_reasoning: bool | None = None,
     ) -> None:
         selected = provider if provider is not None else os.getenv("OLLAMA_PROVIDER")
         if selected is None or not selected.strip():
@@ -108,6 +114,32 @@ class GenerationService:
                 temperature if temperature is not None
                 else os.getenv("GENERATION_TEMPERATURE", "0.0")
             )
+            # Fail-closed dispatch authorization: hosted providers require an
+            # explicitly injected DispatchPolicy. None means blocked, so
+            # credentials, provider selection, or harness flags alone can
+            # never authorize live dispatch. Fake/mock tests inject
+            # MockDispatchPolicy explicitly; ollama/fake legacy paths are
+            # unchanged and carry no dispatch policy.
+            self.dispatch_policy: DispatchPolicy = (
+                dispatch_policy
+                if dispatch_policy is not None
+                else BlockedLiveDispatchPolicy()
+            )
+            # Composed shared ledger lifecycle (published QuotaLedger
+            # interface); None keeps behavior ledger-free, e.g. in unit tests.
+            self.quota_ledger: QuotaLedger | None = quota_ledger
+            if reasoning_effort is not None and reasoning_effort not in {
+                "low", "medium", "high",
+            }:
+                raise GenerationConfigurationError(
+                    "reasoning_effort must be one of: low, medium, high"
+                )
+            if include_reasoning is not None and not isinstance(include_reasoning, bool):
+                raise GenerationConfigurationError(
+                    "include_reasoning must be a boolean or None"
+                )
+            self.reasoning_effort = reasoning_effort
+            self.include_reasoning = include_reasoning
         else:
             self.api_key = None
             self.url = url if url is not None else os.getenv(
@@ -117,6 +149,10 @@ class GenerationService:
                 "OLLAMA_MODEL", "llama3.2:3b"
             )
             self.temperature = 0.0
+            self.dispatch_policy = None
+            self.quota_ledger = None
+            self.reasoning_effort = None
+            self.include_reasoning = None
         self.timeout = float(
             timeout if timeout is not None else os.getenv("OLLAMA_TIMEOUT", "30")
         )
@@ -129,7 +165,7 @@ class GenerationService:
         )
         self.max_prompt_chars = int(
             max_prompt_chars if max_prompt_chars is not None
-            else os.getenv("GENERATION_MAX_PROMPT_CHARS", "12000")
+            else os.getenv("GENERATION_MAX_PROMPT_CHARS", "16000")
         )
         if not math.isfinite(self.timeout) or self.timeout <= 0:
             raise GenerationConfigurationError("timeout must be finite and positive")
@@ -204,6 +240,7 @@ class GenerationService:
                     system_prompt, prompt = self._build_prompt(request)
                     result = await hosted_generate(
                         request,
+                        provider=self.provider,
                         system_prompt=system_prompt,
                         prompt=prompt,
                         url=self.url,
@@ -214,6 +251,10 @@ class GenerationService:
                         temperature=self.temperature,
                         seed=self.seed,
                         transport=self.transport,
+                        dispatch_policy=self.dispatch_policy,
+                        quota_ledger=self.quota_ledger,
+                        reasoning_effort=self.reasoning_effort,
+                        include_reasoning=self.include_reasoning,
                     )
                 else:
                     system_prompt, prompt = self._build_prompt(request)

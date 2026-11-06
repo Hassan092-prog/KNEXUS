@@ -6,22 +6,44 @@ repository https://github.com/Hassan092-prog/enterprise-knowledge-bot,
 `src/llm_factory.py` and `src/config.py`). That repository carries no
 LICENSE file at this revision; the knowledge-bot source is owned by the
 same project author. Adapted here onto KNEXUS's canonical contract,
-httpx transport and typed-failure boundary. Differences:
+httpx transport, typed-failure boundary, and the published shared
+dispatch/quota foundation (`app.core.dispatch_policy`,
+`app.core.quota.QuotaLedger`). Differences:
 
 - No LangChain dependency: uses the existing httpx dependency only.
-- No automatic retries yet (the source retries 429/5xx with backoff;
-  adding bounded retries is deliberately deferred pending review).
+- No automatic retries and no provider/model fallback (the source retries
+  429/5xx with backoff; that behavior is deliberately not carried over).
 - No semantic cache and no query condensation: Phase 1 is non-streaming,
   single-turn, and every query must go to the provider for honest audit.
 - KNEXUS canonical schema replaces `[Source: file, Page X]` prose
   citations with inline [citation_id] markers validated against
   authorized evidence.
+- Dispatch is fail-closed: an explicit DispatchPolicy is checked before
+  any HTTP client/socket creation, and hosted providers default to
+  BlockedLiveDispatchPolicy when none is injected. Credentials, provider
+  selection, and harness flags never grant authorization.
+- Composed ledger lifecycle: when a QuotaLedger is supplied, the attempt
+  is reserved durably before dispatch and settled on every exit path.
+  Available provider usage is captured before response parsing and
+  canonical validation (a successful provider response followed by
+  invalid output still incurred charges). Missing or malformed usage
+  stays unresolved in the ledger; it is never invented as zero.
+  Settlement failures are never swallowed.
 """
+import asyncio
+from typing import Any
+
 import httpx
 from pydantic import ValidationError
 
+from app.core.dispatch_policy import (
+    BlockedLiveDispatchPolicy,
+    DispatchPolicy,
+)
+from app.core.quota import QuotaLedger
 from app.schemas import GenerationRequest, GenerationResult, validate_generation_result
 from app.services.generation.errors import (
+    GenerationSettlementError,
     MalformedOutputError,
     ProviderTimeoutError,
     ProviderUnavailableError,
@@ -32,6 +54,14 @@ DEFAULT_ENDPOINTS: dict[str, str] = {
     "groq": "https://api.groq.com/openai/v1",
     "mistral": "https://api.mistral.ai/v1",
 }
+
+MISTRAL_TOKEN_LIMIT_KEY = "max_tokens"
+"""Mistral's documented completion-limit parameter name at the pinned source.
+
+Groq and OpenAI document `max_completion_tokens` (Groq marks `max_tokens`
+deprecated); Mistral's chat-completions API documents `max_tokens`. This
+per-provider split is pinned by tests.
+"""
 
 _STRICT_SCHEMA_CACHE: dict[str, object] | None = None
 """Merged schema cache; computed once from the canonical model."""
@@ -46,6 +76,14 @@ def strict_generation_schema() -> dict[str, object]:
     keyword and require every property in `required`; here all fields become
     required (the model must always emit the key, and the canonical
     validation below still enforces the exact answer/abstention invariants).
+
+    Only `default` is stripped and every property is listed in `required`;
+    field names, object structure, `anyOf` null-unions and all other
+    canonical constraints are preserved verbatim. Undocumented strict-mode
+    keywords (`minLength`, `minimum`, `maxItems`, `title`, ...) are neither
+    assumed rejected nor silently removed, and no recursive filtering runs
+    that could drop properties. Compatibility with any provider is
+    established only by an authorized live response, never by assumption.
     """
     global _STRICT_SCHEMA_CACHE
     if _STRICT_SCHEMA_CACHE is None:
@@ -61,9 +99,28 @@ def strict_generation_schema() -> dict[str, object]:
         }
     return _STRICT_SCHEMA_CACHE
 
+
+def _rate_limit_diagnostics(response: httpx.Response) -> str:
+    """Sanitized, bounded HTTP header summary for typed error messages.
+
+    Only a few short limit/retry header values are included; provider
+    response bodies are never copied into error text.
+    """
+    parts: list[str] = []
+    for name in ("retry-after", "x-ratelimit-limit-requests", "x-ratelimit-remaining-requests"):
+        value = response.headers.get(name)
+        if value:
+            # Bound each value; header values are provider-controlled.
+            parts.append(f"{name}={str(value).strip()[:40]}")
+    if not parts:
+        return ""
+    return " (" + "; ".join(parts[:3]) + ")"
+
+
 async def hosted_generate(
     request: GenerationRequest,
     *,
+    provider: str,
     system_prompt: str,
     prompt: str,
     url: str,
@@ -74,8 +131,76 @@ async def hosted_generate(
     temperature: float = 0.0,
     seed: int | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    dispatch_policy: DispatchPolicy | None = None,
+    quota_ledger: QuotaLedger | None = None,
+    reasoning_effort: str | None = None,
+    include_reasoning: bool | None = None,
 ) -> GenerationResult:
-    """Send a chat completion and parse a canonical GenerationResult."""
+    """Send a chat completion and parse a canonical GenerationResult.
+
+    Authorization is checked before any HTTP client or socket is created.
+    `dispatch_policy=None` defaults to BlockedLiveDispatchPolicy, so no
+    hosted dispatch is possible without explicit injected authorization.
+    When `quota_ledger` is supplied the attempt is reserved before dispatch
+    and settled exactly once on every exit path; usage is captured from the
+    response body before content parsing/validation so charges incurred by
+    invalid output are still recorded. Reserve failures propagate the
+    published raw ledger exceptions; settlement failures become
+    GenerationSettlementError while preserving the preceding provider
+    failure classification.
+    """
+    # 1. Authorization boundary: fail before any client/socket creation.
+    #    API keys, provider selection, and --run-live flags never authorize.
+    policy = dispatch_policy if dispatch_policy is not None else BlockedLiveDispatchPolicy()
+    policy.check_dispatch(provider, model)
+
+    # 2. Durable reserve-before-dispatch using the published ledger methods.
+    attempt_id: str | None = None
+    if quota_ledger is not None:
+        attempt_id = await quota_ledger.areserve_attempt(provider, model)
+
+    settled = False  # one-shot settlement guard: at most one settle per attempt
+
+    async def settle(
+        *,
+        success: bool,
+        error: str | None = None,
+        status_code: int | None = None,
+        usage: Any = None,
+    ) -> None:
+        nonlocal settled
+        if quota_ledger is None or attempt_id is None or settled:
+            return
+        settled = True
+        try:
+            await quota_ledger.asettle_attempt(
+                attempt_id,
+                usage=usage,
+                success=success,
+                error=error,
+                status_code=status_code,
+            )
+        except Exception as exc:
+            # Never swallowed: mirror the published TokenCountingSettlementError
+            # pattern; the reservation stays outstanding in the ledger.
+            exc_name = type(exc).__name__
+            if not success:
+                detail = (
+                    error or (f"http_{status_code}" if status_code else "provider_error")
+                )
+                msg = (
+                    f"Quota settlement failed ({exc_name}); outstanding "
+                    f"reservation preserved. Original provider failure: {detail}"
+                )
+            else:
+                msg = (
+                    f"Quota settlement failed ({exc_name}); outstanding "
+                    "reservation preserved."
+                )
+            raise GenerationSettlementError(
+                msg, provider_error=error, status_code=status_code
+            ) from None
+
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
@@ -84,7 +209,6 @@ async def hosted_generate(
         "model": model,
         "messages": messages,
         "temperature": temperature,
-        "max_tokens": num_predict,
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -94,8 +218,19 @@ async def hosted_generate(
             },
         },
     }
+    # Provider-aware completion limit: Groq/OpenAI document
+    # `max_completion_tokens` (Groq marks `max_tokens` deprecated); Mistral
+    # documents `max_tokens` at the pinned source.
+    if provider == "mistral":
+        payload[MISTRAL_TOKEN_LIMIT_KEY] = num_predict
+    else:
+        payload["max_completion_tokens"] = num_predict
     if seed is not None:
         payload["seed"] = seed
+    if reasoning_effort is not None:
+        payload["reasoning_effort"] = reasoning_effort
+    if include_reasoning is not None:
+        payload["include_reasoning"] = include_reasoning
     headers = {"Authorization": f"Bearer {api_key}"}
     try:
         async with httpx.AsyncClient(
@@ -105,31 +240,97 @@ async def hosted_generate(
                 "/chat/completions", json=payload, headers=headers
             )
             response.raise_for_status()
+    except asyncio.CancelledError:
+        # External cancellation or overall-deadline cancellation. Settle the
+        # reservation synchronously (no await under active cancellation), then
+        # let cancellation propagate untouched: asyncio.timeout keeps mapping
+        # it to ProviderTimeoutError and task.cancel() keeps raising
+        # CancelledError. Provider processing is uncertain here, so usage is
+        # unknown and the failure is recorded; the settle exception path keeps
+        # the reservation outstanding rather than silently releasing it.
+        if quota_ledger is not None and attempt_id is not None and not settled:
+            settled = True
+            try:
+                quota_ledger.settle_attempt(
+                    attempt_id, usage=None, success=False, error="cancelled"
+                )
+            except Exception:
+                # Cancellation semantics take precedence; the reservation
+                # stays outstanding in the ledger (never silently released).
+                pass
+        raise
     except httpx.TimeoutException as exc:
+        await settle(success=False, error="timeout")
         raise ProviderTimeoutError("Hosted provider request timed out") from exc
     except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        diagnostic = (
+            _rate_limit_diagnostics(exc.response)
+            if status == 429
+            else ""
+        )
+        await settle(success=False, error=f"http_{status}", status_code=status)
+        message_tail = "; no retries or fallback permitted" if status == 429 else ""
         raise ProviderUnavailableError(
-            f"Hosted provider returned HTTP {exc.response.status_code}"
+            f"Hosted provider returned HTTP {status}{message_tail}{diagnostic}"
         ) from exc
     except httpx.HTTPError as exc:
+        await settle(success=False, error="transport_error")
         raise ProviderUnavailableError("Hosted provider request failed") from exc
 
     try:
         body = response.json()
     except (ValueError, TypeError) as exc:
-        raise MalformedOutputError("Hosted provider returned an invalid HTTP response") from exc
-    if not isinstance(body, dict):
-        raise MalformedOutputError("Hosted provider response is not an object")
-    choices = body.get("choices")
-    if not isinstance(choices, list) or len(choices) != 1:
+        await settle(success=False, error="invalid_http_body")
+        raise MalformedOutputError(
+            "Hosted provider returned an invalid HTTP response"
+        ) from exc
+
+    # Capture usage before any content validation: a successful provider
+    # response followed by invalid output still incurred charges, so the
+    # ledger dollar/token record must not depend on output legality. The
+    # ledger itself validates usage shape; missing usage stays unresolved,
+    # never invented as zero.
+    usage = body.get("usage") if isinstance(body, dict) else None
+    choices = body.get("choices") if isinstance(body, dict) else None
+    if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+        await settle(success=False, error="malformed_choices", usage=usage)
         raise MalformedOutputError("Hosted provider response has no single choice")
-    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    finish_reason = choices[0].get("finish_reason")
+    message = choices[0].get("message")
     if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+        if isinstance(message, dict) and isinstance(message.get("reasoning"), str):
+            # Reasoning-only responses (e.g. gpt-oss with include_reasoning):
+            # reasoning text is never parsed as the answer.
+            await settle(success=False, error="reasoning_without_content", usage=usage)
+            raise MalformedOutputError(
+                "Hosted provider returned reasoning without the required content"
+            )
+        await settle(success=False, error="missing_content", usage=usage)
         raise MalformedOutputError("Hosted provider response has no text result")
+    if finish_reason == "length":
+        # Truncation is deliberate: even a fragment that happens to parse is
+        # not trusted as a complete canonical result.
+        await settle(success=False, error="finish_reason_length", usage=usage)
+        raise MalformedOutputError(
+            "Hosted provider response was truncated (finish_reason 'length') "
+            "before a complete generation result"
+        )
+    # Refusals expressed as prose content (provider-specific, undocumented
+    # shapes) land here: the content is never copied into the error.
     try:
         result = GenerationResult.model_validate_json(message["content"])
-        return validate_generation_result(result, request)
     except (ValidationError, ValueError, TypeError) as exc:
+        await settle(success=False, error="invalid_result_json", usage=usage)
+        raise MalformedOutputError(
+            "Hosted provider output was not the required JSON result"
+        ) from exc
+    try:
+        validated = validate_generation_result(result, request)
+    except (ValueError, TypeError) as exc:
+        await settle(success=False, error="citation_contract_violation", usage=usage)
         raise MalformedOutputError(
             "Hosted provider output does not satisfy the generation contract"
         ) from exc
+    await settle(success=True, usage=usage)
+    return validated

@@ -10,6 +10,8 @@ import json
 import httpx
 import pytest
 
+from app.core.dispatch_policy import MockDispatchPolicy
+from app.core.quota import QuotaConfig, QuotaLedger
 from app.schemas import GenerationResult
 from app.services.generation.generator import GenerationService
 from tests.phase1.generation.hosted_harness import (
@@ -68,6 +70,14 @@ def hosted_provider_case(citation_id=1, *, abstained=False, expected=(1,), smoke
     )
 
 
+def make_test_ledger(tmp_path) -> QuotaLedger:
+    return QuotaLedger(QuotaConfig(
+        enabled=True, max_requests_per_minute=100, max_requests_per_day=1000,
+        max_total_attempts=100, min_request_interval_seconds=0.0,
+        state_path=tmp_path / "harness-ledger.json",
+    ))
+
+
 @pytest.mark.asyncio
 async def test_development_cases_are_reused_from_the_neutral_harness():
     assert cases_for(CASEGROUP_DEVELOPMENT) == synthetic_cases()
@@ -118,7 +128,8 @@ async def test_harness_records_hosted_provenance_without_secrets(tmp_path, monke
     output = tmp_path / "results.jsonl"
     service = GenerationService(
         provider="groq", model="groq-test-model", api_key="test-secret-key",
-        seed=42, transport=httpx.MockTransport(completion_response(answer_json())),
+        seed=42, dispatch_policy=MockDispatchPolicy("groq"),
+        transport=httpx.MockTransport(completion_response(answer_json())),
     )
     exit_code = await run_harness(
         [hosted_provider_case()], service, output
@@ -163,6 +174,7 @@ async def test_mocked_hosted_failures_are_recorded_as_errors(tmp_path, status, e
     output = tmp_path / "results.jsonl"
     service = GenerationService(
         provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"),
         transport=httpx.MockTransport(handler),
     )
     exit_code = await run_harness(
@@ -184,6 +196,7 @@ async def test_mocked_hosted_timeout_is_recorded(tmp_path):
     output = tmp_path / "results.jsonl"
     service = GenerationService(
         provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"),
         transport=httpx.MockTransport(handler),
     )
     exit_code = await run_harness([hosted_provider_case()], service, output)
@@ -215,6 +228,87 @@ def test_build_service_uses_env_key_and_explicit_model(monkeypatch):
     assert service.timeout == 15.0
     assert service.seed == 7
     assert service.url == "https://api.mistral.ai/v1"
+    # Without explicit injection the built service stays authorization-blocked;
+    # the dedicated gate tests below pin that behavior.
+
+
+def test_build_service_defaults_are_blocked_and_injection_is_explicit(monkeypatch, tmp_path):
+    from app.core.dispatch_policy import BlockedLiveDispatchPolicy
+
+    monkeypatch.setenv("GENERATION_API_KEY", "env-secret-key")
+    default = build_service("groq", "groq-test-model", 30.0, None, None)
+    assert isinstance(default.dispatch_policy, BlockedLiveDispatchPolicy)
+    assert default.quota_ledger is None
+    ledger = make_test_ledger(tmp_path)
+    authorized = build_service(
+        "groq", "groq-test-model", 30.0, None, None,
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+    )
+    assert isinstance(authorized.dispatch_policy, MockDispatchPolicy)
+    assert authorized.quota_ledger is ledger
+    assert authorized.model == "groq-test-model"
+
+
+def test_main_refuses_even_when_selection_and_key_gates_look_satisfied(tmp_path, monkeypatch):
+    """The CLI can never self-authorize: blocked policy refuses before run_harness.
+
+    Key env vars and --run-live are present and the output path is fresh, yet
+    the default blocked dispatch policy still refuses and no output file is
+    created (no run_harness invocation, no HTTP transport constructed).
+    """
+    monkeypatch.setenv("GENERATION_API_KEY", "env-secret-key")
+    monkeypatch.setenv("GENERATION_MODEL", "groq-test-model")
+    output = tmp_path / "never-run.jsonl"
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--run-live", "--output", str(output)])
+    assert excinfo.value.code == 2
+    assert not output.exists()
+
+
+def test_main_requires_explicit_ledger_with_injected_policy(tmp_path, monkeypatch):
+    """An injected policy alone does not satisfy the gate; the durable ledger
+    configuration is required alongside it."""
+    import tests.phase1.generation.hosted_harness as harness_module
+
+    def authorized_no_ledger(provider, model, timeout, seed, api_base_url, **kwargs):
+        return GenerationService(
+            provider="groq", model="groq-test-model", api_key="env-secret-key",
+            dispatch_policy=MockDispatchPolicy("groq"),
+            transport=httpx.MockTransport(completion_response(answer_json())),
+        )
+
+    monkeypatch.setenv("GENERATION_API_KEY", "env-secret-key")
+    monkeypatch.setattr(harness_module, "build_service", authorized_no_ledger)
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--run-live", "--output", str(tmp_path / "x.jsonl")])
+    assert excinfo.value.code == 2
+
+
+def test_main_with_authorized_injection_delegates_to_run_harness(tmp_path, monkeypatch):
+    """Reviewed code injection (policy + ledger) is the only scheduled path.
+
+    run_harness is replaced so no provider call happens; the test pins that a
+    fully authorized in-code configuration is the gate that reaches it.
+    """
+    import tests.phase1.generation.hosted_harness as harness_module
+
+    ledger = make_test_ledger(tmp_path)
+
+    def authorized(provider, model, timeout, seed, api_base_url, **kwargs):
+        return GenerationService(
+            provider="groq", model="groq-test-model", api_key="env-secret-key",
+            dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+            transport=httpx.MockTransport(completion_response(answer_json())),
+        )
+
+    async def fake_run_harness(cases, service, output, *, timeout_seconds, repeat):
+        assert output is not None
+        return 0
+
+    monkeypatch.setenv("GENERATION_API_KEY", "env-secret-key")
+    monkeypatch.setattr(harness_module, "build_service", authorized)
+    monkeypatch.setattr(harness_module, "run_harness", fake_run_harness)
+    assert main(["--run-live", "--output", str(tmp_path / "authorized.jsonl")]) == 0
 
 
 def test_main_refuses_without_run_live_flag():

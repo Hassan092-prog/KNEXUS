@@ -6,7 +6,7 @@ This package accepts canonical GenerationRequest evidence already authorized by 
 
 PR #13 merged the hosted chat-completions transport at main 1d4a06100b590a5f2a77830cbb3772eb789f0f47. It supports explicit openai/groq/mistral selection and retains canonical local validation. This is transport implementation, not evidence of live model/account/schema compatibility.
 
-[PR #15](https://github.com/Hassan092-prog/KNEXUS/pull/15) remains open draft at e2658b627c8d92f35bd2d6e77b812175985e99d2, one commit ahead of main. Its four-file diff adds hosted_harness.py, test_hosted_harness.py, provider-aware live_harness.py provenance and README guidance. Development/held-out labels and explicit live/model/key gates are implemented in that branch; they do not authorize calls, enforce budgets or mechanically prevent held-out tuning.
+[PR #15](https://github.com/Hassan092-prog/KNEXUS/pull/15) remains an open draft; its branch carries the hosted harness work and now the committed composition of the shared dispatch/quota foundation into the hosted adapter. Development/held-out labels and explicit live/model/key gates are implemented on that branch; they do not authorize calls, enforce budgets or mechanically prevent held-out tuning.
 
 Groq at its default endpoint remains the recorded first hosted provider, and Groq `openai/gpt-oss-120b` is the proposed candidate model. No other provider is assumed to share the Groq/OpenAI parameter surface; no new SDK, billable call or model substitution is authorized. Live dispatch stays blocked by default even when credentials, provider selection and harness flags exist; see the dispatch-policy section below.
 
@@ -14,9 +14,9 @@ Naveed's external integration-handoff-20261104.md rev 2 supersedes rev 1 and pro
 
 ## Existing constructor and API wiring
 
-GenerationService supports provider, url, model, timeout, num_ctx, num_predict, max_prompt_chars, seed, transport, api_key, api_base_url and temperature. Hosted model/key/base/temperature may resolve from GENERATION_MODEL, GENERATION_API_KEY, GENERATION_API_BASE_URL and GENERATION_TEMPERATURE; provider/timeout/output currently retain legacy OLLAMA_* environment names. Existing controls are code facts, not the agreed future Settings contract.
+GenerationService supports provider, url, model, timeout, num_ctx, num_predict, max_prompt_chars, seed, transport, api_key, api_base_url, temperature and, for hosted providers: dispatch_policy, quota_ledger, reasoning_effort and include_reasoning. Hosted model/key/base/temperature may resolve from GENERATION_MODEL, GENERATION_API_KEY, GENERATION_API_BASE_URL and GENERATION_TEMPERATURE; provider/timeout/output currently retain legacy OLLAMA_* environment names. Existing controls are code facts, not the agreed future Settings contract.
 
-The hosted constructor resolves endpoint from api_base_url, its environment value or the provider default; url is used by legacy paths. Inspect this distinction rather than universally requiring url=None. Current API factory passes OLLAMA_PROVIDER, OLLAMA_MODEL, timeout and output settings and does not explicitly pass Settings-held hosted secrets. The legacy model can override hosted environment selection. Agree explicit validated Settings-to-constructor mapping before claiming the route is integrated.
+The hosted constructor resolves endpoint from api_base_url, its environment value or the provider default; url is used by legacy paths. Inspect this distinction rather than universally requiring url=None. Hosted providers without an explicitly injected dispatch_policy are fail-closed blocked, so the API factory must inject an approved DispatchPolicy and an explicit QuotaLedger before hosted generation can dispatch from the API route; that Settings-to-constructor wiring is Hassan-owned and its exact proposed patch is recorded in the PR description. Agree the final validated Settings-to-constructor mapping together before claiming the route is integrated.
 
 Pydantic loading root .env does not export values into os.environ. A masked Settings secret passed explicitly is valid; whichever delivery is chosen, exclude credentials from logs, settings exports, errors and argv. Tests explicitly select/inject fake. Unconfigured application generation must fail clearly.
 
@@ -40,9 +40,9 @@ Structural and citation validation are fail-closed: malformed JSON, invented IDs
 
 ## Failures and the published API mapping
 
-Typed failures stay exceptions: `GenerationConfigurationError`, `ProviderTimeoutError`, `ProviderUnavailableError`, `MalformedOutputError` and `ContextBudgetExceededError`. Network and overall async deadlines are enforced; timeout must be finite and positive; external cancellation propagates.
+Typed failures stay exceptions: `GenerationConfigurationError`, `ProviderTimeoutError`, `ProviderUnavailableError`, `MalformedOutputError`, `ContextBudgetExceededError` and `GenerationSettlementError` (settlement-failure wrapper mirroring the ingestion-side `TokenCountingSettlementError` pattern: the outstanding reservation is preserved and the preceding provider failure classification is kept in `provider_error`/`status_code`). Dispatch-policy and quota errors (`LiveInferenceBlockedError`, the `QuotaError` family) surface as published raw exceptions from `app.core.*`, not generation-service types. Network and overall async deadlines are enforced; timeout must be finite and positive; external cancellation propagates (ported through the ledger settlement path without conversion).
 
-`POST /api/v1/query` maps them as published: `ProviderTimeoutError` → 504/`PROVIDER_UNAVAILABLE`; `ProviderUnavailableError` → 503/`PROVIDER_UNAVAILABLE`; `GenerationConfigurationError` and `ContextBudgetExceededError` currently → 503/`PROVIDER_UNAVAILABLE`; `MalformedOutputError` → 502/`INVALID_CITATIONS`. Generation does not perform that mapping itself.
+`POST /api/v1/query` maps them as published: `ProviderTimeoutError` → 504/`PROVIDER_UNAVAILABLE`; `ProviderUnavailableError` → 503/`PROVIDER_UNAVAILABLE`; `GenerationConfigurationError` and `ContextBudgetExceededError` currently → 503/`PROVIDER_UNAVAILABLE`; `MalformedOutputError` → 502/`INVALID_CITATIONS`. Generation does not perform that mapping itself. Not yet mapped (proposed 503 mapping patch pending Hassan's review in the PR description): `LiveInferenceBlockedError` and the `QuotaError` family, plus `GenerationSettlementError` (whose default fall-through currently ends at 500 on the API route). With the API factory not yet wiring an authorize-releasing policy, blocked dispatch from the route surfaces as an unmapped exception until that patch is applied.
 
 ## Hosted providers (chat-completions adapter)
 
@@ -68,7 +68,7 @@ Current payload sends `max_completion_tokens` from `num_predict` for the documen
 - The canonical schema keeps field names, structure, required/null semantics and all canonical constraints; a pinning test protects structure from recursive keyword filtering. Undocumented strict-mode keywords are neither assumed rejected nor silently removed.
 - Optional `reasoning_effort` and `include_reasoning` remain explicit constructor parameters; hiding reasoning does not establish reduced computation, billing or completion-token consumption.
 
-Honest accounting limits: the ledger provides request controls, not proven financial or strict token-budget enforcement. The `GENERATION_MAX_PROMPT_CHARS` ceiling above is a character guard, never a GPT-OSS token count. Rate-limit diagnostics stay sanitized and bounded rather than copying provider content into public errors.
+Honest accounting limits: the ledger provides request controls, not proven financial or strict token-budget enforcement. The `GENERATION_MAX_PROMPT_CHARS` ceiling above is a character guard, never a GPT-OSS token count. Rate-limit diagnostics stay sanitized and bounded rather than copying provider content into public errors. Composition note for Hassan's published ledger (documented, not fixed from this side): `reserve_attempt` does not enforce `in_flight_timeout_seconds`, so a stale active reservation blocks its scope until settled; settlement on uncertain outcomes settles the reservation rather than leaving it active indefinitely.
 
 ## Verification
 

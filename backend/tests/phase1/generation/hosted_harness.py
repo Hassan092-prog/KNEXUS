@@ -35,6 +35,7 @@ for import_root in (str(REPO_ROOT), str(BACKEND_ROOT),):
     if import_root not in sys.path:
         sys.path.insert(0, import_root)
 
+from app.core.dispatch_policy import BlockedLiveDispatchPolicy
 from app.schemas import GenerationRequest
 from app.services.generation.generator import GenerationService
 from tests.phase1.generation.live_harness import (
@@ -124,11 +125,15 @@ def cases_for(group: str) -> list[HarnessCase]:
 
 def build_service(provider: str, model: str | None, timeout: float,
                   seed: int | None,
-                  api_base_url: str | None) -> GenerationService:
+                  api_base_url: str | None,
+                  *,
+                  dispatch_policy: object | None = None,
+                  quota_ledger: object | None = None) -> GenerationService:
     """Construct the hosted service; fails closed without model or key.
 
     The API key comes only from the GENERATION_API_KEY process environment;
-    no secret is accepted on argv.
+    no secret is accepted on argv. `dispatch_policy`/`quota_ledger` are
+    explicit code-only injection points: the CLI can never self-authorize.
     """
     missing = []
     if not model or not str(model).strip():
@@ -145,6 +150,7 @@ def build_service(provider: str, model: str | None, timeout: float,
     return GenerationService(
         provider=provider, model=model.strip(), api_key=api_key,
         api_base_url=api_base_url, timeout=timeout, seed=seed,
+        dispatch_policy=dispatch_policy, quota_ledger=quota_ledger,
     )
 
 
@@ -184,6 +190,29 @@ def main(argv: list[str] | None = None) -> int:
         )
     except ValueError as exc:
         parser.error(str(exc))
+    # Authorization gate: the CLI can never self-authorize live dispatch.
+    # Keys, provider selection and --run-live are identity/selection gates
+    # only. A live run becomes schedulable only when reviewed code explicitly
+    # injects an approved DispatchPolicy together with an explicit QuotaLedger
+    # configuration; the default blocked policy always refuses here.
+    unauthorized = (
+        service.dispatch_policy is None
+        or isinstance(service.dispatch_policy, BlockedLiveDispatchPolicy)
+    )
+    if unauthorized or service.quota_ledger is None:
+        if unauthorized:
+            parser.error(
+                "hosted dispatch is authorization-blocked: harness flags, "
+                "credentials and provider selection never grant dispatch "
+                "authorization. An approved, explicitly injected DispatchPolicy "
+                "together with an explicit QuotaLedger configuration is required "
+                "in reviewed code before a live run can be scheduled."
+            )
+        parser.error(
+            "an explicit QuotaLedger configuration is required in reviewed "
+            "code together with the injected DispatchPolicy before a live "
+            "run can be scheduled."
+        )
     return asyncio.run(
         run_harness(cases_for(args.cases), service, args.output,
                     timeout_seconds=args.timeout, repeat=args.repeat)

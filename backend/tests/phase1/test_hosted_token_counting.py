@@ -1,5 +1,6 @@
 """Regressions for hosted token counting, candidate validation, fail-closed dispatch, and canonical API envelopes."""
 from __future__ import annotations
+import asyncio
 
 import json
 import math
@@ -174,7 +175,6 @@ def test_query_above_limit_fails_closed():
         pass
 
     with pytest.raises(InputTokenLimitExceededError, match="Query token count .* exceeds maximum"):
-        import asyncio
         asyncio.run(service.retrieve(MockSession(), actor, "Oversized question", top_k=3))
 
 
@@ -415,7 +415,6 @@ def test_deterministic_late_counting_result_rejected_and_embedding_receives_zero
         async def flush(self): pass
         async def commit(self): pass
 
-    import asyncio
     success = asyncio.run(
         process_document(
             doc_id,
@@ -1212,7 +1211,6 @@ def test_counter_internal_type_error_not_caught_or_retried():
         async def flush(self): pass
         async def commit(self): pass
 
-    import asyncio
     success = asyncio.run(
         process_document(
             doc_id,
@@ -1468,15 +1466,16 @@ def test_google_token_counter_without_ledger_fails_closed_when_dispatch_authoriz
         counter.count_tokens("any input text")
 
 
-def test_google_token_counter_settles_on_base_exception(tmp_path: Path):
-    """F5: Exactly-once settlement is guaranteed on BaseException (e.g. GeneratorExit)."""
-    state_file = tmp_path / "ledger_base_exc_counter.json"
+@pytest.mark.parametrize("exc_cls", [GeneratorExit, asyncio.CancelledError, KeyboardInterrupt])
+def test_google_token_counter_settles_and_reraises_base_exception_unchanged(tmp_path: Path, exc_cls):
+    """V5: BaseExceptions (GeneratorExit, CancelledError, KeyboardInterrupt) re-raise unchanged after exactly-once settlement."""
+    state_file = tmp_path / f"ledger_base_exc_counter_{exc_cls.__name__}.json"
     ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
 
-    def raise_generator_exit(req):
-        raise GeneratorExit("simulated generator exit / cancellation in counter")
+    def raise_base_exc(req):
+        raise exc_cls("simulated base exception in counter")
 
-    transport = httpx.MockTransport(raise_generator_exit)
+    transport = httpx.MockTransport(raise_base_exc)
     counter = GoogleGenAITokenCounter(
         api_key="mock-key-123",
         transport=transport,
@@ -1484,8 +1483,10 @@ def test_google_token_counter_settles_on_base_exception(tmp_path: Path):
         quota_ledger=ledger,
     )
 
-    with pytest.raises(GeneratorExit):
+    with pytest.raises(exc_cls) as exc_info:
         counter.count_tokens("sample text to count")
+
+    assert type(exc_info.value) is exc_cls
 
     with open(state_file, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -1494,4 +1495,4 @@ def test_google_token_counter_settles_on_base_exception(tmp_path: Path):
     settled = data.get("settled_requests", [])
     assert len(settled) == 1
     assert settled[0]["success"] is False
-    assert settled[0]["error"] == "GeneratorExit"
+    assert settled[0]["error"] == exc_cls.__name__

@@ -1,4 +1,5 @@
 from pathlib import Path
+import asyncio
 """Focused mocked regressions for Google hosted embedding adapter and task wiring."""
 from math import isclose, sqrt
 from uuid import uuid4
@@ -598,15 +599,16 @@ def test_google_embedder_without_ledger_fails_closed_when_dispatch_authorized():
         embedder.embed_texts(["any test text"])
 
 
-def test_google_embedder_settles_on_base_exception(tmp_path: Path):
-    """F5: Exactly-once settlement is guaranteed on BaseException (e.g. GeneratorExit)."""
-    state_file = tmp_path / "ledger_base_exc.json"
+@pytest.mark.parametrize("exc_cls", [GeneratorExit, asyncio.CancelledError, KeyboardInterrupt])
+def test_google_embedder_settles_and_reraises_base_exception_unchanged(tmp_path: Path, exc_cls):
+    """V5: BaseExceptions (GeneratorExit, CancelledError, KeyboardInterrupt) re-raise unchanged after exactly-once settlement."""
+    state_file = tmp_path / f"ledger_base_exc_{exc_cls.__name__}.json"
     ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
 
-    def raise_generator_exit(req):
-        raise GeneratorExit("simulated generator exit / cancellation")
+    def raise_base_exc(req):
+        raise exc_cls("simulated base exception")
 
-    transport = httpx.MockTransport(raise_generator_exit)
+    transport = httpx.MockTransport(raise_base_exc)
     embedder = GoogleGenAIEmbedder(
         api_key="mock-key-123",
         output_dimensions=3,
@@ -615,8 +617,10 @@ def test_google_embedder_settles_on_base_exception(tmp_path: Path):
         quota_ledger=ledger,
     )
 
-    with pytest.raises(GeneratorExit):
+    with pytest.raises(exc_cls) as exc_info:
         embedder.embed_texts(["sample text"])
+
+    assert type(exc_info.value) is exc_cls
 
     with open(state_file, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -625,4 +629,4 @@ def test_google_embedder_settles_on_base_exception(tmp_path: Path):
     settled = data.get("settled_requests", [])
     assert len(settled) == 1
     assert settled[0]["success"] is False
-    assert settled[0]["error"] == "GeneratorExit"
+    assert settled[0]["error"] == exc_cls.__name__

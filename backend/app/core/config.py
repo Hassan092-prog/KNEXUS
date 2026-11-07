@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 REPOSITORY_ENV_FILE = REPOSITORY_ROOT / ".env"
-DEFAULT_STORAGE_ROOT = REPOSITORY_ROOT / ".knexus-private-storage"
+DEFAULT_STORAGE_ROOT = (REPOSITORY_ROOT / ".knexus-private-storage").resolve()
 
 
 class Settings(BaseSettings):
@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     QUOTA_MIN_REQUEST_INTERVAL_SECONDS: float = Field(default=2.0, ge=0.0)
     QUOTA_IN_FLIGHT_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0)
     QUOTA_LOCK_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0)
-    QUOTA_STATE_PATH: Path = Field(default_factory=lambda: DEFAULT_STORAGE_ROOT / "quota_state.json")
+    QUOTA_STATE_PATH: Path = Field(default_factory=lambda: (DEFAULT_STORAGE_ROOT / "quota_state.json").resolve())
 
     # Embedding and ingestion configuration
     # Supported providers: 'local' (sentence-transformers), 'google', 'fake'
@@ -85,6 +85,16 @@ class Settings(BaseSettings):
                 "Local Ollama provider is deprecated and refused. KNEXUS Phase 1 uses hosted providers only."
             )
         return val
+
+    @field_validator("QUOTA_STATE_PATH", mode="after")
+    @classmethod
+    def _validate_quota_state_path(cls, v: Path) -> Path:
+        if not v.is_absolute():
+            raise ValueError(
+                f"QUOTA_STATE_PATH must be an absolute path (got {v!r}); "
+                "relative paths are refused to prevent split ledgers across worker working directories."
+            )
+        return v.resolve()
 
     @field_validator(
         "EMBEDDING_TIMEOUT",

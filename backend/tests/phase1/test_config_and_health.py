@@ -63,3 +63,25 @@ async def test_passive_health_endpoint_no_outbound_calls():
     assert health_result["pgvector_extension"] == "installed"
     assert "generation" in health_result
     assert "embedding" in health_result
+
+
+def test_quota_state_path_anchored_absolute_and_refuses_relative():
+    """V4: QUOTA_STATE_PATH must be absolute; relative overrides are refused with ValueError."""
+    from pydantic import ValidationError
+    from pathlib import Path
+
+    # 1. Default is absolute and anchored to repository/storage root
+    s = Settings()
+    assert s.QUOTA_STATE_PATH.is_absolute()
+    assert s.QUOTA_STATE_PATH.name == "quota_state.json"
+    assert ".knexus-private-storage" in str(s.QUOTA_STATE_PATH)
+
+    # 2. Absolute override is accepted
+    abs_path = Path("/tmp/absolute_quota.json").resolve()
+    s2 = Settings(QUOTA_STATE_PATH=abs_path)
+    assert s2.QUOTA_STATE_PATH == abs_path
+
+    # 3. Relative override is strictly refused to prevent split ledgers
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(QUOTA_STATE_PATH="relative/path/quota.json")
+    assert "must be an absolute path" in str(exc_info.value)

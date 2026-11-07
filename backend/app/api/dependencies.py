@@ -40,7 +40,7 @@ def get_current_actor(request: Request) -> ActorContext:
             "VALIDATION_ERROR",
             "Caller-supplied identity is not accepted.",
         )
-    return build_demo_actor()
+    return build_demo_actor(settings.DEMO_ACTOR_ROLE)
 
 
 def get_dispatch_policy() -> DispatchPolicy:

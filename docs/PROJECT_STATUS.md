@@ -1,20 +1,23 @@
 # Current status and next actions
 
-**Checked: 2 November 2026.** This page records published work separately from local drafts. Requirements remain in the contract and playbook.
+**Checked: 6 November 2026.** This page records published work separately from local drafts. Requirements remain in the contract and playbook.
 
 ## Approved rectification and immediate work
 
 As of 2 November 2026, the target is hosted APIs for both generation and embeddings with selective reuse from the exact personal-project revision in [TRD](TRD.md). Local inference, model downloads and Ollama reverse tunnels are superseded setup instructions. Historical code and results remain preserved, not relabeled as hosted success.
 
-Current published main and dev-hassan were verified at `d65a1a80477008b987874041b3a69f25580e5377`; dev-naveed is `8ae1a7a4b3d54178759d05bbf9e0faea968a8b29`. [PR #12](https://github.com/Hassan092-prog/KNEXUS/pull/12) merged Naveed's seven-file generation enhancement. The previous claim that his branch remains at be96758 is superseded.
+Fresh remote checks: main and dev-hassan are `7e56499d23d538216d9d1074973e11b325143626`; dev-naveed is `e2658b627c8d92f35bd2d6e77b812175985e99d2`; dev-zaid is `5ba45ba30eb66d4d0dee5f0a2750f437575aa8e5`.
+
+[PR #13](https://github.com/Hassan092-prog/KNEXUS/pull/13) merged the hosted chat-completions adapter. [PR #15](https://github.com/Hassan092-prog/KNEXUS/pull/15) is independently verified open, draft and unmerged, with four changed files and one commit e2658b6; it adds the hosted evaluation harness and development/held-out groups. Its gates do not authorize calls or enforce a spending budget.
 
 Immediate sequence:
-1. Agree hosted generation and embedding provider/model/endpoint, credential mechanism, privacy, cost and token policy; none is selected here.
-2. Hassan adapts hosted embeddings and resolves vector(384), model provenance/re-embedding and any migration; Naveed adapts hosted generation and harness; Zaid adapts/redesigns frontend.
-3. Use mocked HTTP for implementation, then authorize bounded synthetic live calls and isolated database verification for relevant changes.
-4. Complete hosted upload-to-query and browser acceptance. Phase 1 remains incomplete.
+1. Keep the latest free-first direction: no paid API expenditure, billing upgrade, automatic model/provider fallback or retries is authorized. The older Groq/OpenAI-1536 and $5 envelope is a proposal, not an operational grant. Account-specific free access, quotas, privacy and the final embedding model/dimension remain unresolved.
+2. Review/reuse PR #15 and agree Settings-to-constructor wiring. Current API dependencies still pass legacy OLLAMA_* configuration; hosted environment variables alone do not establish working route integration.
+3. Resolve strict generation input-token enforcement, reasoning/output accounting, schema compatibility and a shared durable attempt/quota ledger before live acceptance. Continue mocks without external calls.
+4. Hassan owns hosted embeddings and safe model/profile/storage transition preserving existing vectors. Naveed owns bounded generation changes. Zaid owns frontend adaptation and browser evidence. Preserve the pinned source-reuse policy in TRD.
+5. Verify isolated API and hosted/browser acceptance only under explicit authorization; no merge is a prerequisite for isolated testing. Phase 1 remains incomplete.
 
-This documentation records the agreed target architecture and team boundary based on the published baseline above. No hosted implementation, migration or live-call result is claimed by this rectification.
+The primary checkout was observed on local main at b8414f2 with 70 tracked modified paths plus an untracked H:/ directory. Preserve every pending file; do not assume older reports of 43 changes are current. Status synchronization is prepared in a separate checkout and performs no application or database changes.
 
 ## Published baseline
 
@@ -25,6 +28,11 @@ This documentation records the agreed target architecture and team boundary base
 - **PR #10** (https://github.com/Hassan092-prog/KNEXUS/pull/10) merged the hardened database isolation guards into main at merge commit `b8414f2f0a53bcd0d6078a5b63b910845a1dc53e`.
 - **PR #11** (https://github.com/Hassan092-prog/KNEXUS/pull/11) merged the live docker inspection guard corrections and image-ID verification into main at merge commit `52d6ab392b3a82a28236433c34f8038b0dffbe0c`.
 - **PR #12** (https://github.com/Hassan092-prog/KNEXUS/pull/12) merged Naveed's seven-file generation baseline and evaluation harness into main at merge commit `d65a1a80477008b987874041b3a69f25580e5377`.
+- **PR #14** (https://github.com/Hassan092-prog/KNEXUS/pull/14) published the hosted-API/source-reuse documentation at merge commit `8664551ea87ceec47e2c99c4c133b987c987376e`.
+- **PR #13** (https://github.com/Hassan092-prog/KNEXUS/pull/13) merged the hosted generation transport at `1d4a06100b590a5f2a77830cbb3772eb789f0f47`. Transport presence does not establish hosted API wiring or live acceptance.
+- **PR #16** (https://github.com/Hassan092-prog/KNEXUS/pull/16) merged the offline hosted embedding and dispatch policy foundation into main at merge commit `da306c657c47280d370b4402afe31cb1b104035e`.
+- **PR #18** (https://github.com/Hassan092-prog/KNEXUS/pull/18) merged dev-zaid branch synchronization into main at merge commit `0b0dc009c1cda6f68abd3da7925182bf23dfc3b4`.
+- **PR #19** (https://github.com/Hassan092-prog/KNEXUS/pull/19) merged the hosted input validation, token counting, monotonic deadline enforcement, and source-preserving candidate splitting slice into main at merge commit `7e56499d23d538216d9d1074973e11b325143626`.
 - The shared development database (`knexus-postgres`, port 5435) remains unmigrated and strictly protected.
 
 ## Backend implementation and verification scope
@@ -59,12 +67,12 @@ Disposable PostgreSQL tests require explicit opt-in (`KNEXUS_ENABLE_DISPOSABLE_P
 |---|---|---|
 | H01 boundary | Published in main | Reuse canonical schemas, synthetic actor and run_generation |
 | H02 persistence | Published in main; verified in disposable PG suite | Shared database remains unmigrated; disposable migrations passed |
-| Generation | PR #12 merged; historical fake/Ollama implementation | Naveed adapts hosted provider/harness; hosted quality and API handoff remain open |
+| Generation | PR #13 hosted adapter merged; PR #15 harness remains draft | Legacy API wiring, provider accounting/schema work and live acceptance remain open |
 | H03 upload/parse/chunk | Merged in main; verified in disposable PG suite | Verified with file rollback and cleanup on DB errors |
-| H04 embed/index | Historical local MiniLM path verified | Hassan implements hosted embedding/token policy with reviewed dimension/model compatibility |
-| H05 retrieval | Merged in main; verified with real MiniLM vectors | SQL tenant/role filters before top-k verified against pgvector |
-| H06 API | Merged in main; verified in disposable PG suite | Document and query routes, citations, abstentions, and safe error mappings verified |
-| H07 integrated demo | Backend pipeline verified on synthetic corpus | Browser frontend integration remains pending Zaid's frontend branch |
+| H04 embed/index | Offline foundation (PR #16) and input validation (PR #19) merged in main | Live Google token correspondence verification, account eligibility, and existing-corpus transition/activation remain pending. Paid budget is $0; live calls unauthorized |
+| H05 retrieval | Merged in main; verified with real MiniLM vectors | SQL tenant/role filters before top-k verified against pgvector; query token limit validation merged (PR #19) |
+| H06 API | Merged in main; verified in disposable PG suite | Document and query routes, citations, abstentions, safe error mappings, and token limit HTTP 422/503 errors verified |
+| H07 integrated demo | Backend pipeline verified offline with mocks; integration handoff prepared | PR #15 generation integration, live acceptance authorization, and Zaid's frontend application remain pending |
 | Authentication, audit, governed actions | Not implemented | Phase 2 scope; do not use demo identity for sensitive data |
 | Frontend | Zaid owns it; accepted main has no frontend app | Coordinate API contracts with Zaid once frontend is published |
 
@@ -92,11 +100,12 @@ Executed against an isolated disposable container (`pgvector/pgvector:pg16`) on 
 ## Teammate Handoff & Dependencies
 
 ### Naveed (Generation Service: N01-N06)
-- PR #12 is merged at d65a1a80477008b987874041b3a69f25580e5377; dev-naveed is preserved at 8ae1a7a4b3d54178759d05bbf9e0faea968a8b29.
-- Adapt relevant hosted-provider source code at the pinned revision; preserve H01, strict citations, deadlines/cancellation and typed failures.
-- Agree hosted provider/model and secure configuration, then implement mocked tests and authorized API evaluation.
-- Preserve historical raw evaluation failures; no Ollama tunnel or local model experiment is required.
-- The prior review reported 64 passing Linux H01/generation tests and a separate canonical checker against PR #12. This documentation task does not rerun them or establish hosted behavior.
+- PR #13 adapter is merged. Draft PR #15 head is e2658b627c8d92f35bd2d6e77b812175985e99d2; main/base is 1d4a06100b590a5f2a77830cbb3772eb789f0f47. GitHub currently reports zero comments/reviews. No new generation implementation was authorized by the supplied handoff requests.
+- Rev 2 of Naveed's 4 November handoff supersedes rev 1. The handoff is an external local artifact, not a PR comment or merged code. It proposes provider-aware output/schema handling, pre-validation usage capture, optional reasoning controls and durable cross-process reservations.
+- Remaining gates: real input-token bound including framing/schema, reasoning completion accounting, shared ledger/recovery design, schema compatibility projection and agreed secret-safe Settings wiring. include_reasoning=false does not establish reduced generation or billing; chars/3 and post-call usage do not enforce a pre-call token ceiling.
+- Fixed public rate tables are not account limits, and a maximum campaign allowance does not require immediate use or a paid plan. Do not repeat rev 1's incorrect rate figures or rev 2's residual reference to the superseded 8K-TPD assumption.
+- Teammate-reported Windows checks: 195 passed, 18 skipped, 1 failed; canonical checker reported passing. The pre-existing Windows permission failure remains separate. These outputs were not rerun or independently inspected during this status update and are not hosted acceptance evidence.
+- Live calls, paid expenditure and implementation remain unapproved by the handoff. No model tunnel or local inference is required.
 
 ### Zaid (Frontend Application: Z01-Z06)
 - **Current status**: `origin/dev-zaid` contains only `frontend/README.md`. No frontend application or scaffold has been published.
@@ -111,10 +120,10 @@ The persistent team branches are:
 
 | Branch | Owner/purpose | Next step |
 |---|---|---|
-| main | Accepted shared implementation | Baseline for all teammate work |
-| dev-hassan | Hassan's implementation branch | Fast-forward to merged PRs; maintain clean history |
-| dev-naveed | Naveed's generation branch | PR #12 merged; implement hosted adapter and evaluation |
-| dev-zaid | Zaid's frontend branch | Preserve published commit; await Zaid's frontend commit/PR |
+| main | Accepted shared implementation | Baseline for all teammate work (`7e56499d23d538216d9d1074973e11b325143626`) |
+| dev-hassan | Hassan's implementation branch | Fast-forwarded to merged PR #19 (`7e56499d23d538216d9d1074973e11b325143626`) |
+| dev-naveed | Naveed's generation branch | PR #13 adapter merged; PR #15 draft at `e2658b6`; resolve integration decisions |
+| dev-zaid | Zaid's frontend branch | PR #18 merged into main; await Zaid's frontend application commit/PR |
 
 ## Phase 1 Acceptance Gate Summary
 
@@ -126,6 +135,9 @@ The persistent team branches are:
 - [x] Document and Query REST endpoints (`backend/app/api/v1/endpoints/`).
 - [x] Hardened disposable PostgreSQL/pgvector integration suite with container/volume/network ownership proof, immutable image ID, and protected-port rejection (`backend/tests/`).
 - [x] Historical synthetic corpus flow verified with local MiniLM embeddings, vector search, and fake generation (`test_real_minilm_synthetic_corpus_e2e_flow`).
-- [ ] Hosted generation adapter, live quality and actual query-route acceptance (Naveed).
-- [ ] Hosted embedding adapter, model/token policy, compatible vectors and retrieval evaluation (Hassan).
+- [x] Hosted generation transport merged through PR #13; mocked evidence only.
+- [x] Offline hosted embedding dispatch protection and quota ledger foundation (PR #16).
+- [x] Hosted input-token validation, correspondence checks, candidate splitting, and monotonic deadline enforcement (PR #19).
+- [ ] Live Google embedding token correspondence verification and corpus activation/migration (Hassan).
+- [ ] PR #15 review, hosted API wiring, token/usage controls and live acceptance (Hassan/Naveed).
 - [ ] Browser-based UI application (blocked on external input; assigned to Zaid).

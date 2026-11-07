@@ -14,7 +14,7 @@ import httpx
 from app.core.config import settings
 from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, LiveInferenceBlockedError
 from app.models.documents import VECTOR_DIMENSIONS
-from app.services.ingestion.errors import EmbeddingUnavailableError
+from app.services.ingestion.errors import EmbeddingUnavailableError, InputTokenLimitExceededError
 
 
 SUPPORTED_EMBEDDING_PROVIDERS = {"google", "fake", "local", "sentence-transformers"}
@@ -212,6 +212,14 @@ class GoogleGenAIEmbedder:
             "x-goog-api-key": self.api_key,
             "Content-Type": "application/json",
         }
+        for t in texts:
+            if not isinstance(t, str):
+                raise EmbeddingUnavailableError("Input text must be a string")
+            if len(t) > 8000:
+                raise InputTokenLimitExceededError(
+                    f"Input text length ({len(t)}) exceeds maximum safe boundary (8000 chars)"
+                )
+
         requests_payload = [
             {
                 "model": f"models/{self.model_name}",

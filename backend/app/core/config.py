@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -57,6 +58,29 @@ class Settings(BaseSettings):
     EMBEDDING_BASE_URL: str | None = None
     EMBEDDING_TIMEOUT: float = Field(default=20.0, gt=0)
     EMBEDDING_TASK_TYPE: str = "RETRIEVAL_DOCUMENT"
+    EMBEDDING_COUNTING_OVERHEAD_TOKENS: int = Field(default=8, ge=0)
+    EMBEDDING_MAX_INPUT_TOKENS: int = Field(default=2048, gt=0)
+    EMBEDDING_MAX_VALIDATION_CALLS_PER_DOC: int = Field(default=50, gt=0)
+    EMBEDDING_VALIDATION_DEADLINE_SECONDS: float = Field(default=30.0, gt=0)
+
+    @field_validator(
+        "EMBEDDING_TIMEOUT",
+        "EMBEDDING_VALIDATION_DEADLINE_SECONDS",
+        "GENERATION_TIMEOUT",
+        mode="before",
+    )
+    @classmethod
+    def _validate_finite_positive_float(cls, v: Any) -> float:
+        import math
+        if isinstance(v, bool) or not isinstance(v, (int, float, str)):
+            raise ValueError("Must be a finite positive number")
+        try:
+            val = float(v)
+        except (ValueError, TypeError):
+            raise ValueError("Must be a finite positive number")
+        if not math.isfinite(val) or val <= 0:
+            raise ValueError("Must be a finite positive number")
+        return val
 
     DOCUMENT_STORAGE_ROOT: Path = DEFAULT_STORAGE_ROOT
     MAX_UPLOAD_BYTES: int = Field(default=10 * 1024 * 1024, gt=0, le=10 * 1024 * 1024)

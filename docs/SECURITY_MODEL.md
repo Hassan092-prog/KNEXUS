@@ -2,6 +2,12 @@
 
 This document separates implemented controls from required protections. [Project status](PROJECT_STATUS.md) records evidence; [Phase 1 contract](PHASE_1_CONTRACT.md) owns role vocabulary, identity boundaries and safe public errors.
 
+## Current authorization and accounting boundary
+
+As of 6 November 2026, supplied Naveed handoff requests authorize review only. Offline foundation (PR #16) added QuotaLedger and BlockedLiveDispatchPolicy to fail closed before HTTP dispatch, preventing unauthorized live calls ($0 spend preserved). Future generation integration must share this dispatch and quota control. CLI live/model/key gates and an envelope written into a ledger are not independent evidence of user authorization. No paid API use, billing activation or fallback is authorized. Keep secret delivery masked and explicit; process-environment-only lookup can miss Pydantic-loaded credentials.
+
+Provider schemas do not replace canonical local validation or permission checks. Output/usage may be chargeable even when parsing fails. Future quota/budget enforcement needs durable atomic reservations shared across callers, safe crash recovery and unknown usage retained conservatively. Do not expose provider body text, secrets or unbounded headers through public errors.
+
 ## Hosted API boundary
 
 Hosted embedding sends document text off-host; hosted generation sends already-authorized evidence. Review provider retention/training, region, acceptable data and cost before live calls; start with synthetic material. See [TRD](TRD.md).

@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.models import Document, DocumentChunk, Embedding, IngestionJob
 from app.schemas import ActorContext
+from app.core.config import settings
+from app.core.token_counter import TokenCounter, get_default_token_counter
 from app.services.ingestion.chunking import ChunkDraft, Tokenizer, chunk_document, load_embedding_tokenizer
 from app.services.ingestion.embedding import Embedder, get_default_embedder, validate_embeddings
 from app.services.ingestion.errors import EmbeddingUnavailableError, IngestionProcessingError
@@ -93,6 +95,7 @@ async def process_document(
     session_factory: SessionFactory | None = None,
     embedder: Embedder | None = None,
     tokenizer: Tokenizer | None = None,
+    token_counter: TokenCounter | None = None,
 ) -> bool:
     """Process one persisted queued attempt. Errors become safe failed status."""
     sessions = session_factory or AsyncSessionLocal
@@ -122,20 +125,48 @@ async def process_document(
             model_max_input_tokens = None
             if callable(model_limit_loader):
                 model_max_input_tokens = await asyncio.to_thread(model_limit_loader)
-            active_tokenizer = tokenizer
-            if active_tokenizer is None:
+            if token_counter is not None:
+                chunks: list[ChunkDraft] = await asyncio.to_thread(
+                    chunk_document,
+                    document.id,
+                    sections,
+                    token_counter=token_counter,
+                )
+            elif tokenizer is not None:
+                chunks: list[ChunkDraft] = await asyncio.to_thread(
+                    chunk_document,
+                    document.id,
+                    sections,
+                    tokenizer,
+                    model_max_input_tokens=model_max_input_tokens,
+                )
+            elif (
+                settings.EMBEDDING_PROVIDER == "google"
+                or getattr(active_embedder, "model_name", "") in {"gemini-embedding-001", "text-embedding-004"}
+            ):
+                active_counter = get_default_token_counter(
+                    getattr(active_embedder, "model_name", "gemini-embedding-001"),
+                    dispatch_policy=getattr(active_embedder, "dispatch_policy", None),
+                )
+                chunks: list[ChunkDraft] = await asyncio.to_thread(
+                    chunk_document,
+                    document.id,
+                    sections,
+                    token_counter=active_counter,
+                )
+            else:
                 active_tokenizer = await asyncio.to_thread(
                     load_embedding_tokenizer,
                     active_embedder.model_name,
                     active_embedder.model_revision,
                 )
-            chunks: list[ChunkDraft] = await asyncio.to_thread(
-                chunk_document,
-                document.id,
-                sections,
-                active_tokenizer,
-                model_max_input_tokens=model_max_input_tokens,
-            )
+                chunks: list[ChunkDraft] = await asyncio.to_thread(
+                    chunk_document,
+                    document.id,
+                    sections,
+                    active_tokenizer,
+                    model_max_input_tokens=model_max_input_tokens,
+                )
             if not chunks:
                 raise IngestionProcessingError("The document produced no searchable chunks.")
 

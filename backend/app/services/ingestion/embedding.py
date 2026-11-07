@@ -13,6 +13,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, LiveInferenceBlockedError
+from app.core.quota import QuotaCampaignError, QuotaLedger, validate_dispatch_campaign
 from app.models.documents import VECTOR_DIMENSIONS
 from app.services.ingestion.errors import (
     EmbeddingSettlementError,
@@ -186,6 +187,10 @@ class GoogleGenAIEmbedder:
         self.transport = transport
         self.dispatch_policy = dispatch_policy or BlockedLiveDispatchPolicy()
         self.quota_ledger = quota_ledger
+        try:
+            validate_dispatch_campaign(self.dispatch_policy, self.quota_ledger)
+        except QuotaCampaignError as exc:
+            raise EmbeddingUnavailableError(str(exc)) from exc
 
     def _settle_attempt(
         self,
@@ -232,12 +237,10 @@ class GoogleGenAIEmbedder:
 
         # 1. Dispatch authorization check fails closed before any HTTP request or client
         self.dispatch_policy.check_dispatch("google", self.model_name)
-
-        can_dispatch = getattr(self.dispatch_policy, "can_dispatch", not isinstance(self.dispatch_policy, BlockedLiveDispatchPolicy))
-        if can_dispatch and self.quota_ledger is None:
-            raise EmbeddingUnavailableError(
-                "A configured QuotaLedger is strictly required whenever provider dispatch is authorized."
-            )
+        try:
+            validate_dispatch_campaign(self.dispatch_policy, self.quota_ledger)
+        except QuotaCampaignError as exc:
+            raise EmbeddingUnavailableError(str(exc)) from exc
 
         # 2. Credential validation
         if not self.api_key or not self.api_key.strip():
@@ -431,6 +434,10 @@ def get_default_embedder(
     selected_revision = revision or settings.EMBEDDING_MODEL_REVISION
 
     if selected_provider == "google":
+        try:
+            validate_dispatch_campaign(dispatch_policy, active_ledger)
+        except QuotaCampaignError as exc:
+            raise EmbeddingUnavailableError(str(exc)) from exc
         return GoogleGenAIEmbedder(
             model_name=selected_model,
             model_revision=selected_revision,

@@ -14,7 +14,7 @@ from app.core.database import get_db
 from app.core.demo_identity import build_demo_actor
 from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, MockDispatchPolicy
 from app.core.generation import GenerationService
-from app.core.quota import QuotaLedger, get_process_quota_ledger
+from app.core.quota import QuotaCampaignError, QuotaError, QuotaLedger, get_process_quota_ledger, validate_dispatch_campaign
 from app.core.token_counter import TokenCounter, get_default_token_counter
 from app.schemas import ActorContext
 from app.services.generation.errors import GenerationConfigurationError
@@ -156,14 +156,11 @@ def get_generation_service(
     can_dispatch = getattr(
         resolved_policy, "can_dispatch", not isinstance(resolved_policy, BlockedLiveDispatchPolicy)
     )
-    if can_dispatch and resolved_ledger is None:
-        raise GenerationConfigurationError(
-            "A configured QuotaLedger is strictly required whenever provider dispatch is authorized."
-        )
-    if can_dispatch and not getattr(settings, "QUOTA_CAMPAIGN_ID", "").strip():
-        raise GenerationConfigurationError(
-            "QUOTA_CAMPAIGN_ID is required and must be non-empty whenever provider dispatch is authorized."
-        )
+    if can_dispatch:
+        try:
+            validate_dispatch_campaign(resolved_policy, resolved_ledger)
+        except (QuotaCampaignError, QuotaError, ValueError) as exc:
+            raise GenerationConfigurationError(str(exc)) from exc
 
     provider = settings.GENERATION_PROVIDER or settings.OLLAMA_PROVIDER
     if not provider:

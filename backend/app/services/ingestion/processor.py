@@ -16,6 +16,7 @@ from app.core.database import AsyncSessionLocal
 from app.models import Document, DocumentChunk, Embedding, IngestionJob
 from app.schemas import ActorContext
 from app.core.config import settings
+from app.core.quota import validate_dispatch_campaign
 from app.core.token_counter import TokenCounter, get_default_token_counter
 from app.services.ingestion.chunking import ChunkDraft, Tokenizer, chunk_document, load_embedding_tokenizer
 from app.services.ingestion.embedding import Embedder, get_default_embedder, validate_embeddings
@@ -126,6 +127,12 @@ async def process_document(
             job.status = "processing"
             job.started_at = now
             await session.commit()
+
+            # Enforce campaign budget validation fail-closed before parsing or chunking
+            validate_dispatch_campaign(
+                getattr(active_embedder, "dispatch_policy", None),
+                getattr(active_embedder, "quota_ledger", None),
+            )
 
             if parsed_sections is None:
                 raw = await asyncio.to_thread(read_upload, document.storage_key or "")

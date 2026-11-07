@@ -23,11 +23,15 @@ import time
 from typing import Any
 import uuid
 
-from app.core.dispatch_policy import LiveInferenceBlockedError
+from app.core.dispatch_policy import BlockedLiveDispatchPolicy, LiveInferenceBlockedError
 
 
 class QuotaError(Exception):
     """Base exception for runtime quota enforcement."""
+
+
+class QuotaCampaignError(QuotaError, ValueError):
+    """Raised when dispatch is authorized but campaign ID is missing, blank, or 'default'."""
 
 
 class QuotaExceededError(QuotaError):
@@ -59,7 +63,7 @@ class QuotaConfig:
     max_campaign_attempts: int | None = 500
     max_requests_per_minute: int = 30
     max_requests_per_day: int = 1000
-    max_total_attempts: int = 1_000_000
+    max_total_attempts: int | None = None
     min_request_interval_seconds: float = 2.0
     in_flight_timeout_seconds: float = 60.0
     lock_timeout_seconds: float = 10.0
@@ -75,8 +79,9 @@ class QuotaConfig:
             raise ValueError("max_requests_per_minute must be a positive integer (not boolean)")
         if not _is_strict_int(self.max_requests_per_day) or self.max_requests_per_day <= 0:
             raise ValueError("max_requests_per_day must be a positive integer (not boolean)")
-        if not _is_strict_int(self.max_total_attempts) or self.max_total_attempts < 0:
-            raise ValueError("max_total_attempts must be a non-negative integer (not boolean)")
+        if self.max_total_attempts is not None:
+            if not _is_strict_int(self.max_total_attempts) or self.max_total_attempts < 0:
+                raise ValueError("max_total_attempts must be a non-negative integer (not boolean)")
         if not _is_finite_number(self.min_request_interval_seconds) or self.min_request_interval_seconds < 0:
             raise ValueError("min_request_interval_seconds must be a non-negative finite number")
         if not _is_finite_number(self.in_flight_timeout_seconds) or self.in_flight_timeout_seconds <= 0:
@@ -640,6 +645,52 @@ class QuotaLedger:
             error=error,
             status_code=status_code,
         )
+def validate_dispatch_campaign(
+    dispatch_policy: Any,
+    quota_ledger: QuotaLedger | None = None,
+) -> str:
+    """Enforce explicit campaign identification and quota ledger when dispatch is authorized.
+
+    Whenever a dispatch policy permits network inference (can_dispatch is True):
+    1. A QuotaLedger instance is strictly required (cannot be None).
+    2. The campaign_id must be non-empty and must NOT be 'default'. Silent fallback
+       to unbudgeted 'default' campaigns is refused fail-closed.
+
+    Returns the validated campaign_id.
+    """
+    can_dispatch = bool(getattr(
+        dispatch_policy,
+        "can_dispatch",
+        not isinstance(dispatch_policy, BlockedLiveDispatchPolicy) if dispatch_policy is not None else False,
+    ))
+    if not can_dispatch:
+        campaign_id = getattr(quota_ledger, "campaign_id", "") if quota_ledger is not None else ""
+        return str(campaign_id or "blocked")
+
+    if quota_ledger is None:
+        raise QuotaCampaignError(
+            "A configured QuotaLedger is strictly required whenever provider dispatch is authorized."
+        )
+
+    campaign_id = getattr(quota_ledger, "campaign_id", None)
+    if campaign_id is None or not str(campaign_id).strip() or str(campaign_id).strip().lower() == "default":
+        from app.core.config import settings
+        campaign_id = getattr(settings, "QUOTA_CAMPAIGN_ID", "")
+
+    campaign_id_str = str(campaign_id).strip()
+    if not campaign_id_str:
+        raise QuotaCampaignError(
+            "QUOTA_CAMPAIGN_ID is required and must be non-empty whenever provider dispatch is authorized."
+        )
+    if campaign_id_str.lower() == "default":
+        raise QuotaCampaignError(
+            "Silent fallback to campaign 'default' is refused whenever provider dispatch is authorized. "
+            "An explicit, non-default QUOTA_CAMPAIGN_ID must be configured."
+        )
+
+    return campaign_id_str
+
+
 # ==============================================================================
 # Process-wide Shared Quota Ledger Singleton
 # ==============================================================================

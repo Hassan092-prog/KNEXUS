@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     QUOTA_CAMPAIGN_MAX_ATTEMPTS: int = Field(default=500, gt=0)
     QUOTA_MAX_REQUESTS_PER_MINUTE: int = Field(default=30, gt=0)
     QUOTA_MAX_REQUESTS_PER_DAY: int = Field(default=1000, gt=0)
-    QUOTA_MAX_TOTAL_ATTEMPTS: int = Field(default=1_000_000, ge=0)
+    QUOTA_MAX_TOTAL_ATTEMPTS: int | None = Field(default=None, ge=0)
     QUOTA_MIN_REQUEST_INTERVAL_SECONDS: float = Field(default=2.0, ge=0.0)
     QUOTA_IN_FLIGHT_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0)
     QUOTA_LOCK_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0)

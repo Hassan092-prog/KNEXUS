@@ -38,7 +38,7 @@ def make_embedding_vector(idx: int, dim: int = 384) -> list[float]:
 
 def test_batch_embedding_output_equivalent_to_per_chunk(tmp_path: Path):
     """2b: Output of batch embedding is completely identical to per-chunk sequential embedding."""
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "q_equiv.json", min_request_interval_seconds=0.0))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "q_equiv.json", min_request_interval_seconds=0.0))
     policy = MockDispatchPolicy("google")
 
     def mock_handler(req: httpx.Request) -> httpx.Response:
@@ -86,7 +86,7 @@ def test_batch_embedding_output_equivalent_to_per_chunk(tmp_path: Path):
 
 def test_101_chunk_input_produces_two_requests(tmp_path: Path):
     """2b: 101 chunk contents sliced at GOOGLE_EMBEDDING_MAX_BATCH_SIZE (100) produces exactly 2 requests."""
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "q_101.json", max_requests_per_minute=200, min_request_interval_seconds=0.0))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "q_101.json", max_requests_per_minute=200, min_request_interval_seconds=0.0))
     policy = MockDispatchPolicy("google")
 
     captured_requests: list[dict[str, Any]] = []
@@ -124,7 +124,7 @@ def test_101_chunk_input_produces_two_requests(tmp_path: Path):
 
 def test_partial_or_malformed_batch_response_fails_safely(tmp_path: Path):
     """2b: A partial or malformed response raises EmbeddingUnavailableError and settles as failure."""
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "q_malformed.json", min_request_interval_seconds=0.0))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "q_malformed.json", min_request_interval_seconds=0.0))
     policy = MockDispatchPolicy("google")
 
     # Handler returns only 2 embeddings for 3 requested texts
@@ -167,7 +167,7 @@ def test_partial_or_malformed_batch_response_fails_safely(tmp_path: Path):
 def test_settlement_happens_exactly_once_per_request(tmp_path: Path):
     """2b: Exactly one reservation and settlement occurs per HTTP batch request."""
     state_file = tmp_path / "q_settle.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file, max_requests_per_minute=200, min_request_interval_seconds=0.0))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file, max_requests_per_minute=200, min_request_interval_seconds=0.0))
     policy = MockDispatchPolicy("google")
 
     def mock_handler(req: httpx.Request) -> httpx.Response:
@@ -201,7 +201,7 @@ def test_settlement_happens_exactly_once_per_request(tmp_path: Path):
 def test_429_mid_ingestion_trips_tripwire_and_stops_further_requests(tmp_path: Path):
     """2b: HTTP 429 on first batch trips the rate limit and prevents subsequent batch dispatch."""
     state_file = tmp_path / "q_429.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file, max_requests_per_minute=200, min_request_interval_seconds=0.0))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file, max_requests_per_minute=200, min_request_interval_seconds=0.0))
     policy = MockDispatchPolicy("google")
 
     request_count = 0

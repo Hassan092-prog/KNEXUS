@@ -21,7 +21,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, LiveInferenceBlockedError
-from app.core.quota import QuotaLedger
+from app.core.quota import QuotaCampaignError, QuotaLedger, validate_dispatch_campaign
 from app.services.ingestion.errors import TokenCountingError, TokenCountingSettlementError
 
 
@@ -123,6 +123,10 @@ class GoogleGenAITokenCounter:
         self.transport = transport
         self.dispatch_policy = dispatch_policy or BlockedLiveDispatchPolicy()
         self.quota_ledger = quota_ledger
+        try:
+            validate_dispatch_campaign(self.dispatch_policy, self.quota_ledger)
+        except QuotaCampaignError as exc:
+            raise TokenCountingError(str(exc)) from exc
         self._cache: dict[tuple[str, str, str], TokenCountResult] = {}
 
     def _settle_attempt(
@@ -197,12 +201,10 @@ class GoogleGenAITokenCounter:
 
         # 1. Enforce dispatch policy: fails closed before creating client or HTTP socket
         self.dispatch_policy.check_dispatch("google", target_model)
-
-        can_dispatch = getattr(self.dispatch_policy, "can_dispatch", not isinstance(self.dispatch_policy, BlockedLiveDispatchPolicy))
-        if can_dispatch and self.quota_ledger is None:
-            raise TokenCountingError(
-                "A configured QuotaLedger is strictly required whenever provider dispatch is authorized."
-            )
+        try:
+            validate_dispatch_campaign(self.dispatch_policy, self.quota_ledger)
+        except QuotaCampaignError as exc:
+            raise TokenCountingError(str(exc)) from exc
 
         # 2. Credential validation
         if not self.api_key or not self.api_key.strip():
@@ -414,6 +416,10 @@ def get_default_token_counter(
         if settings.EMBEDDING_PROVIDER == "google"
         else "gemini-embedding-001"
     )
+    try:
+        validate_dispatch_campaign(dispatch_policy, active_ledger)
+    except QuotaCampaignError as exc:
+        raise TokenCountingError(str(exc)) from exc
     return GoogleGenAITokenCounter(
         model_name=resolved_model,
         overhead_tokens=settings.EMBEDDING_COUNTING_OVERHEAD_TOKENS,

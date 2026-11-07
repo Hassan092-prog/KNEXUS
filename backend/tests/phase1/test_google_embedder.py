@@ -32,7 +32,7 @@ def test_google_embedder_blocked_by_default_before_http():
 
 
 def test_google_embedder_missing_key_fails_closed(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     embedder = GoogleGenAIEmbedder(
         api_key=None,
         dispatch_policy=MockDispatchPolicy(),
@@ -42,10 +42,12 @@ def test_google_embedder_missing_key_fails_closed(tmp_path: Path):
         embedder.embed_texts(["test document text"])
 
 
-def test_google_embedder_empty_input_returns_empty():
+def test_google_embedder_empty_input_returns_empty(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger_empty.json"))
     embedder = GoogleGenAIEmbedder(
         api_key="test-key",
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     assert embedder.embed_texts([]) == []
 
@@ -56,7 +58,7 @@ def test_google_embedder_max_input_tokens():
 
 
 def test_google_embedder_unsupported_task_type_fails(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     embedder = GoogleGenAIEmbedder(
         api_key="test-key",
         dispatch_policy=MockDispatchPolicy(),
@@ -67,7 +69,7 @@ def test_google_embedder_unsupported_task_type_fails(tmp_path: Path):
 
 
 def test_google_embedder_successful_batch_embedding(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     recorded_requests = []
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -112,7 +114,7 @@ def test_google_embedder_successful_batch_embedding(tmp_path: Path):
 
 
 def test_google_embedder_rejects_boolean_and_non_numeric_elements(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def mock_handler_bool(request: httpx.Request) -> httpx.Response:
         vals = [1.0] * 383 + [True]  # Boolean element
         return httpx.Response(200, json={"embeddings": [{"values": vals}]})
@@ -129,7 +131,7 @@ def test_google_embedder_rejects_boolean_and_non_numeric_elements(tmp_path: Path
 
 
 def test_google_embedder_rejects_zero_norm_vector(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"embeddings": [{"values": [0.0] * 384}]})
 
@@ -145,7 +147,7 @@ def test_google_embedder_rejects_zero_norm_vector(tmp_path: Path):
 
 
 def test_google_embedder_rejects_service_error_payload(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -164,7 +166,7 @@ def test_google_embedder_rejects_service_error_payload(tmp_path: Path):
 
 
 def test_google_embedder_dimension_mismatch_fails(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"embeddings": [{"values": [1.0] * 768}]})
 
@@ -187,7 +189,7 @@ def test_google_embedder_maps_http_errors(tmp_path: Path):
         (429, "rate limit exceeded"),
         (503, "HTTP 503"),
     ]:
-        ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / f"ledger_{status}.json"))
+        ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / f"ledger_{status}.json"))
         def mock_handler(request: httpx.Request, code=status) -> httpx.Response:
             return httpx.Response(code, text="Error payload")
 
@@ -203,7 +205,7 @@ def test_google_embedder_maps_http_errors(tmp_path: Path):
 
 
 def test_google_embedder_maps_timeout(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("Read timed out")
 
@@ -436,7 +438,7 @@ from app.services.ingestion.errors import EmbeddingSettlementError
 def test_google_embedder_reserves_and_settles_on_200_with_usage(tmp_path):
     """Reserve before dispatch, settle on 200 with usage metadata."""
     state_file = tmp_path / "ledger_embed_200.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     embed_response = {
         "embeddings": [{"values": [0.1, 0.2, 0.3]}],
@@ -477,7 +479,7 @@ def test_google_embedder_reserves_and_settles_on_200_with_usage(tmp_path):
 def test_google_embedder_missing_usage_leaves_tokens_unresolved(tmp_path):
     """Missing usageMetadata settles with tokens_unresolved=True."""
     state_file = tmp_path / "ledger_embed_nousage.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     embed_response = {
         "embeddings": [{"values": [0.1, 0.2, 0.3]}],
@@ -512,7 +514,7 @@ def test_google_embedder_missing_usage_leaves_tokens_unresolved(tmp_path):
 def test_google_embedder_429_trips_tripwire_no_retries(tmp_path):
     """HTTP 429 records settlement failure, trips circuit breaker, raises without retries."""
     state_file = tmp_path / "ledger_embed_429.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     call_count = 0
 
@@ -554,7 +556,7 @@ def test_google_embedder_429_trips_tripwire_no_retries(tmp_path):
 def test_google_embedder_settlement_failure_preserves_reservation_and_raises(tmp_path):
     """Settlement failure raises EmbeddingSettlementError and preserves reservation."""
     state_file = tmp_path / "ledger_embed_settle_fail.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     def failing_settle(attempt_id, **kwargs):
         raise OSError("Disk full during settlement")
@@ -590,20 +592,19 @@ def test_google_embedder_settlement_failure_preserves_reservation_and_raises(tmp
 
 def test_google_embedder_without_ledger_fails_closed_when_dispatch_authorized():
     """F3: When dispatch is authorized, GoogleGenAIEmbedder without a ledger fails closed before HTTP."""
-    embedder = GoogleGenAIEmbedder(
-        api_key="test-key",
-        dispatch_policy=MockDispatchPolicy("google"),
-        quota_ledger=None,
-    )
     with pytest.raises(EmbeddingUnavailableError, match="A configured QuotaLedger is strictly required"):
-        embedder.embed_texts(["any test text"])
+        GoogleGenAIEmbedder(
+            api_key="test-key",
+            dispatch_policy=MockDispatchPolicy("google"),
+            quota_ledger=None,
+        )
 
 
 @pytest.mark.parametrize("exc_cls", [GeneratorExit, asyncio.CancelledError, KeyboardInterrupt])
 def test_google_embedder_settles_and_reraises_base_exception_unchanged(tmp_path: Path, exc_cls):
     """V5: BaseExceptions (GeneratorExit, CancelledError, KeyboardInterrupt) re-raise unchanged after exactly-once settlement."""
     state_file = tmp_path / f"ledger_base_exc_{exc_cls.__name__}.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     def raise_base_exc(req):
         raise exc_cls("simulated base exception")

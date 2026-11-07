@@ -9,9 +9,12 @@ import httpx
 import pytest
 
 from app.api.dependencies import get_generation_service
+from app.core.token_counter import GoogleGenAITokenCounter, get_default_token_counter
+from app.services.ingestion.embedding import GoogleGenAIEmbedder, get_default_embedder
+from app.services.ingestion.errors import EmbeddingUnavailableError, TokenCountingError
 from app.core.config import Settings, settings
 from app.core.dispatch_policy import MockDispatchPolicy
-from app.core.quota import QuotaConfig, QuotaExceededError, QuotaLedger
+from app.core.quota import QuotaCampaignError, QuotaConfig, QuotaExceededError, QuotaLedger, validate_dispatch_campaign
 from app.services.generation.errors import GenerationConfigurationError
 
 
@@ -209,8 +212,8 @@ def test_file_bytes_of_old_records_are_preserved(tmp_path: Path):
     assert rec2["error"] == "provider_error"
 
 
-def test_missing_campaign_id_with_dispatch_policy_fails_closed(monkeypatch, tmp_path: Path):
-    """Whenever provider dispatch is authorized, missing or empty QUOTA_CAMPAIGN_ID fails closed."""
+def test_generation_fails_closed_without_explicit_campaign_id_or_on_default(monkeypatch, tmp_path: Path):
+    """Whenever provider dispatch is authorized, missing, whitespace, 'default' or None ledger fails closed."""
     policy = MockDispatchPolicy("groq")
     mock_transport = httpx.MockTransport(lambda req: httpx.Response(200, json={}))
     ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "q_disp.json"))
@@ -225,7 +228,17 @@ def test_missing_campaign_id_with_dispatch_policy_fails_closed(monkeypatch, tmp_
     with pytest.raises(GenerationConfigurationError, match="QUOTA_CAMPAIGN_ID is required and must be non-empty"):
         get_generation_service(dispatch_policy=policy, quota_ledger=ledger, transport=mock_transport)
 
-    # 3. Non-empty string succeeds
+    # 3. Campaign 'default' is explicitly refused (no silent fallback permitted)
+    monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "default")
+    with pytest.raises(GenerationConfigurationError, match="Silent fallback to campaign 'default' is refused"):
+        get_generation_service(dispatch_policy=policy, quota_ledger=ledger, transport=mock_transport)
+
+    # 4. QuotaLedger is None fails closed
+    monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "campaign-valid-123")
+    with pytest.raises(GenerationConfigurationError, match="A configured QuotaLedger is strictly required"):
+        get_generation_service(dispatch_policy=policy, quota_ledger=None, transport=mock_transport)
+
+    # 5. Non-empty, non-default string succeeds
     monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "campaign-valid-123")
     svc = get_generation_service(dispatch_policy=policy, quota_ledger=ledger, transport=mock_transport)
     assert svc is not None
@@ -258,3 +271,161 @@ def test_expired_unresolved_and_unresolved_token_attempts_count_toward_campaign(
     # attempt 3 must be refused!
     with pytest.raises(QuotaExceededError, match=r"attempt limit \(2/2\) reached"):
         ledger.reserve_attempt("google", "gemini-embedding-001")
+
+
+def test_embedder_fails_closed_without_explicit_campaign_id_or_on_default(monkeypatch, tmp_path: Path):
+    """GoogleGenAIEmbedder and get_default_embedder fail closed when dispatch is authorized but campaign ID is missing or 'default'."""
+    policy = MockDispatchPolicy("google")
+    monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "")
+    monkeypatch.setattr(settings, "EMBEDDING_PROVIDER", "google")
+    monkeypatch.setattr(settings, "EMBEDDING_MODEL_NAME", "text-embedding-004")
+
+    # 1. Missing campaign ID fails closed
+    ledger_default = QuotaLedger(QuotaConfig(enabled=True, campaign_id="default", state_path=tmp_path / "q_emb_def.json"))
+    with pytest.raises(EmbeddingUnavailableError, match="QUOTA_CAMPAIGN_ID is required and must be non-empty"):
+        GoogleGenAIEmbedder(
+            api_key="test-key",
+            dispatch_policy=policy,
+            quota_ledger=ledger_default,
+        )
+
+    # 2. Explicit 'default' campaign fails closed
+    monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "default")
+    with pytest.raises(EmbeddingUnavailableError, match="Silent fallback to campaign 'default' is refused"):
+        GoogleGenAIEmbedder(
+            api_key="test-key",
+            dispatch_policy=policy,
+            quota_ledger=ledger_default,
+        )
+
+    # 3. get_default_embedder fails closed with default campaign
+    with pytest.raises(EmbeddingUnavailableError, match="Silent fallback to campaign 'default' is refused"):
+        get_default_embedder(provider="google", dispatch_policy=policy, quota_ledger=ledger_default)
+
+    # 3. Missing ledger fails closed
+    with pytest.raises(EmbeddingUnavailableError, match="A configured QuotaLedger is strictly required"):
+        GoogleGenAIEmbedder(
+            api_key="test-key",
+            dispatch_policy=policy,
+            quota_ledger=None,
+        )
+
+    # 4. Valid non-default campaign succeeds
+    ledger_valid = QuotaLedger(QuotaConfig(enabled=True, campaign_id="valid-embed-campaign", state_path=tmp_path / "q_emb_val.json"))
+    embedder = GoogleGenAIEmbedder(
+        api_key="test-key",
+        dispatch_policy=policy,
+        quota_ledger=ledger_valid,
+    )
+    assert embedder is not None
+
+
+def test_token_counter_fails_closed_without_explicit_campaign_id_or_on_default(monkeypatch, tmp_path: Path):
+    """GoogleGenAITokenCounter and get_default_token_counter fail closed when dispatch is authorized but campaign ID is missing or 'default'."""
+    policy = MockDispatchPolicy("google")
+    monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "")
+    monkeypatch.setattr(settings, "EMBEDDING_PROVIDER", "google")
+    monkeypatch.setattr(settings, "EMBEDDING_MODEL_NAME", "text-embedding-004")
+
+    # 1. Missing campaign ID fails closed
+    ledger_default = QuotaLedger(QuotaConfig(enabled=True, campaign_id="default", state_path=tmp_path / "q_cnt_def.json"))
+    with pytest.raises(TokenCountingError, match="QUOTA_CAMPAIGN_ID is required and must be non-empty"):
+        GoogleGenAITokenCounter(
+            api_key="test-key",
+            dispatch_policy=policy,
+            quota_ledger=ledger_default,
+        )
+
+    # 2. Explicit 'default' campaign fails closed
+    monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "default")
+    with pytest.raises(TokenCountingError, match="Silent fallback to campaign 'default' is refused"):
+        GoogleGenAITokenCounter(
+            api_key="test-key",
+            dispatch_policy=policy,
+            quota_ledger=ledger_default,
+        )
+
+    # 3. get_default_token_counter fails closed with default campaign
+    with pytest.raises(TokenCountingError, match="Silent fallback to campaign 'default' is refused"):
+        get_default_token_counter(dispatch_policy=policy, quota_ledger=ledger_default)
+
+    # 3. Missing ledger fails closed
+    with pytest.raises(TokenCountingError, match="A configured QuotaLedger is strictly required"):
+        GoogleGenAITokenCounter(
+            api_key="test-key",
+            dispatch_policy=policy,
+            quota_ledger=None,
+        )
+
+    # 4. Valid non-default campaign succeeds
+    ledger_valid = QuotaLedger(QuotaConfig(enabled=True, campaign_id="valid-counter-campaign", state_path=tmp_path / "q_cnt_val.json"))
+    counter = GoogleGenAITokenCounter(
+        api_key="test-key",
+        dispatch_policy=policy,
+        quota_ledger=ledger_valid,
+    )
+    assert counter is not None
+
+
+@pytest.mark.asyncio
+async def test_process_document_fails_closed_without_explicit_campaign_id_or_on_default(tmp_path: Path):
+    """process_document fails closed before parsing/chunking when embedder has dispatch authorized without campaign ID."""
+    from uuid import uuid4
+    from app.models.documents import Document, IngestionJob
+    from app.services.ingestion.parsing import ParsedSection
+    from app.services.ingestion.processor import process_document
+
+    doc_id = uuid4()
+    org_id = uuid4()
+    doc = Document(
+        id=doc_id, org_id=org_id, uploaded_by=uuid4(), title="Doc",
+        source_type="docx", storage_key="k", status="queued",
+        allowed_roles=["employee"], chunk_count=0
+    )
+    job = IngestionJob(id=uuid4(), org_id=org_id, document_id=doc_id, attempt_number=1, status="queued")
+
+    class MockSession:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def get(self, *args): return doc
+        async def execute(self, *args):
+            class S:
+                def scalar_one_or_none(self): return job
+            return S()
+        def add(self, item): pass
+        async def flush(self): pass
+        async def commit(self): pass
+
+    ledger_default = QuotaLedger(QuotaConfig(enabled=True, campaign_id="default", state_path=tmp_path / "proc_q.json"))
+
+    class DispatchAuthorizedEmbedder:
+        model_name = "text-embedding-004"
+        model_revision = "001"
+        dispatch_policy = MockDispatchPolicy("google")
+        quota_ledger = ledger_default
+
+        def embed_texts(self, texts, **kwargs):
+            raise AssertionError("Remote embed_texts must never be called when campaign ID validation fails")
+
+    sections = [ParsedSection(text="Test section content", source_metadata={}, page=1)]
+    success = await process_document(
+        doc_id,
+        parsed_sections=sections,
+        session_factory=lambda: MockSession(),
+        embedder=DispatchAuthorizedEmbedder(),
+    )
+    # process_document must fail closed: return False and record failed job status
+    assert success is False
+    assert job.status == "failed"
+
+
+def test_quota_max_total_attempts_defaults_to_none_and_allows_unconstrained_lifetime(tmp_path: Path):
+    """max_total_attempts defaults to None, removing the meaningless 1_000_000 lifetime ceiling."""
+    cfg = QuotaConfig(enabled=True, campaign_id="test-camp", state_path=tmp_path / "q_ceiling.json")
+    assert cfg.max_total_attempts is None
+
+    # When max_total_attempts is explicitly None, reserve_attempt does not trip a lifetime ceiling
+    ledger = QuotaLedger(cfg)
+    aid = ledger.reserve_attempt("google", "text-embedding-004")
+    assert aid is not None
+    ledger.settle_attempt(aid, success=True)

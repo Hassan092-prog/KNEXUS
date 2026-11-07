@@ -593,7 +593,7 @@ def test_physical_size_guard_boundary():
 # ==============================================================================
 
 def test_google_token_counter_http_error_sanitized(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(500, text="Internal Server Error"))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
@@ -606,7 +606,7 @@ def test_google_token_counter_http_error_sanitized(tmp_path: Path):
 
 
 def test_google_token_counter_malformed_json_sanitized(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, text="not json {"))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
@@ -619,7 +619,7 @@ def test_google_token_counter_malformed_json_sanitized(tmp_path: Path):
 
 
 def test_google_token_counter_missing_total_tokens_sanitized(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"other": 123}))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
@@ -632,7 +632,7 @@ def test_google_token_counter_missing_total_tokens_sanitized(tmp_path: Path):
 
 
 def test_google_token_counter_rejects_boolean_total_tokens(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"totalTokens": True}))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
@@ -645,7 +645,7 @@ def test_google_token_counter_rejects_boolean_total_tokens(tmp_path: Path):
 
 
 def test_google_token_counter_rejects_negative_total_tokens(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"totalTokens": -5}))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
@@ -658,7 +658,7 @@ def test_google_token_counter_rejects_negative_total_tokens(tmp_path: Path):
 
 
 def test_google_token_counter_timeout(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def timeout_handler(req):
         raise httpx.TimeoutException("Connection timed out")
 
@@ -673,7 +673,7 @@ def test_google_token_counter_timeout(tmp_path: Path):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_secret_sanitization_does_not_leak_keys_or_payloads():
+def test_secret_sanitization_does_not_leak_keys_or_payloads(tmp_path: Path):
     secret_key = "AIzaSyFakeSecretKeyThatMustNotLeak"
     auth_header = "Bearer super-secret-internal-token-12345"
 
@@ -684,10 +684,12 @@ def test_secret_sanitization_does_not_leak_keys_or_payloads():
         )
 
     transport = httpx.MockTransport(leak_attempt)
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger_sec.json"))
     counter = GoogleGenAITokenCounter(
         api_key=secret_key,
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     try:
         counter.count_tokens("Secret text", model="gemini-embedding-001")
@@ -707,7 +709,7 @@ def test_secret_sanitization_does_not_leak_keys_or_payloads():
 
 def test_real_quota_ledger_success(tmp_path: Path):
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"totalTokens": 42}))
     counter = GoogleGenAITokenCounter(
@@ -737,7 +739,7 @@ def test_real_quota_ledger_success(tmp_path: Path):
 
 def test_real_quota_ledger_timeout(tmp_path: Path):
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     def timeout_fn(req):
         raise httpx.TimeoutException("Timeout")
@@ -765,7 +767,7 @@ def test_real_quota_ledger_timeout(tmp_path: Path):
 
 def test_real_quota_ledger_malformed_response(tmp_path: Path):
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"bad": "data"}))
     counter = GoogleGenAITokenCounter(
@@ -789,7 +791,7 @@ def test_real_quota_ledger_malformed_response(tmp_path: Path):
 
 def test_real_quota_ledger_http_429(tmp_path: Path):
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     transport = httpx.MockTransport(lambda req: httpx.Response(429, text="Too Many Requests"))
     counter = GoogleGenAITokenCounter(
@@ -817,7 +819,7 @@ def test_settlement_failure_on_successful_provider_response(tmp_path: Path, monk
     and retains the outstanding reservation in the ledger. Exactly 1 provider call made.
     """
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     provider_calls = 0
 
@@ -861,7 +863,7 @@ def test_settlement_failure_on_timeout_provider_response(tmp_path: Path, monkeyp
     preserving safe 'timeout' classification and retained reservation. Exactly 1 call.
     """
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     provider_calls = 0
 
@@ -899,7 +901,7 @@ def test_settlement_failure_on_http_429_provider_response(tmp_path: Path, monkey
     preserving status_code=429 and error='http_429'. Exactly 1 call.
     """
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     provider_calls = 0
 
@@ -934,7 +936,7 @@ def test_settlement_failure_on_http_429_provider_response(tmp_path: Path, monkey
 def test_settlement_failure_on_malformed_json_provider_response(tmp_path: Path, monkeypatch):
     """Settlement failure on malformed JSON propagates TokenCountingSettlementError."""
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     provider_calls = 0
 
@@ -967,7 +969,7 @@ def test_settlement_failure_on_malformed_json_provider_response(tmp_path: Path, 
 def test_settlement_failure_on_invalid_count_provider_response(tmp_path: Path, monkeypatch):
     """Settlement failure on invalid totalTokens propagates TokenCountingSettlementError."""
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     provider_calls = 0
 
@@ -1114,7 +1116,7 @@ def test_document_and_query_validation_cache_semantics():
 
 
 def test_counting_failure_no_retries(tmp_path: Path):
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     counter_calls = 0
 
     def mock_failure(req):
@@ -1457,20 +1459,19 @@ def test_asgi_query_route_zero_leaked_credentials_or_bodies():
 
 def test_google_token_counter_without_ledger_fails_closed_when_dispatch_authorized():
     """F3: When dispatch is authorized, GoogleGenAITokenCounter without a ledger fails closed before HTTP."""
-    counter = GoogleGenAITokenCounter(
-        api_key="test-key",
-        dispatch_policy=MockDispatchPolicy("google"),
-        quota_ledger=None,
-    )
     with pytest.raises(TokenCountingError, match="A configured QuotaLedger is strictly required"):
-        counter.count_tokens("any input text")
+        GoogleGenAITokenCounter(
+            api_key="test-key",
+            dispatch_policy=MockDispatchPolicy("google"),
+            quota_ledger=None,
+        )
 
 
 @pytest.mark.parametrize("exc_cls", [GeneratorExit, asyncio.CancelledError, KeyboardInterrupt])
 def test_google_token_counter_settles_and_reraises_base_exception_unchanged(tmp_path: Path, exc_cls):
     """V5: BaseExceptions (GeneratorExit, CancelledError, KeyboardInterrupt) re-raise unchanged after exactly-once settlement."""
     state_file = tmp_path / f"ledger_base_exc_counter_{exc_cls.__name__}.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     def raise_base_exc(req):
         raise exc_cls("simulated base exception in counter")

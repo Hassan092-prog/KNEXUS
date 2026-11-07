@@ -2,6 +2,10 @@
 
 Read [project status](docs/PROJECT_STATUS.md) for the shared revision and [team responsibilities](docs/TEAM_RESPONSIBILITIES.md) for ownership. Hassan's shared-workspace commands run over SSH to `hassan@192.168.1.92`. Each laptop clone uses its own environment.
 
+## Current live-call gate (6 November 2026)
+
+Draft PR #15 is not a spending or execution grant. Keep mocks explicit; missing application configuration fails clearly, never silently selects fake. No paid calls, billing activation, fallback or automatic retries are authorized. Resolve the shared token/quota policy and actual account eligibility before supplying live commands. A free quota is not a promise of unlimited availability. See [current status](docs/PROJECT_STATUS.md) and [technical decisions](docs/TRD.md).
+
 ## 1. Choose a safe checkout
 
 Each member uses a separate clone or agreed worktree. Inspect changes before switching or synchronizing:
@@ -107,7 +111,7 @@ Read [technical decisions](docs/TRD.md). Agree provider/model, endpoint, privacy
 
 Hassan owns hosted embedding and storage integration; Naveed hosted generation; Zaid the backend client. Selectively adapt the pinned source in TRD, preserving licences and actual authorship. Never copy source secrets or data stores.
 
-Credentials stay in approved backend secret configuration, never browser variables, Git, chat or logs. Hosted settings are not implemented yet: no live command or provider variable names are invented here. Use fakes/mocked HTTP until reviewed adapters and explicit live-call authorization exist.
+Credentials stay in approved backend secret configuration, never browser variables, Git, chat or logs. The merged generation adapter (PR #13) recognizes GENERATION_API_KEY, GENERATION_API_BASE_URL, GENERATION_MODEL and GENERATION_TEMPERATURE, while offline hosted embedding foundation (PR #16) and input validation (PR #19) recognize EMBEDDING_API_KEY, EMBEDDING_BASE_URL, and token counting/deadline settings with BlockedLiveDispatchPolicy enabled by default. The API Settings/factory mapping is not complete, so exporting these alone does not establish hosted integration. Use fakes/mocked HTTP until reviewed adapters and explicit live-call authorization exist.
 
 ## 6. Prepare frontend development
 

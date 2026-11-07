@@ -6,7 +6,7 @@ Knowledge Network for EXploration and Unified Services is a three-member academi
 
 KNEXUS will use hosted APIs for generation and embeddings and selectively adapt code/features from Hassan's [pinned personal project](https://github.com/Hassan092-prog/enterprise-knowledge-bot/tree/e67771a15f49a79443a365fbce85b8559ef43fb7). No local model hosting, downloads or Ollama tunnels belong to the revised setup. [Technical decisions](docs/TRD.md) owns reuse, privacy, provider selection and embedding migration policy.
 
-Existing code still contains fake/Ollama generation and local 384-dimensional MiniLM embeddings. Hosted adapters are not implemented by this documentation update. Provider/model choices, credentials and hosted acceptance remain pending; Phase 1 is incomplete.
+PR #13 merged the hosted generation adapter. PR #16 merged the offline hosted embedding dispatch foundation. PR #19 merged hosted input token validation, token counting, monotonic deadline checks, and source-preserving candidate splitting. Draft PR #15 contains the unmerged hosted generation evaluation harness. The API factory still uses legacy generation settings, and historical corpus embeddings remain local MiniLM/vector(384). Hosted route integration, final free-tier/provider decisions, live token correspondence verification, and browser acceptance remain pending. Paid budget remains $0; Phase 1 is incomplete.
 
 ## Start here
 
@@ -21,7 +21,7 @@ The backend foundation is merged into `main` through PR #4, PR #5, and [PR #7](h
 
 Implemented capabilities before the hosted migration:
 - Canonical Phase 1 contracts and schemas in `contracts/phase1/models.py`.
-- Async generation boundary (`run_generation`) with explicit fake/Ollama providers, structured evidence validation, and safe error mapping.
+- Async generation boundary (`run_generation`) with fake/Ollama and merged hosted chat-completions transport, canonical validation and typed failures; hosted API wiring is not complete.
 - Six PostgreSQL/pgvector ORM tables, Alembic migrations, and explicit demo identity seeding.
 - Document ingestion pipeline supporting PDF/DOCX parsing (up to 10 MiB), tokenizer-aware chunking (240 tokens ceiling, 32-token overlap), local MiniLM embeddings (384 dimensions), and private storage.
 - In-process processor lifecycle (`queued`, `processing`, `complete`, `failed`) with guarded operator recovery.

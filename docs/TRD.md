@@ -2,6 +2,22 @@
 
 Use [project status](PROJECT_STATUS.md) for delivered behavior. This document records implementation decisions and standards; it does not duplicate setup commands, schemas or API payloads.
 
+## Current integration decision record (6 November 2026)
+
+The hosted transport is merged through PR #13; offline hosted embedding dispatch protection is merged through PR #16; hosted input token validation is merged through PR #19. The evaluation harness remains draft PR #15 at e2658b6. Backend API construction still uses legacy OLLAMA_* Settings and needs coordinated hosted wiring. Embeddings remain local MiniLM with vector(384) in the database; no hosted vector migration has been applied.
+
+The latest user direction is free-first: no paid expenditure or billing activation is authorized. Groq openai/gpt-oss-120b is the proposed generation model. OpenAI text-embedding-3-small at 1536 dimensions and a shared $5 campaign were earlier proposals, not a live grant. Google's free hosted embeddings were subsequently suggested as a candidate, not selected. Final provider/model/dimension, account eligibility, privacy and quotas remain decisions. No automatic retries or model/provider fallback.
+
+Hassan's CLI proposal described a parallel hosted index, immutable configuration profile and explicit resumable re-embedding while preserving legacy vectors. That is an unimplemented preservation design, not approval to alter data. No plain ALTER converts 384-dimensional vectors into another model's space. No API calls belong in migrations; any destructive downgrade or data removal requires explicit approval.
+
+Naveed's rev-2 handoff is a review artifact. Constructor names and new fields are proposals until coordinated; explicit masked Settings secrets are valid and must stay excluded from logs/exports. url=None is one possible default-resolution path, not mandatory. Inspect actual constructor behavior rather than assuming the url and api_base_url arguments have identical precedence.
+
+Strict input-token enforcement remains unresolved. chars/3 is not a defensible Unicode/framing/schema bound; usage is post-call accounting. Harmony tokenization alone does not establish Groq's server prompt representation. If the agreed input cap cannot be enforced, live execution remains blocked until an explicit alternative policy is approved. Do not silently relax it.
+
+Reasoning_effort=low and include_reasoning=false are proposed controls; hiding reasoning does not establish reduced completion usage/billing. Resolve whether all reasoning and visible output fit the completion cap before claiming enforcement.
+
+Any provider schema projection must be deliberate and provider-aware: retain names, structure and required/null semantics; keep all canonical local constraints. Undocumented keywords are not confirmed rejected. Do not use recursive filters that accidentally remove properties. Canonical validation stays authoritative; structured output does not prove factual support.
+
 ## Approved hosted-API and reuse decision (2 November 2026)
 
 This decision supersedes laptop Ollama and local MiniLM hosting. Both generation and embedding inference must use hosted APIs. Offline fakes remain explicit test tools, never silent fallbacks.
@@ -26,9 +42,9 @@ Preserve canonical GenerationRequest, EvidenceChunk, GenerationResult, H01 run_g
 |---|---|
 | Backend | Python 3.12, FastAPI, Pydantic v2, async SQLAlchemy 2, asyncpg |
 | Persistence | PostgreSQL 16, pgvector, Alembic; one database engine |
-| Embeddings | Target: hosted API, provider/model pending; historical MiniLM and vector(384) need coordinated migration |
-| Chunking | Preserve source; validate historical 240/32 defaults against the hosted model's actual token limits |
-| Generation | Target: hosted API through H01; existing fake/Ollama adapters are historical implementation |
+| Embeddings | Offline dispatch foundation (PR #16) and input validation (PR #19) merged; live token correspondence, account eligibility, and corpus migration remain pending |
+| Chunking | Source-preserving candidate proposal with bounded exact token validation and splitting merged (PR #19) |
+| Generation | Hosted transport merged (PR #13), H01 preserved; API wiring/accounting and draft harness integration pending |
 | Model host | Hosted APIs; no laptop/server inference or model tunnel |
 | Frontend | React + TypeScript; Zaid must confirm Vite/Next.js before scaffolding |
 | Ingestion | Persisted jobs with explicit interruption/retry behavior; no durable worker implemented |
@@ -36,7 +52,7 @@ Preserve canonical GenerationRequest, EvidenceChunk, GenerationResult, H01 run_g
 
 [backend/requirements.txt](../backend/requirements.txt) is the dependency source of truth. Its minimum bounds are not a lockfile. Installed auth/parsing/ML packages do not implement features. Do not add unused provider SDKs, ChromaDB, Redis/Celery or a second storage engine by default.
 
-Alternate embedding dimensions require a schema/index migration and full re-embedding. Switching model_name alone cannot make vectors compatible. Hosted adapters are required by the revised plan; selection and implementation remain pending.
+Alternate embedding dimensions require a schema/index migration and full re-embedding. Switching model_name alone cannot make vectors compatible. Hosted transport (PR #13), offline embedding dispatch protection (PR #16), and hosted input validation (PR #19) are merged; final model/configuration, API wiring, live token correspondence, and corpus activation remain pending.
 
 ## Configuration boundaries
 

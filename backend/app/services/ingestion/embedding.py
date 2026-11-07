@@ -21,6 +21,10 @@ from app.services.ingestion.errors import (
 )
 
 
+GOOGLE_EMBEDDING_MAX_BATCH_SIZE: int = 100
+"""Google AI Studio models/{model}:batchEmbedContents maximum batch size limit (100 items per request)."""
+
+
 SUPPORTED_EMBEDDING_PROVIDERS = {"google", "fake", "local", "sentence-transformers"}
 SUPPORTED_GOOGLE_TASK_TYPES = {
     "RETRIEVAL_DOCUMENT",
@@ -266,6 +270,10 @@ class GoogleGenAIEmbedder:
                 "x-goog-api-key": self.api_key,
                 "Content-Type": "application/json",
             }
+            if len(texts) > GOOGLE_EMBEDDING_MAX_BATCH_SIZE:
+                raise EmbeddingUnavailableError(
+                    f"batchEmbedContents batch size ({len(texts)}) exceeds maximum allowed ({GOOGLE_EMBEDDING_MAX_BATCH_SIZE})"
+                )
             for t in texts:
                 if not isinstance(t, str):
                     raise EmbeddingUnavailableError("Input text must be a string")

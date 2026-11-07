@@ -25,6 +25,8 @@ from app.services.ingestion.storage import read_upload
 
 
 logger = logging.getLogger("knexus.ingestion")
+GOOGLE_EMBEDDING_MAX_BATCH_SIZE: int = 100
+"""Google AI Studio models/{model}:batchEmbedContents maximum batch size limit (100 items per request)."""
 SessionFactory = Callable[[], AsyncSession]
 _PROCESSING_FAILURE = "Document processing failed. Correct the file or service configuration, then retry."
 _INTERRUPTED_FAILURE = "Processing was interrupted. A retry may be started explicitly."
@@ -73,8 +75,12 @@ async def _mark_failed(
         )
 
 
-def _embed_document_chunk_with_task_adaptation(embedder: Embedder, content: str) -> list[list[float]]:
-    """Adapt the embedder task-type interface before dispatch without exception retries."""
+def _embed_document_chunks_with_task_adaptation(
+    embedder: Embedder, contents: Sequence[str]
+) -> list[list[float]]:
+    """Adapt the embedder task-type interface before dispatch for a batch of chunk contents."""
+    if not contents:
+        return []
     try:
         sig = inspect.signature(embedder.embed_texts)
         supports_task = "task_type" in sig.parameters or any(
@@ -84,8 +90,15 @@ def _embed_document_chunk_with_task_adaptation(embedder: Embedder, content: str)
         supports_task = False
 
     if supports_task:
-        return embedder.embed_texts([content], task_type="RETRIEVAL_DOCUMENT")
-    return embedder.embed_texts([content])
+        return embedder.embed_texts(list(contents), task_type="RETRIEVAL_DOCUMENT")
+    return embedder.embed_texts(list(contents))
+
+
+def _embed_document_chunk_with_task_adaptation(
+    embedder: Embedder, content: str
+) -> list[list[float]]:
+    """Backward-compatible single-chunk wrapper."""
+    return _embed_document_chunks_with_task_adaptation(embedder, [content])
 
 
 async def process_document(
@@ -176,38 +189,42 @@ async def process_document(
             document.chunk_count = 0
             await session.commit()
 
-            for chunk in chunks:
+            # Embed accepted chunks in batches of at most GOOGLE_EMBEDDING_MAX_BATCH_SIZE (100)
+            for i in range(0, len(chunks), GOOGLE_EMBEDDING_MAX_BATCH_SIZE):
+                chunk_batch = chunks[i : i + GOOGLE_EMBEDDING_MAX_BATCH_SIZE]
+                contents = [c.content for c in chunk_batch]
                 vector_batch = await asyncio.to_thread(
-                    _embed_document_chunk_with_task_adaptation, active_embedder, chunk.content
+                    _embed_document_chunks_with_task_adaptation, active_embedder, contents
                 )
-                vector = validate_embeddings(vector_batch, 1)[0]
-                row = DocumentChunk(
-                    id=chunk.id,
-                    org_id=document.org_id,
-                    document_id=document.id,
-                    chunk_index=chunk.chunk_index,
-                    content=chunk.content,
-                    page=chunk.page,
-                    token_count=chunk.token_count,
-                    source_metadata=chunk.source_metadata,
-                )
-                session.add(row)
-                await session.flush()
-                session.add(
-                    Embedding(
+                vectors = validate_embeddings(vector_batch, len(chunk_batch))
+                for chunk, vector in zip(chunk_batch, vectors):
+                    row = DocumentChunk(
+                        id=chunk.id,
                         org_id=document.org_id,
                         document_id=document.id,
-                        chunk_id=chunk.id,
-                        embedding=vector,
-                        model_name=active_embedder.model_name,
-                        model_revision=active_embedder.model_revision,
-                        is_active=True,
+                        chunk_index=chunk.chunk_index,
+                        content=chunk.content,
+                        page=chunk.page,
+                        token_count=chunk.token_count,
+                        source_metadata=chunk.source_metadata,
                     )
-                )
-                await session.flush()
-                job.chunks_processed = chunk.chunk_index + 1
-                document.chunk_count = job.chunks_processed
-                await session.commit()
+                    session.add(row)
+                    await session.flush()
+                    session.add(
+                        Embedding(
+                            org_id=document.org_id,
+                            document_id=document.id,
+                            chunk_id=chunk.id,
+                            embedding=vector,
+                            model_name=active_embedder.model_name,
+                            model_revision=active_embedder.model_revision,
+                            is_active=True,
+                        )
+                    )
+                    await session.flush()
+                    job.chunks_processed = chunk.chunk_index + 1
+                    document.chunk_count = job.chunks_processed
+                    await session.commit()
 
             now = datetime.now(timezone.utc)
             document.status = "complete"

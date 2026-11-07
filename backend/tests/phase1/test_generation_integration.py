@@ -1025,3 +1025,65 @@ def test_dependencies_refuses_legacy_ollama_provider(monkeypatch):
     monkeypatch.setattr(settings, "OLLAMA_PROVIDER", "ollama")
     with pytest.raises(GenerationConfigurationError, match="Local Ollama provider is deprecated and refused"):
         get_generation_service()
+
+def test_hosted_harness_entrypoint_refuses_without_quota_campaign_id(tmp_path: Path, monkeypatch):
+    """Running the hosted harness entrypoint with dispatch authorized but without QUOTA_CAMPAIGN_ID
+
+    must exit non-zero or raise a campaign error before any client or socket is constructed.
+    """
+    import socket
+    import tests.phase1.generation.hosted_harness as harness_module
+    from app.core.quota import QuotaCampaignError
+    from app.services.generation.errors import GenerationConfigurationError
+
+    # 1. Track client and socket construction
+    socket_constructed = False
+    client_constructed = False
+
+    orig_socket_init = socket.socket.__init__
+
+    def mock_socket_init(self, *args, **kwargs):
+        nonlocal socket_constructed
+        socket_constructed = True
+        return orig_socket_init(self, *args, **kwargs)
+
+    orig_client_init = httpx.AsyncClient.__init__
+
+    def mock_client_init(self, *args, **kwargs):
+        nonlocal client_constructed
+        client_constructed = True
+        return orig_client_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "__init__", mock_socket_init)
+    monkeypatch.setattr(httpx.AsyncClient, "__init__", mock_client_init)
+
+    # 2. Configure environment with Groq settings and authorized dispatch
+    monkeypatch.setenv("GENERATION_API_KEY", "gsk_test_mock_key")
+    monkeypatch.setenv("GENERATION_MODEL", "llama-3.3-70b-versatile")
+    monkeypatch.setattr(settings, "GENERATION_PROVIDER", "groq")
+    monkeypatch.setattr(settings, "GENERATION_MODEL", "llama-3.3-70b-versatile")
+    monkeypatch.setattr(settings, "GENERATION_API_KEY", type("Secret", (), {"get_secret_value": lambda self: "gsk_test_mock_key"})())
+    # Crucially: QUOTA_CAMPAIGN_ID is missing / empty
+    monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "")
+    monkeypatch.delenv("QUOTA_CAMPAIGN_ID", raising=False)
+
+    policy = MockDispatchPolicy("groq")
+    ledger_without_campaign = QuotaLedger(QuotaConfig(enabled=True, campaign_id="", state_path=tmp_path / "q_harness_refuse.json"))
+
+    def authorized_build(*args, **kwargs):
+        return get_generation_service(dispatch_policy=policy, quota_ledger=ledger_without_campaign)
+
+    monkeypatch.setattr(harness_module, "build_service", authorized_build)
+
+    output_path = tmp_path / "never_created.jsonl"
+    with pytest.raises((SystemExit, QuotaCampaignError, GenerationConfigurationError)) as exc_info:
+        harness_module.main(["--run-live", "--output", str(output_path)])
+
+    if isinstance(exc_info.value, SystemExit):
+        assert exc_info.value.code != 0
+    else:
+        assert "QUOTA_CAMPAIGN_ID is required and must be non-empty" in str(exc_info.value)
+
+    assert not client_constructed, "httpx.AsyncClient must not be constructed"
+    assert not socket_constructed, "socket.socket must not be constructed"
+    assert not output_path.exists(), "Output file must not be created"

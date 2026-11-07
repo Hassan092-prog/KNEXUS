@@ -1,0 +1,30 @@
+{
+  "description": "Phase 1 demo corpus. Adapts five fictional test files from Hassan's enterprise-knowledge-bot repository (https://github.com/Hassan092-prog/enterprise-knowledge-bot, shallow-cloned 2026-11-07; all persons and companies fictional, Acme-branded; no real-looking emails, phone numbers or personal IDs in the selected files). CSV converted to a DOCX table.",
+  "documents": [
+    {
+      "filename": "demo_security_policy.docx",
+      "title": "Enterprise Information Security Policy",
+      "allowed_roles": ["employee", "manager", "orgadmin", "superadmin"]
+    },
+    {
+      "filename": "demo_financial_review.docx",
+      "title": "Acme Corporation - Q3 2026 Executive Financial Performance & Strategic Review",
+      "allowed_roles": ["employee", "manager", "orgadmin", "superadmin"]
+    },
+    {
+      "filename": "demo_product_safety_manual.docx",
+      "title": "Acme Corporation - Proprietary Product Technical Specifications & Field Safety Manual",
+      "allowed_roles": ["employee", "manager", "orgadmin", "superadmin"]
+    },
+    {
+      "filename": "demo_incident_report.docx",
+      "title": "Post-Incident Report - Enterprise Order Processing API (PIR-2026-0814)",
+      "allowed_roles": ["employee", "manager", "orgadmin", "superadmin"]
+    },
+    {
+      "filename": "demo_employee_roster.docx",
+      "title": "Acme Corporation - Employee Roster and Compensation (Demo Fixture)",
+      "allowed_roles": ["manager", "orgadmin", "superadmin"]
+    }
+  ]
+}

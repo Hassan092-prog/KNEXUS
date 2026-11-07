@@ -1,0 +1,101 @@
+{
+  "description": "Phase 1 demo question set (12 cases). 8 answerable, 2 role-denied (employee asking roster/compensation data, which is manager-and-above only), 2 out-of-corpus. expected_fact values are exact substrings of the named source document, verified to survive the offline local chunker.",
+  "questions": [
+    {
+      "id": "demo_q01",
+      "question": "How often is the enterprise security policy reviewed?",
+      "actor_role": "employee",
+      "expected": "answer",
+      "expected_source": "demo_security_policy.docx",
+      "expected_fact": "Review Cycle: Annual"
+    },
+    {
+      "id": "demo_q02",
+      "question": "According to the security policy, where must authentication credentials never be stored?",
+      "actor_role": "employee",
+      "expected": "answer",
+      "expected_source": "demo_security_policy.docx",
+      "expected_fact": "stored in source code, tickets, documentation, or unsecured files"
+    },
+    {
+      "id": "demo_q03",
+      "question": "What was Acme Corporation's consolidated Q3 2026 revenue?",
+      "actor_role": "employee",
+      "expected": "answer",
+      "expected_source": "demo_financial_review.docx",
+      "expected_fact": "$48,500,000 USD"
+    },
+    {
+      "id": "demo_q04",
+      "question": "How much R&D investment is targeted for fiscal Q4 2026?",
+      "actor_role": "manager",
+      "expected": "answer",
+      "expected_source": "demo_financial_review.docx",
+      "expected_fact": "$11,200,000 USD in Q4"
+    },
+    {
+      "id": "demo_q05",
+      "question": "How much water is required to activate Acme's Ultra-Dense dehydrated boulder?",
+      "actor_role": "employee",
+      "expected": "answer",
+      "expected_source": "demo_product_safety_manual.docx",
+      "expected_fact": "3.5 liters"
+    },
+    {
+      "id": "demo_q06",
+      "question": "What is the emergency override code for the Acme Portable Disintegration Matrix-9?",
+      "actor_role": "manager",
+      "expected": "answer",
+      "expected_source": "demo_product_safety_manual.docx",
+      "expected_fact": "ACME-HALT-999"
+    },
+    {
+      "id": "demo_q07",
+      "question": "How long did the Enterprise Order Processing API outage last on August 14, 2026?",
+      "actor_role": "employee",
+      "expected": "answer",
+      "expected_source": "demo_incident_report.docx",
+      "expected_fact": "47 minutes"
+    },
+    {
+      "id": "demo_q08",
+      "question": "What clearance level does Bob Martinez hold in the employee roster?",
+      "actor_role": "manager",
+      "expected": "answer",
+      "expected_source": "demo_employee_roster.docx",
+      "expected_fact": "Level 4 (Classified)"
+    },
+    {
+      "id": "demo_q09",
+      "question": "What is Tony Stark's base salary in the employee roster?",
+      "actor_role": "employee",
+      "expected": "abstain",
+      "expected_source": "demo_employee_roster.docx",
+      "expected_fact": null
+    },
+    {
+      "id": "demo_q10",
+      "question": "How many stock options does employee ACM-114 hold in the roster?",
+      "actor_role": "employee",
+      "expected": "abstain",
+      "expected_source": "demo_employee_roster.docx",
+      "expected_fact": null
+    },
+    {
+      "id": "demo_q11",
+      "question": "What is Acme's official policy on reimbursing employee gym memberships?",
+      "actor_role": "employee",
+      "expected": "abstain",
+      "expected_source": null,
+      "expected_fact": null
+    },
+    {
+      "id": "demo_q12",
+      "question": "When is Acme's next all-hands meeting scheduled?",
+      "actor_role": "manager",
+      "expected": "abstain",
+      "expected_source": null,
+      "expected_fact": null
+    }
+  ]
+}

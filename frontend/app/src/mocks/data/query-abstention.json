@@ -1,0 +1,12 @@
+{
+  "answer": null,
+  "citations": [],
+  "abstained": true,
+  "abstention_reason": "No relevant evidence found in your accessible documents.",
+  "session_id": "00000000-0000-4000-8000-000000000022",
+  "meta": {
+    "retrieval_time_ms": 0.0,
+    "generation_time_ms": 0.0,
+    "model": "llama3.2:3b"
+  }
+}

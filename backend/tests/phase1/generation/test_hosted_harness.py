@@ -126,9 +126,10 @@ async def test_cases_for_all_groups_and_unknown_group_fails():
 async def test_harness_records_hosted_provenance_without_secrets(tmp_path, monkeypatch):
     monkeypatch.delenv("GENERATION_API_KEY", raising=False)
     output = tmp_path / "results.jsonl"
+    ledger = make_test_ledger(tmp_path)
     service = GenerationService(
         provider="groq", model="groq-test-model", api_key="test-secret-key",
-        seed=42, dispatch_policy=MockDispatchPolicy("groq"),
+        seed=42, dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
         transport=httpx.MockTransport(completion_response(answer_json())),
     )
     exit_code = await run_harness(
@@ -172,9 +173,10 @@ async def test_mocked_hosted_failures_are_recorded_as_errors(tmp_path, status, e
         return httpx.Response(status, json={"error": {"message": "x"}}, request=req)
 
     output = tmp_path / "results.jsonl"
+    ledger = make_test_ledger(tmp_path)
     service = GenerationService(
         provider="groq", model="groq-test-model", api_key="test-secret-key",
-        dispatch_policy=MockDispatchPolicy("groq"),
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
         transport=httpx.MockTransport(handler),
     )
     exit_code = await run_harness(
@@ -194,9 +196,10 @@ async def test_mocked_hosted_timeout_is_recorded(tmp_path):
         raise httpx.ReadTimeout("synthetic timeout", request=req)
 
     output = tmp_path / "results.jsonl"
+    ledger = make_test_ledger(tmp_path)
     service = GenerationService(
         provider="groq", model="groq-test-model", api_key="test-secret-key",
-        dispatch_policy=MockDispatchPolicy("groq"),
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
         transport=httpx.MockTransport(handler),
     )
     exit_code = await run_harness([hosted_provider_case()], service, output)
@@ -270,12 +273,12 @@ def test_main_requires_explicit_ledger_with_injected_policy(tmp_path, monkeypatc
     configuration is required alongside it."""
     import tests.phase1.generation.hosted_harness as harness_module
 
+    class IncompleteService:
+        dispatch_policy = MockDispatchPolicy("groq")
+        quota_ledger = None
+
     def authorized_no_ledger(provider, model, timeout, seed, api_base_url, **kwargs):
-        return GenerationService(
-            provider="groq", model="groq-test-model", api_key="env-secret-key",
-            dispatch_policy=MockDispatchPolicy("groq"),
-            transport=httpx.MockTransport(completion_response(answer_json())),
-        )
+        return IncompleteService()
 
     monkeypatch.setenv("GENERATION_API_KEY", "env-secret-key")
     monkeypatch.setattr(harness_module, "build_service", authorized_no_ledger)

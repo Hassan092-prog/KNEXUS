@@ -42,12 +42,44 @@ from app.core.dispatch_policy import (
 )
 from app.core.quota import QuotaLedger
 from app.schemas import GenerationRequest, GenerationResult, validate_generation_result
+import logging
 from app.services.generation.errors import (
     GenerationSettlementError,
     MalformedOutputError,
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
+
+logger = logging.getLogger("knexus.generation")
+
+_background_cleanup_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _track_cleanup_task(task: asyncio.Task[Any]) -> None:
+    _background_cleanup_tasks.add(task)
+
+    def _on_done(t: asyncio.Task[Any]) -> None:
+        _background_cleanup_tasks.discard(t)
+        try:
+            if not t.cancelled():
+                exc = t.exception()
+                if exc is not None:
+                    logger.warning("Background cleanup task failed: %s", type(exc).__name__)
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    task.add_done_callback(_on_done)
+
+
+async def drain_cleanup_tasks() -> None:
+    """Await all active background cleanup tasks (for testing and graceful shutdown).
+
+    Cleanup is best-effort if the event loop shuts down, with stale-reservation
+    recovery in the quota ledger (governed by in_flight_timeout_seconds, default 60.0s)
+    serving as the durable backstop.
+    """
+    if _background_cleanup_tasks:
+        await asyncio.gather(*list(_background_cleanup_tasks), return_exceptions=True)
 
 DEFAULT_ENDPOINTS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
@@ -157,7 +189,70 @@ async def hosted_generate(
     # 2. Durable reserve-before-dispatch using the published ledger methods.
     attempt_id: str | None = None
     if quota_ledger is not None:
-        attempt_id = await quota_ledger.areserve_attempt(provider, model)
+        caller_abandoned = False
+
+        async def _do_reserve() -> str:
+            aid = await quota_ledger.areserve_attempt(provider, model)
+            if caller_abandoned:
+                try:
+                    await quota_ledger.asettle_attempt(
+                        aid,
+                        success=False,
+                        error="CancelledError",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to settle abandoned reservation %s: %s",
+                        aid,
+                        type(exc).__name__,
+                    )
+            return aid
+
+        reserve_task = asyncio.create_task(_do_reserve())
+
+        def _on_reserve_done(t: asyncio.Task[str]) -> None:
+            if caller_abandoned:
+                try:
+                    if not t.cancelled():
+                        exc = t.exception()
+                        if exc is not None:
+                            logger.warning(
+                                "Abandoned reservation task failed: %s",
+                                type(exc).__name__,
+                            )
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+        reserve_task.add_done_callback(_on_reserve_done)
+
+        try:
+            await asyncio.shield(reserve_task)
+            attempt_id = reserve_task.result()
+        except asyncio.CancelledError:
+            caller_abandoned = True
+            if reserve_task.done():
+                if not reserve_task.cancelled() and reserve_task.exception() is None:
+                    aid = reserve_task.result()
+
+                    async def _settle_cancelled(reservation_id: str) -> None:
+                        try:
+                            await quota_ledger.asettle_attempt(
+                                reservation_id,
+                                success=False,
+                                error="CancelledError",
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to settle cancelled reservation %s: %s",
+                                reservation_id,
+                                type(exc).__name__,
+                            )
+
+                    cleanup_task = asyncio.create_task(_settle_cancelled(aid))
+                    _track_cleanup_task(cleanup_task)
+            else:
+                _track_cleanup_task(reserve_task)
+            raise
 
     settled = False  # one-shot settlement guard: at most one settle per attempt
 
@@ -241,23 +336,27 @@ async def hosted_generate(
             )
             response.raise_for_status()
     except asyncio.CancelledError:
-        # External cancellation or overall-deadline cancellation. Settle the
-        # reservation synchronously (no await under active cancellation), then
-        # let cancellation propagate untouched: asyncio.timeout keeps mapping
-        # it to ProviderTimeoutError and task.cancel() keeps raising
-        # CancelledError. Provider processing is uncertain here, so usage is
-        # unknown and the failure is recorded; the settle exception path keeps
-        # the reservation outstanding rather than silently releasing it.
+        # External cancellation or overall-deadline cancellation.
         if quota_ledger is not None and attempt_id is not None and not settled:
             settled = True
-            try:
-                quota_ledger.settle_attempt(
-                    attempt_id, usage=None, success=False, error="cancelled"
-                )
-            except Exception:
-                # Cancellation semantics take precedence; the reservation
-                # stays outstanding in the ledger (never silently released).
-                pass
+
+            async def _settle_in_flight(reservation_id: str) -> None:
+                try:
+                    await quota_ledger.asettle_attempt(
+                        reservation_id,
+                        usage=None,
+                        success=False,
+                        error="cancelled",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to settle cancelled reservation %s: %s",
+                        reservation_id,
+                        type(exc).__name__,
+                    )
+
+            cleanup_task = asyncio.create_task(_settle_in_flight(attempt_id))
+            _track_cleanup_task(cleanup_task)
         raise
     except httpx.TimeoutException as exc:
         await settle(success=False, error="timeout")

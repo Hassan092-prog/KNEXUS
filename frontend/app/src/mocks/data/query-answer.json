@@ -1,0 +1,23 @@
+{
+  "answer": "The synthetic handbook allows 21 days of annual leave per year [1].",
+  "citations": [
+    {
+      "id": 1,
+      "chunk_id": "00000000-0000-4000-8000-000000000011",
+      "document_id": "00000000-0000-4000-8000-000000000001",
+      "document_title": "Synthetic Employee Handbook",
+      "chunk_index": 0,
+      "page": 1,
+      "excerpt": "Employees receive 21 days of annual leave per year.",
+      "similarity_score": 0.9
+    }
+  ],
+  "abstained": false,
+  "abstention_reason": null,
+  "session_id": "00000000-0000-4000-8000-000000000021",
+  "meta": {
+    "retrieval_time_ms": 0.0,
+    "generation_time_ms": 0.0,
+    "model": "llama3.2:3b"
+  }
+}

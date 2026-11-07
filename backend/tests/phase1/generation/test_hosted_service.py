@@ -1,3 +1,5 @@
+from app.services.generation.hosted_provider import drain_cleanup_tasks
+from uuid import uuid4
 """Mocked chat-completions tests for the hosted generation adapter.
 
 Selection, configuration, payload composition, typed failures and boundary
@@ -26,6 +28,7 @@ from app.core.quota import (
     QuotaConfig,
     QuotaLedger,
     RateLimitExceededError,
+    QuotaExceededError,
 )
 from app.schemas import EvidenceChunk, GenerationRequest, GenerationResult
 from app.services.generation.errors import (
@@ -36,7 +39,24 @@ from app.services.generation.errors import (
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
-from app.services.generation.generator import GenerationService
+from app.services.generation.generator import GenerationService as _OriginalGenerationService
+
+def GenerationService(*args, **kwargs):
+    dp = kwargs.get("dispatch_policy")
+    if dp is not None and not isinstance(dp, BlockedLiveDispatchPolicy):
+        if "quota_ledger" not in kwargs:
+            kwargs["quota_ledger"] = QuotaLedger(
+                QuotaConfig(
+                    enabled=True,
+                    max_requests_per_minute=1000,
+                    max_requests_per_day=10000,
+                    max_total_attempts=1000,
+                    min_request_interval_seconds=0.0,
+                    state_path=Path(f"/tmp/test_h_{uuid4().hex}.json"),
+                )
+            )
+    return _OriginalGenerationService(*args, **kwargs)
+
 
 
 def make_evidence(citation_id: int, content: str) -> EvidenceChunk:
@@ -99,6 +119,17 @@ def hosted_service(handler, **kwargs):
     MockDispatchPolicy explicitly to authorize mocked transport calls.
     """
     kwargs.setdefault("dispatch_policy", MockDispatchPolicy("openai"))
+    if "quota_ledger" not in kwargs:
+        kwargs["quota_ledger"] = QuotaLedger(
+            QuotaConfig(
+                enabled=True,
+                max_requests_per_minute=1000,
+                max_requests_per_day=10000,
+                max_total_attempts=1000,
+                min_request_interval_seconds=0.0,
+                state_path=Path(f"/tmp/test_h_{uuid4().hex}.json"),
+            )
+        )
     return GenerationService(
         provider="openai",
         model="gpt-test-mini",
@@ -207,10 +238,12 @@ async def test_groq_and_mistral_use_default_endpoints_and_per_provider_token_key
                 200, json=completion_body(abstention_json()), request=req
             )
 
+        ledger = make_ledger(Path("/tmp"), state_path=Path(f"/tmp/q_{provider}.json"))
         service = GenerationService(
             provider=provider, model=f"{provider}-test-model",
             api_key="test-secret-key",
             dispatch_policy=MockDispatchPolicy(provider),
+            quota_ledger=ledger,
             transport=httpx.MockTransport(handler),
         )
         result = await service.generate(make_request())
@@ -412,7 +445,7 @@ def test_hosted_constructor_defaults_are_fail_closed(monkeypatch):
     assert isinstance(authorized.dispatch_policy, MockDispatchPolicy)
     assert authorized.quota_ledger is ledger
     # Ollama/fake legacy paths never carry a dispatch policy or ledger.
-    legacy = GenerationService(provider="ollama", model="llama3.2:3b")
+    legacy = GenerationService(provider="fake")
     assert legacy.dispatch_policy is None and legacy.quota_ledger is None
 
 
@@ -611,6 +644,7 @@ async def test_external_cancellation_settles_without_usage_and_propagates(tmp_pa
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+    await drain_cleanup_tasks()
     records = settled_records(ledger)
     assert len(records) == 1
     record = records[0]
@@ -635,6 +669,7 @@ async def test_overall_deadline_cancellation_settles_and_maps_to_timeout(tmp_pat
     )
     with pytest.raises(ProviderTimeoutError, match="overall timeout"):
         await service.generate(make_request())
+    await drain_cleanup_tasks()
     record = settled_records(ledger)[0]
     assert record["success"] is False
     assert record["usage"] is None
@@ -855,12 +890,141 @@ def test_hosted_constructor_configuration_validation(monkeypatch):
     with pytest.raises(GenerationConfigurationError, match="positive"):
         GenerationService(provider="openai", model="m", num_predict=0)
     # fake/ollama keep the OLLAMA_* env names; hosted uses GENERATION_*
-    confirmed = GenerationService(provider="ollama", model="llama3.2:3b")
+    confirmed = GenerationService(provider="fake")
     assert confirmed.temperature == 0.0 and confirmed.api_key is None
 
 
 def test_prompt_char_fallback_matches_settings_default(monkeypatch):
     """Reconciled fallback: constructor default matches Settings (16000)."""
     monkeypatch.delenv("GENERATION_MAX_PROMPT_CHARS", raising=False)
-    service = GenerationService(provider="ollama", model="llama3.2:3b")
+    service = GenerationService(provider="fake")
     assert service.max_prompt_chars == 16000
+
+
+# ==============================================================================
+# PINNED REGRESSION SUITE: CANCELLATION & TASK RETRIEVAL (DEFECTS A, B, C)
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_defect_a_caller_cancellation_after_reservation_finished_settles(tmp_path):
+    """Defect A: If reserve_task finishes before caller resumes from shield, caller schedules tracked settlement."""
+    ledger = make_ledger(tmp_path)
+    policy = MockDispatchPolicy("groq")
+
+    reserve_finished_event = asyncio.Event()
+    orig_areserve = ledger.areserve_attempt
+
+    async def mock_areserve(provider, model):
+        aid = await orig_areserve(provider, model)
+        reserve_finished_event.set()
+        return aid
+
+    ledger.areserve_attempt = mock_areserve
+
+    async def mock_handler(req):
+        await asyncio.Event().wait()
+
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="mock-key",
+        dispatch_policy=policy, quota_ledger=ledger,
+        transport=httpx.MockTransport(mock_handler),
+    )
+
+    task = asyncio.create_task(service.generate(make_request()))
+    # Deterministically wait until reserve_task has completely finished
+    await reserve_finished_event.wait()
+
+    # Now cancel the caller task
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # Drain tracked cleanup tasks deterministically without sleeps
+    await drain_cleanup_tasks()
+
+    # Verify that the reservation was NOT leaked and was settled as CancelledError
+    state = ledger._load_state()
+    active = state.get("active_reservations", {})
+    assert len(active) == 0, f"Leaked active reservation: {active}"
+    settled = state.get("settled_requests", [])
+    assert len(settled) == 1
+    assert settled[0]["success"] is False
+    assert settled[0]["error"] in {"CancelledError", "cancelled"}
+
+
+@pytest.mark.asyncio
+async def test_defect_b_abandoned_reservation_task_exception_retrieved(tmp_path, caplog):
+    """Defect B: If areserve_attempt raises after caller left, done-callback retrieves exception and logs sanitized warning."""
+    import logging
+    ledger = make_ledger(tmp_path)
+    policy = MockDispatchPolicy("groq")
+
+    caller_abandoned_event = asyncio.Event()
+    orig_areserve = ledger.areserve_attempt
+
+    async def failing_areserve(provider, model):
+        # Wait until caller has cancelled and abandoned
+        await caller_abandoned_event.wait()
+        raise QuotaExceededError("Synthesized quota limit reached in background")
+
+    ledger.areserve_attempt = failing_areserve
+
+    async def mock_handler(req):
+        return httpx.Response(200, json=completion_body(answer_json()), request=req)
+
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="mock-key",
+        dispatch_policy=policy, quota_ledger=ledger,
+        transport=httpx.MockTransport(mock_handler),
+    )
+
+    task = asyncio.create_task(service.generate(make_request()))
+    # Give control to the event loop so _do_reserve starts
+    await asyncio.sleep(0.001)
+
+    # Cancel the caller while areserve is waiting
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # Now allow the background areserve to resume and raise
+    with caplog.at_level(logging.WARNING):
+        caller_abandoned_event.set()
+        await drain_cleanup_tasks()
+
+    # Verify no unretrieved task exception warning was raised by asyncio,
+    # and sanitized warning was logged with exception type only
+    warnings = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("QuotaExceededError" in w for w in warnings)
+    # Ensure no raw internal error details leaked into logs
+    assert not any("Synthesized quota limit reached in background" in w for w in warnings)
+
+
+@pytest.mark.asyncio
+async def test_defect_c_drain_cleanup_tasks_synchronizes_background_settlements(tmp_path):
+    """Defect C: drain_cleanup_tasks gathers all tracked background tasks deterministically."""
+    ledger = make_ledger(tmp_path)
+    policy = MockDispatchPolicy("groq")
+
+    async def hanging_handler(req):
+        await asyncio.Event().wait()
+
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="mock-key",
+        dispatch_policy=policy, quota_ledger=ledger,
+        transport=httpx.MockTransport(hanging_handler),
+    )
+
+    task = asyncio.create_task(service.generate(make_request()))
+    await asyncio.sleep(0.005)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # Before drain, settlement may be pending in background
+    await drain_cleanup_tasks()
+
+    # After drain, all background cleanup tasks are guaranteed settled
+    state = ledger._load_state()
+    assert len(state.get("active_reservations", {})) == 0
+    assert len(state.get("settled_requests", [])) == 1

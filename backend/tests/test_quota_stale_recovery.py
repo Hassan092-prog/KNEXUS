@@ -277,3 +277,80 @@ def test_true_multiprocessing_race_against_real_file_lock(tmp_path: Path):
     # Exactly total_successes in settled_requests and 0 remaining in active_reservations
     assert len(data.get("active_reservations", {})) == 0
     assert len(data.get("settled_requests", [])) == total_successes
+
+
+def test_reset_process_quota_ledger_leaves_state_file_bytes_untouched(tmp_path: Path, monkeypatch):
+    """V2: reset_process_quota_ledger only drops in-memory reference; file bytes are untouched."""
+    from app.core.config import settings
+    from app.core.quota import get_process_quota_ledger, reset_process_quota_ledger
+
+    state_file = tmp_path / "immutable_test_quota.json"
+    initial_content = json.dumps({
+        "schema_version": 1,
+        "scopes": {
+            "google:gemini-embedding-001": {
+                "total_attempts": 7,
+                "rate_limited": False,
+                "rate_limit_reason": None,
+                "last_dispatch_time": 1234567.89,
+            }
+        },
+        "active_reservations": {},
+        "settled_requests": [
+            {
+                "attempt_id": "test-aid-123",
+                "scope": "google:gemini-embedding-001",
+                "success": True,
+                "timestamp": 1234567.89,
+            }
+        ]
+    }, indent=2).encode("utf-8")
+    state_file.write_bytes(initial_content)
+
+    before_bytes = state_file.read_bytes()
+    before_stat = state_file.stat()
+
+    monkeypatch.setattr(settings, "QUOTA_STATE_PATH", state_file)
+    reset_process_quota_ledger()
+
+    # Obtain ledger and perform read
+    ledger = get_process_quota_ledger()
+    assert ledger is not None
+
+    # Call reset
+    reset_process_quota_ledger()
+
+    # Re-verify file bytes and stat
+    after_bytes = state_file.read_bytes()
+    after_stat = state_file.stat()
+
+    assert before_bytes == after_bytes, "reset_process_quota_ledger must never touch, truncate, or rewrite state file"
+    assert before_stat.st_size == after_stat.st_size
+    assert before_stat.st_mtime_ns == after_stat.st_mtime_ns
+
+    # Clean up singleton
+    reset_process_quota_ledger()
+
+
+def test_process_quota_ledger_concurrent_initialization_thread_safe(tmp_path: Path, monkeypatch):
+    """V3: Lazy initialization of singleton ledger is thread-safe under concurrent access."""
+    import concurrent.futures
+    from app.core.config import settings
+    from app.core.quota import get_process_quota_ledger, reset_process_quota_ledger
+
+    state_file = tmp_path / "thread_safe_quota.json"
+    monkeypatch.setattr(settings, "QUOTA_STATE_PATH", state_file)
+    reset_process_quota_ledger()
+
+    try:
+        def fetch_instance():
+            return get_process_quota_ledger()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            futures = [executor.submit(fetch_instance) for _ in range(50)]
+            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+        first = results[0]
+        assert all(res is first for res in results), "All concurrent threads must receive the exact same singleton instance"
+    finally:
+        reset_process_quota_ledger()

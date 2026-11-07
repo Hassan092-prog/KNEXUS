@@ -12,6 +12,7 @@ token counting is unresolved. Dispatch remains strictly blocked by default.
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass
 import json
 import math
@@ -599,29 +600,33 @@ class QuotaLedger:
 # ==============================================================================
 
 _process_ledger: QuotaLedger | None = None
+_process_ledger_lock = threading.Lock()
 
 
 def get_process_quota_ledger() -> QuotaLedger:
     global _process_ledger
     if _process_ledger is None:
-        from app.core.config import settings
+        with _process_ledger_lock:
+            if _process_ledger is None:
+                from app.core.config import settings
 
-        state_path = settings.QUOTA_STATE_PATH
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        config = QuotaConfig(
-            enabled=settings.QUOTA_ENABLED,
-            max_requests_per_minute=settings.QUOTA_MAX_REQUESTS_PER_MINUTE,
-            max_requests_per_day=settings.QUOTA_MAX_REQUESTS_PER_DAY,
-            max_total_attempts=settings.QUOTA_MAX_TOTAL_ATTEMPTS,
-            min_request_interval_seconds=settings.QUOTA_MIN_REQUEST_INTERVAL_SECONDS,
-            in_flight_timeout_seconds=settings.QUOTA_IN_FLIGHT_TIMEOUT_SECONDS,
-            lock_timeout_seconds=settings.QUOTA_LOCK_TIMEOUT_SECONDS,
-            state_path=state_path,
-        )
-        _process_ledger = QuotaLedger(config)
+                state_path = settings.QUOTA_STATE_PATH
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+                config = QuotaConfig(
+                    enabled=settings.QUOTA_ENABLED,
+                    max_requests_per_minute=settings.QUOTA_MAX_REQUESTS_PER_MINUTE,
+                    max_requests_per_day=settings.QUOTA_MAX_REQUESTS_PER_DAY,
+                    max_total_attempts=settings.QUOTA_MAX_TOTAL_ATTEMPTS,
+                    min_request_interval_seconds=settings.QUOTA_MIN_REQUEST_INTERVAL_SECONDS,
+                    in_flight_timeout_seconds=settings.QUOTA_IN_FLIGHT_TIMEOUT_SECONDS,
+                    lock_timeout_seconds=settings.QUOTA_LOCK_TIMEOUT_SECONDS,
+                    state_path=state_path,
+                )
+                _process_ledger = QuotaLedger(config)
     return _process_ledger
 
 
 def reset_process_quota_ledger() -> None:
     global _process_ledger
-    _process_ledger = None
+    with _process_ledger_lock:
+        _process_ledger = None

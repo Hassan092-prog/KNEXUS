@@ -631,3 +631,79 @@ def test_google_embedder_settles_and_reraises_base_exception_unchanged(tmp_path:
     assert len(settled) == 1
     assert settled[0]["success"] is False
     assert settled[0]["error"] == exc_cls.__name__
+
+
+def test_google_embedder_normalizes_prefixed_model_name_and_sends_output_dimensionality(tmp_path: Path):
+    """GoogleGenAIEmbedder normalizes 'models/...' prefix so endpoint never contains 'models/models/' and includes outputDimensionality."""
+    state_file = tmp_path / "ledger_norm.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
+
+    recorded_url = None
+    recorded_body = None
+
+    def handler(request: httpx.Request):
+        nonlocal recorded_url, recorded_body
+        recorded_url = str(request.url)
+        recorded_body = json.loads(request.read().decode("utf-8"))
+        # Return valid 384-dimensional vector
+        return httpx.Response(
+            200,
+            json={
+                "embeddings": [{"values": [0.1] * 384}],
+                "usageMetadata": {"promptTokenCount": 5, "totalTokenCount": 5},
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        model_name="models/gemini-embedding-001",
+        output_dimensions=384,
+        api_key="mock-key",
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    vecs = embedder.embed_texts(["test text"])
+    assert len(vecs) == 1
+    assert len(vecs[0]) == 384
+
+    # Verify URL does not contain models/models/
+    assert "models/models/" not in recorded_url
+    assert recorded_url.endswith("/v1beta/models/gemini-embedding-001:batchEmbedContents")
+
+    # Verify payload
+    reqs = recorded_body.get("requests", [])
+    assert len(reqs) == 1
+    assert reqs[0]["model"] == "models/gemini-embedding-001"
+    assert "models/models/" not in reqs[0]["model"]
+    assert reqs[0]["outputDimensionality"] == 384
+
+
+def test_google_embedder_rejects_non_384_dimensions(tmp_path: Path):
+    """GoogleGenAIEmbedder rejects responses where vector dimensions do not match output_dimensions (384)."""
+    state_file = tmp_path / "ledger_dim_fail.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
+
+    def handler(request: httpx.Request):
+        # Return 512 dimensions instead of expected 384
+        return httpx.Response(
+            200,
+            json={
+                "embeddings": [{"values": [0.1] * 512}],
+                "usageMetadata": {"promptTokenCount": 5, "totalTokenCount": 5},
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        model_name="gemini-embedding-001",
+        output_dimensions=384,
+        api_key="mock-key",
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    with pytest.raises(EmbeddingUnavailableError, match="dimension mismatch: expected 384, got 512"):
+        embedder.embed_texts(["test text"])

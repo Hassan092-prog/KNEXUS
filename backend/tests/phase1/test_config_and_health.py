@@ -130,3 +130,19 @@ def test_token_counter_and_embedder_model_congruence(monkeypatch):
     assert embedder.model_name == "text-embedding-004"
     assert counter.model_name == "text-embedding-004"
     assert embedder.model_name == counter.model_name
+
+
+def test_quota_max_total_attempts_parsing():
+    """QUOTA_MAX_TOTAL_ATTEMPTS parses None, empty string and integer strings cleanly."""
+    from app.core.config import Settings
+    s_unset = Settings()
+    assert s_unset.QUOTA_MAX_TOTAL_ATTEMPTS is None
+
+    s_empty = Settings(QUOTA_MAX_TOTAL_ATTEMPTS="")
+    assert s_empty.QUOTA_MAX_TOTAL_ATTEMPTS is None
+
+    s_ws = Settings(QUOTA_MAX_TOTAL_ATTEMPTS="   ")
+    assert s_ws.QUOTA_MAX_TOTAL_ATTEMPTS is None
+
+    s_ten = Settings(QUOTA_MAX_TOTAL_ATTEMPTS="10")
+    assert s_ten.QUOTA_MAX_TOTAL_ATTEMPTS == 10

@@ -172,6 +172,7 @@ class GoogleGenAIEmbedder:
         quota_ledger: QuotaLedger | None = None,
     ) -> None:
         self.model_name = model_name
+        self.normalized_model_name = model_name.removeprefix("models/")
         self.model_revision = model_revision
         self.output_dimensions = output_dimensions
         self.api_key = api_key or (
@@ -268,7 +269,7 @@ class GoogleGenAIEmbedder:
         outcome_detail: str | None = None
 
         try:
-            endpoint = f"{self.base_url}/v1beta/models/{self.model_name}:batchEmbedContents"
+            endpoint = f"{self.base_url}/v1beta/models/{self.normalized_model_name}:batchEmbedContents"
             headers = {
                 "x-goog-api-key": self.api_key,
                 "Content-Type": "application/json",
@@ -287,7 +288,7 @@ class GoogleGenAIEmbedder:
 
             requests_payload = [
                 {
-                    "model": f"models/{self.model_name}",
+                    "model": f"models/{self.normalized_model_name}",
                     "content": {"parts": [{"text": t}]},
                     "taskType": effective_task,
                     "outputDimensionality": self.output_dimensions,

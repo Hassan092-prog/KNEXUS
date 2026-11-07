@@ -11,12 +11,12 @@ REPOSITORY_ENV_FILE = REPOSITORY_ROOT / ".env"
 DEFAULT_STORAGE_ROOT = (REPOSITORY_ROOT / ".knexus-private-storage").resolve()
 
 
-APPROVED_GOOGLE_EMBEDDING_MODELS: frozenset[str] = frozenset({
-    "text-embedding-004",
+APPROVED_GOOGLE_EMBEDDING_MODELS: tuple[str, ...] = (
     "gemini-embedding-001",
-    "models/text-embedding-004",
     "models/gemini-embedding-001",
-})
+    "text-embedding-004",
+    "models/text-embedding-004",
+)
 
 
 class Settings(BaseSettings):
@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     QUOTA_MAX_REQUESTS_PER_MINUTE: int = Field(default=30, gt=0)
     QUOTA_MAX_REQUESTS_PER_DAY: int = Field(default=1000, gt=0)
     QUOTA_MAX_TOTAL_ATTEMPTS: int | None = Field(default=None, ge=0)
+
+    @field_validator("QUOTA_MAX_TOTAL_ATTEMPTS", mode="before")
+    @classmethod
+    def _parse_optional_int(cls, v: Any) -> int | None:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
     QUOTA_MIN_REQUEST_INTERVAL_SECONDS: float = Field(default=2.0, ge=0.0)
     QUOTA_IN_FLIGHT_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0)
     QUOTA_LOCK_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0)

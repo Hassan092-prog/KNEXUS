@@ -181,8 +181,9 @@ class GoogleGenAITokenCounter:
         timeout: float | None = None,
     ) -> TokenCountResult:
         target_model = model or self.model_name
+        normalized_target_model = target_model.removeprefix("models/")
         content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        cache_key = (target_model, request_type, content_hash)
+        cache_key = (normalized_target_model, request_type, content_hash)
 
         if cache_key in self._cache:
             return self._cache[cache_key]
@@ -225,7 +226,7 @@ class GoogleGenAITokenCounter:
         if self.quota_ledger:
             attempt_id = self.quota_ledger.reserve_attempt("google", target_model)
 
-        endpoint = f"{self.base_url}/v1beta/models/{target_model}:countTokens"
+        endpoint = f"{self.base_url}/v1beta/models/{normalized_target_model}:countTokens"
         headers = {
             "x-goog-api-key": self.api_key,
             "Content-Type": "application/json",
@@ -361,8 +362,9 @@ class MockTokenCounter:
         self.last_timeout = timeout
 
         target_model = model or self.model_name
+        normalized_target_model = target_model.removeprefix("models/")
         content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        cache_key = (target_model, request_type, content_hash)
+        cache_key = (normalized_target_model, request_type, content_hash)
         if cache_key in self._cache:
             return self._cache[cache_key]
 

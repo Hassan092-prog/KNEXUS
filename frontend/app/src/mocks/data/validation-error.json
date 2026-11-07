@@ -1,0 +1,5 @@
+{
+  "detail": "The request does not match the Phase 1 contract.",
+  "code": "VALIDATION_ERROR",
+  "request_id": "00000000-0000-4000-8000-000000000024"
+}

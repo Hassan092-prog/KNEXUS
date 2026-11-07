@@ -1,0 +1,5 @@
+{
+  "detail": "The local model service is unavailable.",
+  "code": "PROVIDER_UNAVAILABLE",
+  "request_id": "00000000-0000-4000-8000-000000000023"
+}

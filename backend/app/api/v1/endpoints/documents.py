@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from pathlib import PurePath, PureWindowsPath
 from typing import Callable
 from uuid import UUID, uuid4
@@ -44,6 +45,15 @@ def _visible_document_predicate(actor: ActorContext):
     )
 
 
+def to_utc_datetime(dt: datetime | None) -> datetime | None:
+    """Normalize client-facing datetimes to timezone-aware UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _summary(document: Document) -> DocumentSummary:
     return DocumentSummary(
         id=document.id,
@@ -52,7 +62,7 @@ def _summary(document: Document) -> DocumentSummary:
         status=document.status,
         allowed_roles=document.allowed_roles,
         chunk_count=document.chunk_count,
-        created_at=document.created_at,
+        created_at=to_utc_datetime(document.created_at),
     )
 
 

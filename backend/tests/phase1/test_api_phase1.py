@@ -425,3 +425,48 @@ def test_openapi_exposes_phase_one_routes_and_cors_preflight(api_client):
     )
     assert preflight.status_code == 200
     assert preflight.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_client_facing_datetime_normalized_to_utc_with_z_suffix():
+    """Verify API boundary datetimes are normalized to UTC and serialize ending in 'Z'."""
+    import uuid
+    from datetime import datetime, timezone, timedelta
+    from app.api.v1.endpoints.documents import to_utc_datetime
+    from app.schemas import DocumentSummary, DocumentDetail
+
+    # 1. Helper tests
+    assert to_utc_datetime(None) is None
+    naive_dt = datetime(2026, 11, 7, 13, 0, 0)
+    assert to_utc_datetime(naive_dt) == datetime(2026, 11, 7, 13, 0, 0, tzinfo=timezone.utc)
+
+    # 2. +05:30 input (Pakistan/India offset)
+    pkt_dt = datetime(2026, 11, 7, 18, 30, 0, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+    utc_normalized = to_utc_datetime(pkt_dt)
+    assert utc_normalized.tzinfo == timezone.utc
+    assert utc_normalized.hour == 13
+    assert utc_normalized.minute == 0
+
+    # 3. DocumentSummary and DocumentDetail serialization to JSON with "Z"
+    doc_id = uuid.uuid4()
+    summary = DocumentSummary(
+        id=doc_id,
+        title="Test Document",
+        source_type="pdf",
+        status="complete",
+        allowed_roles=["employee"],
+        chunk_count=3,
+        created_at=pkt_dt,
+    )
+    assert summary.created_at.tzinfo == timezone.utc
+    assert summary.created_at.hour == 13
+
+    json_str = summary.model_dump_json()
+    assert '"created_at":"2026-11-07T13:00:00Z"' in json_str
+
+    detail = DocumentDetail(
+        **summary.model_dump(),
+        description="Detailed test description",
+        metadata={"author": "Hassan"},
+    )
+    detail_json = detail.model_dump_json()
+    assert '"created_at":"2026-11-07T13:00:00Z"' in detail_json

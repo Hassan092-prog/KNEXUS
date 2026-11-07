@@ -19,9 +19,9 @@ import math
 from typing import Any, Callable, Protocol
 import httpx
 
-from app.core.config import settings
+from app.core.config import canonicalize_embedding_model_name, settings
 from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, LiveInferenceBlockedError
-from app.core.quota import QuotaLedger
+from app.core.quota import QuotaCampaignError, QuotaLedger, validate_dispatch_campaign
 from app.services.ingestion.errors import TokenCountingError, TokenCountingSettlementError
 
 
@@ -34,6 +34,7 @@ class TokenCountResult:
     model_name: str
     content_hash: str          # SHA-256 of the exact input string
     request_type: str          # "document" or "query"
+    skipped_by_byte_bound: bool = False
 
 
 def validate_token_count_result(
@@ -91,7 +92,7 @@ class GoogleGenAITokenCounter:
 
     def __init__(
         self,
-        model_name: str = "gemini-embedding-001",
+        model_name: str | None = None,
         *,
         overhead_tokens: int = 8,
         max_allowed_tokens: int = 2048,
@@ -104,7 +105,13 @@ class GoogleGenAITokenCounter:
     ) -> None:
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("timeout must be a finite positive number")
-        self.model_name = model_name
+        self.model_name = canonicalize_embedding_model_name(
+            model_name or (
+                settings.EMBEDDING_MODEL_NAME
+                if settings.EMBEDDING_PROVIDER == "google"
+                else "gemini-embedding-001"
+            )
+        )
         self.overhead_tokens = overhead_tokens
         self.max_allowed_tokens = max_allowed_tokens
         self.api_key = api_key or (
@@ -119,6 +126,10 @@ class GoogleGenAITokenCounter:
         self.transport = transport
         self.dispatch_policy = dispatch_policy or BlockedLiveDispatchPolicy()
         self.quota_ledger = quota_ledger
+        try:
+            validate_dispatch_campaign(self.dispatch_policy, self.quota_ledger)
+        except QuotaCampaignError as exc:
+            raise TokenCountingError(str(exc)) from exc
         self._cache: dict[tuple[str, str, str], TokenCountResult] = {}
 
     def _settle_attempt(
@@ -172,9 +183,10 @@ class GoogleGenAITokenCounter:
         request_type: str = "document",
         timeout: float | None = None,
     ) -> TokenCountResult:
-        target_model = model or self.model_name
+        target_model = canonicalize_embedding_model_name(model or self.model_name)
+        normalized_target_model = target_model
         content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        cache_key = (target_model, request_type, content_hash)
+        cache_key = (normalized_target_model, request_type, content_hash)
 
         if cache_key in self._cache:
             return self._cache[cache_key]
@@ -193,6 +205,10 @@ class GoogleGenAITokenCounter:
 
         # 1. Enforce dispatch policy: fails closed before creating client or HTTP socket
         self.dispatch_policy.check_dispatch("google", target_model)
+        try:
+            validate_dispatch_campaign(self.dispatch_policy, self.quota_ledger)
+        except QuotaCampaignError as exc:
+            raise TokenCountingError(str(exc)) from exc
 
         # 2. Credential validation
         if not self.api_key or not self.api_key.strip():
@@ -213,7 +229,7 @@ class GoogleGenAITokenCounter:
         if self.quota_ledger:
             attempt_id = self.quota_ledger.reserve_attempt("google", target_model)
 
-        endpoint = f"{self.base_url}/v1beta/models/{target_model}:countTokens"
+        endpoint = f"{self.base_url}/v1beta/models/{normalized_target_model}:countTokens"
         headers = {
             "x-goog-api-key": self.api_key,
             "Content-Type": "application/json",
@@ -226,94 +242,80 @@ class GoogleGenAITokenCounter:
             ]
         }
 
-        try:
-            with httpx.Client(transport=self.transport, timeout=effective_timeout) as client:
-                response = client.post(endpoint, headers=headers, json=payload)
-        except httpx.TimeoutException:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error="timeout",
-                status_code=None,
-                provider_failure_detail="Google countTokens request timed out.",
-            )
-            raise TokenCountingError("Google countTokens request timed out.")
-        except httpx.HTTPError:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error="network_error",
-                status_code=None,
-                provider_failure_detail="Google countTokens network transport error.",
-            )
-            raise TokenCountingError("Google countTokens network transport error.")
-
-        status_code = response.status_code
-        if status_code != 200:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error=f"http_{status_code}",
-                status_code=status_code,
-                provider_failure_detail=f"Google countTokens failed with HTTP status {status_code}.",
-            )
-            raise TokenCountingError(
-                f"Google countTokens failed with HTTP status {status_code}."
-            )
+        settled = False
+        outcome_success = False
+        outcome_error: str | None = None
+        outcome_status: int | None = None
+        outcome_detail: str | None = None
 
         try:
-            data = response.json()
-        except Exception:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error="malformed_json",
-                status_code=status_code,
-                provider_failure_detail="Google countTokens returned malformed JSON payload.",
-            )
-            raise TokenCountingError("Google countTokens returned malformed JSON payload.")
+            try:
+                with httpx.Client(transport=self.transport, timeout=effective_timeout) as client:
+                    response = client.post(endpoint, headers=headers, json=payload)
+            except httpx.TimeoutException:
+                outcome_error = "timeout"
+                outcome_detail = "Google countTokens request timed out."
+                raise TokenCountingError("Google countTokens request timed out.")
+            except httpx.HTTPError:
+                outcome_error = "network_error"
+                outcome_detail = "Google countTokens network transport error."
+                raise TokenCountingError("Google countTokens network transport error.")
 
-        if not isinstance(data, dict) or "totalTokens" not in data:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error="missing_total_tokens",
-                status_code=status_code,
-                provider_failure_detail="Google countTokens response missing 'totalTokens' field.",
-            )
-            raise TokenCountingError("Google countTokens response missing 'totalTokens' field.")
+            status_code = response.status_code
+            outcome_status = status_code
+            if status_code != 200:
+                outcome_error = f"http_{status_code}"
+                outcome_detail = f"Google countTokens failed with HTTP status {status_code}."
+                raise TokenCountingError(
+                    f"Google countTokens failed with HTTP status {status_code}."
+                )
 
-        raw_tokens = data["totalTokens"]
-        if not isinstance(raw_tokens, int) or isinstance(raw_tokens, bool) or raw_tokens < 0:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error="invalid_total_tokens",
-                status_code=status_code,
-                provider_failure_detail="Google countTokens returned non-integer or negative token count.",
-            )
-            raise TokenCountingError(
-                "Google countTokens returned non-integer or negative token count."
-            )
+            try:
+                data = response.json()
+            except Exception:
+                outcome_error = "malformed_json"
+                outcome_detail = "Google countTokens returned malformed JSON payload."
+                raise TokenCountingError("Google countTokens returned malformed JSON payload.")
 
-        # Settle attempt on real ledger. Do not invent completion tokens; leave usage=None (unresolved tokens).
-        self._settle_attempt(
-            attempt_id,
-            success=True,
-            status_code=status_code,
-        )
+            if not isinstance(data, dict) or "totalTokens" not in data:
+                outcome_error = "missing_total_tokens"
+                outcome_detail = "Google countTokens response missing 'totalTokens' field."
+                raise TokenCountingError("Google countTokens response missing 'totalTokens' field.")
 
-        effective_tokens = raw_tokens + self.overhead_tokens
-        res = TokenCountResult(
-            raw_tokens=raw_tokens,
-            overhead_tokens=self.overhead_tokens,
-            effective_tokens=effective_tokens,
-            model_name=target_model,
-            content_hash=content_hash,
-            request_type=request_type,
-        )
-        self._cache[cache_key] = res
-        return res
+            raw_tokens = data["totalTokens"]
+            if not isinstance(raw_tokens, int) or isinstance(raw_tokens, bool) or raw_tokens < 0:
+                outcome_error = "invalid_total_tokens"
+                outcome_detail = "Google countTokens returned non-integer or negative token count."
+                raise TokenCountingError(
+                    "Google countTokens returned non-integer or negative token count."
+                )
+
+            outcome_success = True
+            effective_tokens = raw_tokens + self.overhead_tokens
+            res = TokenCountResult(
+                raw_tokens=raw_tokens,
+                overhead_tokens=self.overhead_tokens,
+                effective_tokens=effective_tokens,
+                model_name=target_model,
+                content_hash=content_hash,
+                request_type=request_type,
+            )
+            self._cache[cache_key] = res
+            return res
+        except BaseException as exc:
+            if not outcome_error and not outcome_success:
+                outcome_error = type(exc).__name__
+            raise
+        finally:
+            if attempt_id is not None and not settled:
+                settled = True
+                self._settle_attempt(
+                    attempt_id,
+                    success=outcome_success,
+                    error=outcome_error,
+                    status_code=outcome_status,
+                    provider_failure_detail=outcome_detail,
+                )
 
 
 class MockTokenCounter:
@@ -362,9 +364,10 @@ class MockTokenCounter:
                 raise ValueError("timeout must be a finite positive number")
         self.last_timeout = timeout
 
-        target_model = model or self.model_name
+        target_model = canonicalize_embedding_model_name(model or self.model_name)
+        normalized_target_model = target_model
         content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        cache_key = (target_model, request_type, content_hash)
+        cache_key = (normalized_target_model, request_type, content_hash)
         if cache_key in self._cache:
             return self._cache[cache_key]
 
@@ -405,16 +408,28 @@ class MockTokenCounter:
 
 
 def get_default_token_counter(
-    model_name: str = "gemini-embedding-001",
+    model_name: str | None = None,
     *,
     dispatch_policy: DispatchPolicy | None = None,
     quota_ledger: QuotaLedger | None = None,
 ) -> TokenCounter:
+    from app.core.quota import get_process_quota_ledger
+
+    active_ledger = quota_ledger if quota_ledger is not None else get_process_quota_ledger()
+    resolved_model = model_name or (
+        settings.EMBEDDING_MODEL_NAME
+        if settings.EMBEDDING_PROVIDER == "google"
+        else "gemini-embedding-001"
+    )
+    try:
+        validate_dispatch_campaign(dispatch_policy, active_ledger)
+    except QuotaCampaignError as exc:
+        raise TokenCountingError(str(exc)) from exc
     return GoogleGenAITokenCounter(
-        model_name=model_name,
+        model_name=resolved_model,
         overhead_tokens=settings.EMBEDDING_COUNTING_OVERHEAD_TOKENS,
         max_allowed_tokens=settings.EMBEDDING_MAX_INPUT_TOKENS,
         timeout=settings.EMBEDDING_TIMEOUT,
         dispatch_policy=dispatch_policy,
-        quota_ledger=quota_ledger,
+        quota_ledger=active_ledger,
     )

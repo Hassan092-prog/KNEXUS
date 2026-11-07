@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+import hashlib
 import inspect
 import math
 import time
@@ -354,40 +355,55 @@ def chunk_document_with_token_validation(
                 curr_end = content_start + PHYSICAL_MAX_CANDIDATE_CHARS
                 continue
 
-            # Check monotonic deadline and call allowance BEFORE the counting operation
-            now = clock()
-            remaining_allowance = deadline_time - now
-            if remaining_allowance <= 0 or (now - start_time) >= deadline:
-                raise TokenCountingError(
-                    f"Token validation deadline of {deadline}s exceeded for document."
-                )
-            if validation_calls >= call_allowance:
-                raise TokenCountingError(
-                    f"Token validation call allowance of {call_allowance} exceeded for document."
-                )
-            validation_calls += 1
-
-            # Pass remaining allowance into supported counter operations without exception-driven fallback
-            if supports_timeout:
-                count_res = token_counter.count_tokens(
-                    content,
-                    model=model,
+            # Check if byte-bound skip applies behind Settings flag:
+            # utf8_bytes(candidate) + max_overhead_tokens <= effective_ceiling
+            overhead = getattr(token_counter, "overhead_tokens", settings.EMBEDDING_COUNTING_OVERHEAD_TOKENS)
+            content_bytes = len(content.encode("utf-8"))
+            if settings.TOKEN_COUNT_BYTE_BOUND_SKIP and (content_bytes + overhead <= effective_ceiling):
+                count_res = TokenCountResult(
+                    raw_tokens=content_bytes,
+                    overhead_tokens=overhead,
+                    effective_tokens=content_bytes + overhead,
+                    model_name=model,
+                    content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
                     request_type="document",
-                    timeout=remaining_allowance,
+                    skipped_by_byte_bound=True,
                 )
             else:
-                count_res = token_counter.count_tokens(
-                    content,
-                    model=model,
-                    request_type="document",
-                )
+                # Check monotonic deadline and call allowance BEFORE the counting operation
+                now = clock()
+                remaining_allowance = deadline_time - now
+                if remaining_allowance <= 0 or (now - start_time) >= deadline:
+                    raise TokenCountingError(
+                        f"Token validation deadline of {deadline}s exceeded for document."
+                    )
+                if validation_calls >= call_allowance:
+                    raise TokenCountingError(
+                        f"Token validation call allowance of {call_allowance} exceeded for document."
+                    )
+                validation_calls += 1
 
-            # Check monotonic deadline AFTER the counting operation: a late result must not produce accepted chunks
-            after_now = clock()
-            if after_now >= deadline_time or (after_now - start_time) >= deadline:
-                raise TokenCountingError(
-                    f"Token validation deadline of {deadline}s exceeded for document."
-                )
+                # Pass remaining allowance into supported counter operations without exception-driven fallback
+                if supports_timeout:
+                    count_res = token_counter.count_tokens(
+                        content,
+                        model=model,
+                        request_type="document",
+                        timeout=remaining_allowance,
+                    )
+                else:
+                    count_res = token_counter.count_tokens(
+                        content,
+                        model=model,
+                        request_type="document",
+                    )
+
+                # Check monotonic deadline AFTER the counting operation: a late result must not produce accepted chunks
+                after_now = clock()
+                if after_now >= deadline_time or (after_now - start_time) >= deadline:
+                    raise TokenCountingError(
+                        f"Token validation deadline of {deadline}s exceeded for document."
+                    )
 
             validate_token_count_result(
                 count_res,
@@ -430,6 +446,7 @@ def chunk_document_with_token_validation(
                             "sections": source_entries,
                             "effective_tokens": count_res.effective_tokens,
                             "overhead_tokens": count_res.overhead_tokens,
+                            "skipped_by_byte_bound": count_res.skipped_by_byte_bound,
                         },
                     )
                 )

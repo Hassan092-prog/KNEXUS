@@ -29,6 +29,25 @@ class TokenCountingError(RuntimeError):
     """Failure occurred during hosted token counting or response validation."""
 
 
+class EmbeddingSettlementError(EmbeddingUnavailableError):
+    """Failure occurred while recording embedding settlement in the durable quota ledger.
+
+    Preserves safe classification of the original provider failure without leaking
+    sensitive payload content, credentials, or internal exception traces.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider_error: str | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.provider_error = provider_error
+        self.status_code = status_code
+
+
 class TokenCountingSettlementError(TokenCountingError):
     """Failure occurred while recording settlement in the durable quota ledger.
 

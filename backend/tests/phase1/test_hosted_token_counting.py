@@ -1,5 +1,6 @@
 """Regressions for hosted token counting, candidate validation, fail-closed dispatch, and canonical API envelopes."""
 from __future__ import annotations
+import asyncio
 
 import json
 import math
@@ -174,7 +175,6 @@ def test_query_above_limit_fails_closed():
         pass
 
     with pytest.raises(InputTokenLimitExceededError, match="Query token count .* exceeds maximum"):
-        import asyncio
         asyncio.run(service.retrieve(MockSession(), actor, "Oversized question", top_k=3))
 
 
@@ -415,7 +415,6 @@ def test_deterministic_late_counting_result_rejected_and_embedding_receives_zero
         async def flush(self): pass
         async def commit(self): pass
 
-    import asyncio
     success = asyncio.run(
         process_document(
             doc_id,
@@ -593,62 +592,73 @@ def test_physical_size_guard_boundary():
 # 5. Counter Failures & Secret Sanitization
 # ==============================================================================
 
-def test_google_token_counter_http_error_sanitized():
+def test_google_token_counter_http_error_sanitized(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(500, text="Internal Server Error"))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens failed with HTTP status 500"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_google_token_counter_malformed_json_sanitized():
+def test_google_token_counter_malformed_json_sanitized(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, text="not json {"))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens returned malformed JSON payload"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_google_token_counter_missing_total_tokens_sanitized():
+def test_google_token_counter_missing_total_tokens_sanitized(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"other": 123}))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens response missing 'totalTokens' field"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_google_token_counter_rejects_boolean_total_tokens():
+def test_google_token_counter_rejects_boolean_total_tokens(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"totalTokens": True}))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens returned non-integer or negative token count"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_google_token_counter_rejects_negative_total_tokens():
+def test_google_token_counter_rejects_negative_total_tokens(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"totalTokens": -5}))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens returned non-integer or negative token count"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_google_token_counter_timeout():
+def test_google_token_counter_timeout(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def timeout_handler(req):
         raise httpx.TimeoutException("Connection timed out")
 
@@ -657,12 +667,13 @@ def test_google_token_counter_timeout():
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens request timed out"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_secret_sanitization_does_not_leak_keys_or_payloads():
+def test_secret_sanitization_does_not_leak_keys_or_payloads(tmp_path: Path):
     secret_key = "AIzaSyFakeSecretKeyThatMustNotLeak"
     auth_header = "Bearer super-secret-internal-token-12345"
 
@@ -673,10 +684,12 @@ def test_secret_sanitization_does_not_leak_keys_or_payloads():
         )
 
     transport = httpx.MockTransport(leak_attempt)
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger_sec.json"))
     counter = GoogleGenAITokenCounter(
         api_key=secret_key,
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     try:
         counter.count_tokens("Secret text", model="gemini-embedding-001")
@@ -696,7 +709,7 @@ def test_secret_sanitization_does_not_leak_keys_or_payloads():
 
 def test_real_quota_ledger_success(tmp_path: Path):
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"totalTokens": 42}))
     counter = GoogleGenAITokenCounter(
@@ -726,7 +739,7 @@ def test_real_quota_ledger_success(tmp_path: Path):
 
 def test_real_quota_ledger_timeout(tmp_path: Path):
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     def timeout_fn(req):
         raise httpx.TimeoutException("Timeout")
@@ -754,7 +767,7 @@ def test_real_quota_ledger_timeout(tmp_path: Path):
 
 def test_real_quota_ledger_malformed_response(tmp_path: Path):
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"bad": "data"}))
     counter = GoogleGenAITokenCounter(
@@ -778,7 +791,7 @@ def test_real_quota_ledger_malformed_response(tmp_path: Path):
 
 def test_real_quota_ledger_http_429(tmp_path: Path):
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     transport = httpx.MockTransport(lambda req: httpx.Response(429, text="Too Many Requests"))
     counter = GoogleGenAITokenCounter(
@@ -806,7 +819,7 @@ def test_settlement_failure_on_successful_provider_response(tmp_path: Path, monk
     and retains the outstanding reservation in the ledger. Exactly 1 provider call made.
     """
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     provider_calls = 0
 
@@ -850,7 +863,7 @@ def test_settlement_failure_on_timeout_provider_response(tmp_path: Path, monkeyp
     preserving safe 'timeout' classification and retained reservation. Exactly 1 call.
     """
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     provider_calls = 0
 
@@ -888,7 +901,7 @@ def test_settlement_failure_on_http_429_provider_response(tmp_path: Path, monkey
     preserving status_code=429 and error='http_429'. Exactly 1 call.
     """
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     provider_calls = 0
 
@@ -923,7 +936,7 @@ def test_settlement_failure_on_http_429_provider_response(tmp_path: Path, monkey
 def test_settlement_failure_on_malformed_json_provider_response(tmp_path: Path, monkeypatch):
     """Settlement failure on malformed JSON propagates TokenCountingSettlementError."""
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     provider_calls = 0
 
@@ -956,7 +969,7 @@ def test_settlement_failure_on_malformed_json_provider_response(tmp_path: Path, 
 def test_settlement_failure_on_invalid_count_provider_response(tmp_path: Path, monkeypatch):
     """Settlement failure on invalid totalTokens propagates TokenCountingSettlementError."""
     state_file = tmp_path / "ledger.json"
-    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
 
     provider_calls = 0
 
@@ -1102,7 +1115,8 @@ def test_document_and_query_validation_cache_semantics():
     assert res_doc_2 == res_doc
 
 
-def test_counting_failure_no_retries():
+def test_counting_failure_no_retries(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     counter_calls = 0
 
     def mock_failure(req):
@@ -1115,6 +1129,7 @@ def test_counting_failure_no_retries():
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
 
     with pytest.raises(TokenCountingError):
@@ -1198,7 +1213,6 @@ def test_counter_internal_type_error_not_caught_or_retried():
         async def flush(self): pass
         async def commit(self): pass
 
-    import asyncio
     success = asyncio.run(
         process_document(
             doc_id,
@@ -1441,3 +1455,181 @@ def test_asgi_query_route_zero_leaked_credentials_or_bodies():
             assert "AIzaSy" not in text_body
     finally:
         app.dependency_overrides.clear()
+
+
+def test_google_token_counter_without_ledger_fails_closed_when_dispatch_authorized():
+    """F3: When dispatch is authorized, GoogleGenAITokenCounter without a ledger fails closed before HTTP."""
+    with pytest.raises(TokenCountingError, match="A configured QuotaLedger is strictly required"):
+        GoogleGenAITokenCounter(
+            api_key="test-key",
+            dispatch_policy=MockDispatchPolicy("google"),
+            quota_ledger=None,
+        )
+
+
+@pytest.mark.parametrize("exc_cls", [GeneratorExit, asyncio.CancelledError, KeyboardInterrupt])
+def test_google_token_counter_settles_and_reraises_base_exception_unchanged(tmp_path: Path, exc_cls):
+    """V5: BaseExceptions (GeneratorExit, CancelledError, KeyboardInterrupt) re-raise unchanged after exactly-once settlement."""
+    state_file = tmp_path / f"ledger_base_exc_counter_{exc_cls.__name__}.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
+
+    def raise_base_exc(req):
+        raise exc_cls("simulated base exception in counter")
+
+    transport = httpx.MockTransport(raise_base_exc)
+    counter = GoogleGenAITokenCounter(
+        api_key="mock-key-123",
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    with pytest.raises(exc_cls) as exc_info:
+        counter.count_tokens("sample text to count")
+
+    assert type(exc_info.value) is exc_cls
+
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert len(data.get("active_reservations", {})) == 0
+    settled = data.get("settled_requests", [])
+    assert len(settled) == 1
+    assert settled[0]["success"] is False
+    assert settled[0]["error"] == exc_cls.__name__
+
+
+def test_token_counter_and_embedder_share_single_model_settings_key(monkeypatch):
+    """2a: Token counter and embedder derive their model identity from the single Settings key."""
+    from app.services.ingestion.embedding import get_default_embedder
+
+    # Test 1: text-embedding-004 alignment
+    monkeypatch.setattr(settings, "EMBEDDING_PROVIDER", "google")
+    monkeypatch.setattr(settings, "EMBEDDING_MODEL_NAME", "text-embedding-004")
+
+    embedder = get_default_embedder(provider="google")
+    counter = get_default_token_counter()
+    assert embedder.model_name == "text-embedding-004"
+    assert counter.model_name == "text-embedding-004"
+    assert embedder.model_name == counter.model_name
+
+    # Test 2: gemini-embedding-001 alignment
+    monkeypatch.setattr(settings, "EMBEDDING_MODEL_NAME", "gemini-embedding-001")
+    embedder2 = get_default_embedder(provider="google")
+    counter2 = get_default_token_counter()
+    assert embedder2.model_name == "gemini-embedding-001"
+    assert counter2.model_name == "gemini-embedding-001"
+    assert embedder2.model_name == counter2.model_name
+
+    # Test 3: explicit model override alignment
+    counter_override = get_default_token_counter(model_name="custom-google-model")
+    assert counter_override.model_name == "custom-google-model"
+
+
+def test_byte_bound_skip_flag_off_makes_same_calls_as_before(monkeypatch):
+    """When TOKEN_COUNT_BYTE_BOUND_SKIP is False, token counting calls occur as before."""
+    from app.services.ingestion.chunking import chunk_document_with_token_validation
+    from app.services.ingestion.parsing import ParsedSection
+
+    monkeypatch.setattr(settings, "TOKEN_COUNT_BYTE_BOUND_SKIP", False)
+    call_count = 0
+
+    class CountingCounter:
+        overhead_tokens = 8
+        def count_tokens(self, text, model="test-model", request_type="document", timeout=None):
+            nonlocal call_count
+            call_count += 1
+            import hashlib
+            from app.core.token_counter import TokenCountResult
+            return TokenCountResult(
+                raw_tokens=50,
+                overhead_tokens=8,
+                effective_tokens=58,
+                model_name=model,
+                content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                request_type=request_type,
+            )
+
+    import uuid
+    doc_id = uuid.uuid4()
+    sections = [ParsedSection(text="This is a safe English test paragraph under 1000 characters.", source_metadata={}, page=1)]
+    chunks = chunk_document_with_token_validation(doc_id, sections, CountingCounter(), model="test-model")
+    assert call_count == 1, "Counter must be invoked when flag is False"
+    assert len(chunks) == 1
+    assert chunks[0].source_metadata["skipped_by_byte_bound"] is False
+
+
+def test_byte_bound_skip_flag_on_skips_provably_safe_candidates(monkeypatch):
+    """When TOKEN_COUNT_BYTE_BOUND_SKIP is True, candidates with bytes + overhead <= ceiling skip remote count."""
+    from app.services.ingestion.chunking import chunk_document_with_token_validation
+    from app.services.ingestion.parsing import ParsedSection
+
+    monkeypatch.setattr(settings, "TOKEN_COUNT_BYTE_BOUND_SKIP", True)
+    call_count = 0
+
+    class CountingCounter:
+        overhead_tokens = 8
+        def count_tokens(self, text, model="test-model", request_type="document", timeout=None):
+            nonlocal call_count
+            call_count += 1
+            raise AssertionError("Remote counter should not be called for safe candidate when flag is True")
+
+    import uuid
+    doc_id = uuid.uuid4()
+    sections = [ParsedSection(text="This is an English test paragraph with 800 bytes, well under 2048." * 10, source_metadata={}, page=1)]
+    chunks = chunk_document_with_token_validation(doc_id, sections, CountingCounter(), model="test-model")
+    assert call_count == 0, "Counter must NOT be invoked when candidate is provably byte-safe"
+    assert len(chunks) >= 1
+    for chunk in chunks:
+        assert chunk.source_metadata["skipped_by_byte_bound"] is True
+        assert chunk.token_count == len(chunk.content.encode("utf-8"))
+
+
+def test_byte_bound_skip_multibyte_near_2000_chars_not_skipped(monkeypatch):
+    """Multibyte paragraph (Urdu/Arabic) exceeding the byte bound is NOT skipped and calls the counter."""
+    from app.services.ingestion.chunking import chunk_document_with_token_validation
+    from app.services.ingestion.parsing import ParsedSection
+    import hashlib
+    from app.core.token_counter import TokenCountResult
+
+    monkeypatch.setattr(settings, "TOKEN_COUNT_BYTE_BOUND_SKIP", True)
+    call_count = 0
+
+    class CountingCounter:
+        overhead_tokens = 8
+        def count_tokens(self, text, model="test-model", request_type="document", timeout=None):
+            nonlocal call_count
+            call_count += 1
+            # In Gemini/BPE, subwords might be e.g. 500 tokens
+            return TokenCountResult(
+                raw_tokens=500,
+                overhead_tokens=8,
+                effective_tokens=508,
+                model_name=model,
+                content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                request_type=request_type,
+            )
+
+    # Multibyte Urdu/Arabic characters: each character is 2 UTF-8 bytes.
+    # A candidate paragraph near 1200-1500 characters produces ~2400-3000 UTF-8 bytes.
+    # 2400 + 8 overhead = 2408 > 2048 effective ceiling.
+    # Using unicode escapes ensures encoding safety across filesystems.
+    multibyte_unit = "\u0647\u0630\u0627 \u0646\u0635 \u0639\u0631\u0628\u064a \u0645\u062a\u0639\u062f\u062f \u0627\u0644\u0628\u0627\u064a\u062a\u0627\u062a. "
+    urdu_text = multibyte_unit * 50  # ~1700 chars, ~3400 bytes
+    assert len(urdu_text.encode("utf-8")) + 8 > 2048
+
+    import uuid
+    doc_id = uuid.uuid4()
+    sections = [ParsedSection(text=urdu_text, source_metadata={}, page=1)]
+    chunks = chunk_document_with_token_validation(
+        doc_id,
+        sections,
+        CountingCounter(),
+        model="test-model",
+        target_chars=1200,
+        max_candidate_chars=2000,
+    )
+    assert call_count >= 1, "Counter must be invoked for candidate exceeding byte bound"
+    assert len(chunks) >= 1
+    # Check that at least one candidate that exceeded byte bound was not skipped
+    assert any(c.source_metadata["skipped_by_byte_bound"] is False for c in chunks)

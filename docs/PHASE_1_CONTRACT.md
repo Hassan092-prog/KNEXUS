@@ -6,7 +6,7 @@ For Phase 1 details below, this baseline narrows the broader [API proposal](API_
 
 ## Hosted migration decision
 
-The target remains hosted generation and embeddings. PR #13 has merged the hosted generation transport; draft PR #15 supplies the unmerged evaluation harness. PR #16 merged the offline hosted embedding dispatch foundation, and PR #19 merged hosted input token validation and candidate splitting. API wiring and live acceptance remain pending, and historical database vectors still use local MiniLM. No provider account access, paid expenditure or hosted embedding dimension is established by these docs. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior. This revises deployment/provider policy only: canonical fields, validation, identity and H01 compatibility remain unchanged.
+For the Phase 1 demo, the team has agreed on a hybrid configuration: local MiniLM embeddings (sentence-transformers/all-MiniLM-L6-v2, 384 dimensions) paired with Groq hosted generation (openai/gpt-oss-120b). The Google hosted embedder (gemini-embedding-001, 	ext-embedding-004) is implemented and verified offline in ackend/app/services/ingestion/google_embedder.py but kept disabled (EMBEDDING_PROVIDER="local") for the Phase 1 demo to avoid re-embedding the corpus and preserve zero-cost operation. PR #13 merged hosted generation transport; PR #15 supplies the generation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged input token validation and candidate splitting; PR #21 wires generation into backend dependencies. No local LLM hosting, model downloads or Ollama tunnels are required. Canonical contract schemas, identity boundaries, and H01 compatibility remain strictly enforced.
 
 ## First vertical slice
 
@@ -100,8 +100,8 @@ The public error shape is detail/code/request_id, with a server-owned correlatio
 
 ## Current handoffs
 
-- Hassan: H03-H06 backend capabilities merged into main via PR #7; test suite and opt-in database tests maintainable.
-- Naveed: preserve the reviewed provider boundary and complete context policy, live evaluation and the backend handoff.
-- Zaid: initialize frontend and use query/document/status/error fixtures as typed mocks, then integrate only the accepted APIs.
+- Hassan: Backend ingestion, local MiniLM retrieval, generation wiring, atomic QuotaLedger, UTC normalization, and CI in PR #21; demo execution runbook.
+- Naveed: PR #15 generation evaluation harness and adapter corrections.
+- Zaid: Frontend application (rontend/app) merged in PR #23 with overview, documents, and chat UI; endpoint connection to live backend.
 
 Run [the contract check](../contracts/phase1/README.md) before changing shared fields. One member implements a contract change; the other two review their consumer impact. Do not silently change fields in parallel branches.

@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend CI
+    runs-on: ubuntu-latest
+    env:
+      EMBEDDING_PROVIDER: local
+      GENERATION_PROVIDER: fake
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Cache Hugging Face cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: huggingface-sentence-transformers/all-MiniLM-L6-v2-main
+
+      - name: Download embedding tokenizer
+        run: |
+          python -c "from transformers import AutoTokenizer; AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2', revision='main')"
+
+      - name: Run contracts verification
+        run: |
+          python contracts/phase1/check.py
+
+      - name: Run offline pytest suite
+        run: |
+          pytest backend/tests -m "not db"
+
+  frontend:
+    name: Frontend CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run frontend checks
+        run: |
+          cd frontend/app
+          npm ci
+          npm run typecheck
+          npm run test
+          npm run lint
+          npm run build

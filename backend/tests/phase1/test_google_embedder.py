@@ -1,3 +1,5 @@
+from pathlib import Path
+import asyncio
 """Focused mocked regressions for Google hosted embedding adapter and task wiring."""
 from math import isclose, sqrt
 from uuid import uuid4
@@ -29,19 +31,23 @@ def test_google_embedder_blocked_by_default_before_http():
         embedder.embed_texts(["Unapproved live attempt"])
 
 
-def test_google_embedder_missing_key_fails_closed():
+def test_google_embedder_missing_key_fails_closed(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     embedder = GoogleGenAIEmbedder(
         api_key=None,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="Set EMBEDDING_API_KEY"):
         embedder.embed_texts(["test document text"])
 
 
-def test_google_embedder_empty_input_returns_empty():
+def test_google_embedder_empty_input_returns_empty(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger_empty.json"))
     embedder = GoogleGenAIEmbedder(
         api_key="test-key",
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     assert embedder.embed_texts([]) == []
 
@@ -51,16 +57,19 @@ def test_google_embedder_max_input_tokens():
     assert embedder.get_max_input_tokens() == 2048
 
 
-def test_google_embedder_unsupported_task_type_fails():
+def test_google_embedder_unsupported_task_type_fails(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     embedder = GoogleGenAIEmbedder(
         api_key="test-key",
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="Unsupported Google embedding task_type"):
         embedder.embed_texts(["sample"], task_type="INVALID_TASK")
 
 
-def test_google_embedder_successful_batch_embedding():
+def test_google_embedder_successful_batch_embedding(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     recorded_requests = []
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -80,6 +89,7 @@ def test_google_embedder_successful_batch_embedding():
         task_type="RETRIEVAL_DOCUMENT",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
 
     texts = ["First chunk of text", "Second chunk of text"]
@@ -103,7 +113,8 @@ def test_google_embedder_successful_batch_embedding():
         assert isclose(norm, 1.0, rel_tol=1e-5)
 
 
-def test_google_embedder_rejects_boolean_and_non_numeric_elements():
+def test_google_embedder_rejects_boolean_and_non_numeric_elements(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def mock_handler_bool(request: httpx.Request) -> httpx.Response:
         vals = [1.0] * 383 + [True]  # Boolean element
         return httpx.Response(200, json={"embeddings": [{"values": vals}]})
@@ -113,12 +124,14 @@ def test_google_embedder_rejects_boolean_and_non_numeric_elements():
         api_key="mock-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="must be a finite number"):
         embedder.embed_texts(["Text with bool element"])
 
 
-def test_google_embedder_rejects_zero_norm_vector():
+def test_google_embedder_rejects_zero_norm_vector(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"embeddings": [{"values": [0.0] * 384}]})
 
@@ -127,12 +140,14 @@ def test_google_embedder_rejects_zero_norm_vector():
         api_key="mock-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="zero or non-finite norm"):
         embedder.embed_texts(["Text with zero vector"])
 
 
-def test_google_embedder_rejects_service_error_payload():
+def test_google_embedder_rejects_service_error_payload(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -144,12 +159,14 @@ def test_google_embedder_rejects_service_error_payload():
         api_key="mock-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="Google embedding service error"):
         embedder.embed_texts(["Text with error payload"])
 
 
-def test_google_embedder_dimension_mismatch_fails():
+def test_google_embedder_dimension_mismatch_fails(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"embeddings": [{"values": [1.0] * 768}]})
 
@@ -159,18 +176,20 @@ def test_google_embedder_dimension_mismatch_fails():
         output_dimensions=384,
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="dimension mismatch"):
         embedder.embed_texts(["Text expecting 384"])
 
 
-def test_google_embedder_maps_http_errors():
+def test_google_embedder_maps_http_errors(tmp_path: Path):
     for status, match_str in [
         (401, "authentication failed"),
         (403, "authentication failed"),
         (429, "rate limit exceeded"),
         (503, "HTTP 503"),
     ]:
+        ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / f"ledger_{status}.json"))
         def mock_handler(request: httpx.Request, code=status) -> httpx.Response:
             return httpx.Response(code, text="Error payload")
 
@@ -179,12 +198,14 @@ def test_google_embedder_maps_http_errors():
             api_key="mock-key",
             transport=transport,
             dispatch_policy=MockDispatchPolicy(),
+            quota_ledger=ledger,
         )
         with pytest.raises(EmbeddingUnavailableError, match=match_str):
             embedder.embed_texts(["Test error mapping"])
 
 
-def test_google_embedder_maps_timeout():
+def test_google_embedder_maps_timeout(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("Read timed out")
 
@@ -193,6 +214,7 @@ def test_google_embedder_maps_timeout():
         api_key="mock-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="timed out"):
         embedder.embed_texts(["Test timeout"])
@@ -405,3 +427,425 @@ async def test_ingestion_internal_type_error_not_caught_or_retried():
     assert res is False
     assert len(call_records) == 1
     assert call_records[0]["task_type"] == "RETRIEVAL_DOCUMENT"
+# ==============================================================================
+# Task 2: Quota metering regressions for GoogleGenAIEmbedder
+# ==============================================================================
+
+from app.core.quota import QuotaConfig, QuotaLedger, RateLimitExceededError
+from app.services.ingestion.errors import EmbeddingSettlementError
+
+
+def test_google_embedder_reserves_and_settles_on_200_with_usage(tmp_path):
+    """Reserve before dispatch, settle on 200 with usage metadata."""
+    state_file = tmp_path / "ledger_embed_200.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
+
+    embed_response = {
+        "embeddings": [{"values": [0.1, 0.2, 0.3]}],
+        "usageMetadata": {
+            "promptTokenCount": 12,
+            "totalTokenCount": 12,
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=embed_response)
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        api_key="mock-key-123",
+        output_dimensions=3,
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    vecs = embedder.embed_texts(["sample text"])
+    assert len(vecs) == 1
+
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert len(data.get("active_reservations", {})) == 0
+    settled = data.get("settled_requests", [])
+    assert len(settled) == 1
+    rec = settled[0]
+    assert rec["success"] is True
+    assert rec["usage_valid"] is True
+    assert rec["tokens_unresolved"] is False
+    assert rec["usage"] == {"prompt_tokens": 12, "completion_tokens": 0, "total_tokens": 12}
+
+
+def test_google_embedder_missing_usage_leaves_tokens_unresolved(tmp_path):
+    """Missing usageMetadata settles with tokens_unresolved=True."""
+    state_file = tmp_path / "ledger_embed_nousage.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
+
+    embed_response = {
+        "embeddings": [{"values": [0.1, 0.2, 0.3]}],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=embed_response)
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        api_key="mock-key-123",
+        output_dimensions=3,
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    vecs = embedder.embed_texts(["sample text"])
+    assert len(vecs) == 1
+
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    settled = data.get("settled_requests", [])
+    assert len(settled) == 1
+    rec = settled[0]
+    assert rec["success"] is True
+    assert rec["usage"] is None
+    assert rec["tokens_unresolved"] is True
+
+
+def test_google_embedder_429_trips_tripwire_no_retries(tmp_path):
+    """HTTP 429 records settlement failure, trips circuit breaker, raises without retries."""
+    state_file = tmp_path / "ledger_embed_429.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
+
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(429, json={"error": "Rate limit exceeded"})
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        api_key="mock-key-123",
+        output_dimensions=3,
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    # First call fails with EmbeddingUnavailableError
+    with pytest.raises(EmbeddingUnavailableError, match="rate limit exceeded"):
+        embedder.embed_texts(["sample text"])
+
+    assert call_count == 1
+
+    # Verify ledger state has rate limit set
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    scope_info = data.get("scopes", {}).get("google:gemini-embedding-001", {})
+    assert scope_info.get("rate_limited") is True
+
+    # Second call trips circuit breaker during reserve_attempt BEFORE any HTTP call
+    with pytest.raises(RateLimitExceededError, match="rate limit active"):
+        embedder.embed_texts(["another text"])
+
+    # No additional HTTP call was made
+    assert call_count == 1
+
+
+def test_google_embedder_settlement_failure_preserves_reservation_and_raises(tmp_path):
+    """Settlement failure raises EmbeddingSettlementError and preserves reservation."""
+    state_file = tmp_path / "ledger_embed_settle_fail.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
+
+    def failing_settle(attempt_id, **kwargs):
+        raise OSError("Disk full during settlement")
+
+    ledger.settle_attempt = failing_settle
+
+    embed_response = {
+        "embeddings": [{"values": [0.1, 0.2, 0.3]}],
+        "usageMetadata": {"promptTokenCount": 10, "totalTokenCount": 10},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=embed_response)
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        api_key="mock-key-123",
+        output_dimensions=3,
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    with pytest.raises(EmbeddingSettlementError, match="Quota settlement failed"):
+        embedder.embed_texts(["sample text"])
+
+    # Active reservation remains un-settled (outstanding preserved)
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert len(data.get("active_reservations", {})) == 1
+
+
+def test_google_embedder_without_ledger_fails_closed_when_dispatch_authorized():
+    """F3: When dispatch is authorized, GoogleGenAIEmbedder without a ledger fails closed before HTTP."""
+    with pytest.raises(EmbeddingUnavailableError, match="A configured QuotaLedger is strictly required"):
+        GoogleGenAIEmbedder(
+            api_key="test-key",
+            dispatch_policy=MockDispatchPolicy("google"),
+            quota_ledger=None,
+        )
+
+
+@pytest.mark.parametrize("exc_cls", [GeneratorExit, asyncio.CancelledError, KeyboardInterrupt])
+def test_google_embedder_settles_and_reraises_base_exception_unchanged(tmp_path: Path, exc_cls):
+    """V5: BaseExceptions (GeneratorExit, CancelledError, KeyboardInterrupt) re-raise unchanged after exactly-once settlement."""
+    state_file = tmp_path / f"ledger_base_exc_{exc_cls.__name__}.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
+
+    def raise_base_exc(req):
+        raise exc_cls("simulated base exception")
+
+    transport = httpx.MockTransport(raise_base_exc)
+    embedder = GoogleGenAIEmbedder(
+        api_key="mock-key-123",
+        output_dimensions=3,
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    with pytest.raises(exc_cls) as exc_info:
+        embedder.embed_texts(["sample text"])
+
+    assert type(exc_info.value) is exc_cls
+
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert len(data.get("active_reservations", {})) == 0
+    settled = data.get("settled_requests", [])
+    assert len(settled) == 1
+    assert settled[0]["success"] is False
+    assert settled[0]["error"] == exc_cls.__name__
+
+
+def test_google_embedder_normalizes_prefixed_model_name_and_sends_output_dimensionality(tmp_path: Path):
+    """GoogleGenAIEmbedder normalizes 'models/...' prefix so endpoint never contains 'models/models/' and includes outputDimensionality."""
+    state_file = tmp_path / "ledger_norm.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
+
+    recorded_url = None
+    recorded_body = None
+
+    def handler(request: httpx.Request):
+        nonlocal recorded_url, recorded_body
+        recorded_url = str(request.url)
+        recorded_body = json.loads(request.read().decode("utf-8"))
+        # Return valid 384-dimensional vector
+        return httpx.Response(
+            200,
+            json={
+                "embeddings": [{"values": [0.1] * 384}],
+                "usageMetadata": {"promptTokenCount": 5, "totalTokenCount": 5},
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        model_name="models/gemini-embedding-001",
+        output_dimensions=384,
+        api_key="mock-key",
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    vecs = embedder.embed_texts(["test text"])
+    assert len(vecs) == 1
+    assert len(vecs[0]) == 384
+
+    # Verify URL does not contain models/models/
+    assert "models/models/" not in recorded_url
+    assert recorded_url.endswith("/v1beta/models/gemini-embedding-001:batchEmbedContents")
+
+    # Verify payload
+    reqs = recorded_body.get("requests", [])
+    assert len(reqs) == 1
+    assert reqs[0]["model"] == "models/gemini-embedding-001"
+    assert "models/models/" not in reqs[0]["model"]
+    assert reqs[0]["outputDimensionality"] == 384
+
+
+def test_google_embedder_rejects_non_384_dimensions(tmp_path: Path):
+    """GoogleGenAIEmbedder rejects responses where vector dimensions do not match output_dimensions (384)."""
+    state_file = tmp_path / "ledger_dim_fail.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=state_file))
+
+    def handler(request: httpx.Request):
+        # Return 512 dimensions instead of expected 384
+        return httpx.Response(
+            200,
+            json={
+                "embeddings": [{"values": [0.1] * 512}],
+                "usageMetadata": {"promptTokenCount": 5, "totalTokenCount": 5},
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        model_name="gemini-embedding-001",
+        output_dimensions=384,
+        api_key="mock-key",
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    with pytest.raises(EmbeddingUnavailableError, match="dimension mismatch: expected 384, got 512"):
+        embedder.embed_texts(["test text"])
+
+
+@pytest.mark.asyncio
+async def test_captured_request_payload_task_types(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Captured Google request payload has taskType RETRIEVAL_QUERY for retrieval and RETRIEVAL_DOCUMENT for ingestion."""
+    import json
+    from uuid import uuid4
+    from app.services.retrieval.service import RetrievalService
+    from app.services.ingestion.processor import process_document
+    from app.services.ingestion.parsing import ParsedSection
+    from app.models import Document, IngestionJob
+
+    state_file = tmp_path / "ledger_task_types.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="task-type-campaign", state_path=state_file))
+
+    captured_requests: list[dict] = []
+
+    def handler(request: httpx.Request):
+        data = json.loads(request.content.decode("utf-8"))
+        captured_requests.append(data)
+        # Mock valid 384-d response for each item in requests
+        num_items = len(data.get("requests", []))
+        return httpx.Response(
+            200,
+            json={
+                "embeddings": [{"values": [0.05] * 384} for _ in range(num_items)],
+                "usageMetadata": {"promptTokenCount": 10 * num_items, "totalTokenCount": 10 * num_items},
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        model_name="gemini-embedding-001",
+        output_dimensions=384,
+        api_key="mock-key",
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    # 1. Retrieval Query: must send taskType="RETRIEVAL_QUERY"
+    class MockSession:
+        async def execute(self, stmt):
+            class MockResult:
+                def all(self):
+                    return []
+            return MockResult()
+
+    actor = ActorContext(org_id=uuid4(), user_id=uuid4(), effective_roles=["employee"])
+    service = RetrievalService(embedder=embedder)
+
+    captured_requests.clear()
+    await service.retrieve(MockSession(), actor, "What is our travel policy?", top_k=5)
+
+    assert len(captured_requests) == 1, "Expected 1 HTTP request for retrieval query"
+    query_reqs = captured_requests[0].get("requests", [])
+    assert len(query_reqs) == 1
+    assert query_reqs[0]["taskType"] == "RETRIEVAL_QUERY", (
+        f"Expected taskType 'RETRIEVAL_QUERY' for query embedding, got: {query_reqs[0].get('taskType')}"
+    )
+
+    # 2. Ingestion Document: must send taskType="RETRIEVAL_DOCUMENT"
+    doc_id = uuid4()
+    document = Document(
+        id=doc_id,
+        org_id=actor.org_id,
+        title="Travel Guidelines",
+        source_type="docx",
+        storage_key="test-travel-key",
+        status="queued",
+        allowed_roles=["employee"],
+        chunk_count=0,
+    )
+    job = IngestionJob(
+        id=uuid4(),
+        org_id=actor.org_id,
+        document_id=doc_id,
+        attempt_number=1,
+        status="queued",
+    )
+
+    class MockProcessorSession:
+        def __init__(self):
+            self.added = []
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+        async def get(self, entity, ident):
+            if entity is Document:
+                return document
+            return None
+        async def execute(self, stmt):
+            class ScalarOne:
+                def scalar_one_or_none(self):
+                    return job
+            return ScalarOne()
+        def add(self, item):
+            self.added.append(item)
+        async def flush(self):
+            pass
+        async def commit(self):
+            pass
+
+    class FakeSimpleTokenizer:
+        model_max_length = 256
+        def encode(self, text, add_special_tokens=False):
+            return [1] * len(text)
+        def num_special_tokens_to_add(self, pair=False):
+            return 0
+
+    captured_requests.clear()
+    sections = [ParsedSection("Standard business travel must be pre-approved by the department manager.", 1, {"page": 1})]
+    success = await process_document(
+        doc_id,
+        parsed_sections=sections,
+        session_factory=lambda: MockProcessorSession(),
+        embedder=embedder,
+        tokenizer=FakeSimpleTokenizer(),
+    )
+    assert success is True
+    assert len(captured_requests) >= 1, "Expected at least 1 HTTP request for document ingestion"
+    ingest_reqs = captured_requests[0].get("requests", [])
+    assert len(ingest_reqs) >= 1
+    assert ingest_reqs[0]["taskType"] == "RETRIEVAL_DOCUMENT", (
+        f"Expected taskType 'RETRIEVAL_DOCUMENT' for ingestion embedding, got: {ingest_reqs[0].get('taskType')}"
+    )
+
+    # 3. Local MiniLM embedder: accepts task_type keyword without error or mutation
+    import numpy as np
+    from types import SimpleNamespace
+    from app.services.ingestion.embedding import SentenceTransformerEmbedder
+
+    local_embedder = SentenceTransformerEmbedder("sentence-transformers/all-MiniLM-L6-v2", "main")
+    monkeypatch.setattr(
+        local_embedder,
+        "_get_model",
+        lambda: SimpleNamespace(encode=lambda texts, **kw: np.array([[0.1] * 384 for _ in texts])),
+    )
+    res = local_embedder.embed_texts(["hello world"], task_type="RETRIEVAL_QUERY")
+    assert len(res) == 1
+    assert len(res[0]) == 384

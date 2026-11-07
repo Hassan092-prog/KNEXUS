@@ -170,3 +170,75 @@ async def test_retrieval_evidence_preserves_source_casing_accents_and_punctuatio
     service = RetrievalService(FixedEmbedder(), minimum_similarity=0.35)
     evidence = await service.retrieve(session, build_demo_actor(), "question?", 5)
     assert evidence[0].content == text
+
+@pytest.mark.asyncio
+async def test_retrieval_excludes_chunks_from_different_model():
+    """A MiniLM-tagged chunk is never scored against a Google query vector."""
+    class GoogleQueryEmbedder:
+        model_name = "models/gemini-embedding-001"
+        model_revision = "001"
+
+        def embed_texts(self, texts):
+            return [[1.0] + [0.0] * 383 for _ in texts]
+
+    actor = build_demo_actor()
+    # 1. SQL statement explicitly pushes model_name and model_revision equality predicates
+    statement = build_authorized_statement(
+        actor, GoogleQueryEmbedder.model_name, GoogleQueryEmbedder.model_revision, [0.0] * 384, 5
+    )
+    compiled = statement.compile(dialect=asyncpg_dialect())
+    sql = compiled.string
+    assert "embeddings.model_name =" in sql
+    assert "embeddings.model_revision =" in sql
+
+    # 2. Defense-in-depth: if a MiniLM row somehow reached post-filtering, it is dropped
+    minilm_row = _row(score=0.95)
+    minilm_row[0].model_name = "sentence-transformers/all-MiniLM-L6-v2"
+    minilm_row[0].model_revision = "main"
+
+    session = FakeSession([minilm_row])
+    service = RetrievalService(GoogleQueryEmbedder(), minimum_similarity=0.35)
+    evidence = await service.retrieve(session, actor, "question?", 5)
+    # The MiniLM chunk is excluded fail-closed
+    assert evidence == []
+
+
+@pytest.mark.asyncio
+async def test_retrieval_excludes_untagged_legacy_chunks_fail_closed():
+    """Untagged legacy chunks without model_name are excluded fail-closed."""
+    actor = build_demo_actor()
+    service = RetrievalService(FixedEmbedder(), minimum_similarity=0.35)
+
+    # Case A: model_name is None
+    row_none = _row(score=0.9)
+    row_none[0].model_name = None
+    session_none = FakeSession([row_none])
+    evidence_none = await service.retrieve(session_none, actor, "question?", 5)
+    assert evidence_none == []
+
+    # Case B: model_name is empty string
+    row_empty = _row(score=0.9)
+    row_empty[0].model_name = ""
+    session_empty = FakeSession([row_empty])
+    evidence_empty = await service.retrieve(session_empty, actor, "question?", 5)
+    assert evidence_empty == []
+
+
+@pytest.mark.asyncio
+async def test_retrieval_clamps_similarity_score_to_contract_range():
+    """Cosine similarity derived from pgvector distance is strictly clamped to [-1.0, 1.0]."""
+    actor = build_demo_actor()
+    service = RetrievalService(FixedEmbedder(), minimum_similarity=-1.0)
+
+    # Scores > 1.0 or < -1.0 must be clamped to [-1.0, 1.0]
+    row_overflow = _row(score=1.05)
+    session = FakeSession([row_overflow])
+    evidence = await service.retrieve(session, actor, "question?", 5)
+    assert len(evidence) == 1
+    assert evidence[0].similarity_score == 1.0
+
+    row_underflow = _row(score=-1.20)
+    session_under = FakeSession([row_underflow])
+    evidence_under = await service.retrieve(session_under, actor, "question?", 5)
+    assert len(evidence_under) == 1
+    assert evidence_under[0].similarity_score == -1.0

@@ -33,6 +33,7 @@ Use the canonical [upload](../contracts/phase1/examples/upload-metadata.json), [
 - Ingestion uses a FastAPI background task, not a durable queue. The job and document are committed before 202; polling reports persisted states. Internal retry and abandoned-job recovery exist, but no public retry route is contracted. Run recovery only after confirming the old process and all ingestion workers are stopped; it marks queued and processing attempts failed for explicit retry.
 - Embeddings use all-MiniLM-L6-v2 at 384 dimensions. The historical implementation loads local-files-only and caches per process; an injected deterministic fake is for tests only and has no semantic quality.
 - Retrieval pushes tenant, role overlap, current parent-document completion/deletion, active-vector and model-revision filters into the pgvector SQL query before top-k. The 0.35 similarity cutoff is uncalibrated.
+- Re-ingest documents after switching EMBEDDING_PROVIDER: retrieval strictly isolates embedding spaces by filtering on the active model name and revision. Chunks embedded under another model/provider are never scored or ranked, and untagged legacy chunks are excluded fail-closed.
 - No authorized evidence or only weak evidence returns an HTTP 200 abstention before calling the generation provider. Provider unavailable/timeout and malformed citations remain errors.
 - CORS remains limited to configured local origins. Error bodies use the canonical detail/code/request_id envelope and do not include exception text.
 

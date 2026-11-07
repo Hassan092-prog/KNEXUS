@@ -31,6 +31,8 @@ Implemented capabilities before the hosted migration:
 
 The shared database remains unmigrated. Historical MiniLM verification does not satisfy the revised hosted-embedding gate. Hosted embedding/generation integration, live quality and browser acceptance remain incomplete.
 
+Re-ingest documents after switching EMBEDDING_PROVIDER, as retrieval strictly filters on the active embedder's model name and revision. Chunks produced by other models are never scored or mixed into similarity rankings, and untagged legacy chunks are excluded fail-closed.
+
 ## Local development
 
 Use Python 3.12 for the backend. Docker is needed for a local PostgreSQL instance; offline generator checks need neither Docker nor Ollama. Follow [CONTRIBUTING.md](CONTRIBUTING.md) for Linux and Windows commands. Existing shared services and databases require explicit approval before changes.

@@ -80,8 +80,14 @@ class QuotaConfig:
 class QuotaLedger:
     """Durable quota authority with cross-process locking and single in-flight gating."""
 
-    def __init__(self, config: QuotaConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: QuotaConfig | None = None,
+        *,
+        time_func: Any | None = None,
+    ) -> None:
         self.config = config or QuotaConfig()
+        self._time = time_func or time.time
         self._default_state_path = Path("/tmp/knexus_quota_ledger.json")
 
     @property
@@ -271,7 +277,7 @@ class QuotaLedger:
         if not self.state_path.exists():
             return {
                 "version": 1,
-                "created_at": time.time(),
+                "created_at": self._time(),
                 "scopes": {},
                 "active_reservations": {},
                 "settled_requests": [],
@@ -322,7 +328,7 @@ class QuotaLedger:
             should_retry = False
             try:
                 state = self._load_state()
-                now = time.time()
+                now = self._time()
 
                 scopes: dict[str, Any] = state.setdefault("scopes", {})
                 scope_info = scopes.setdefault(scope_key, {
@@ -339,6 +345,40 @@ class QuotaLedger:
                     )
 
                 active: dict[str, Any] = state.setdefault("active_reservations", {})
+                settled: list[dict[str, Any]] = state.setdefault("settled_requests", [])
+
+                # Enforce in_flight_timeout_seconds: transition stale active reservations
+                # to terminal expired_unresolved records under the lock at reserve time.
+                stale_ids = []
+                for aid, item in list(active.items()):
+                    reserved_at = item.get("reserved_at", 0.0)
+                    if now - reserved_at >= self.config.in_flight_timeout_seconds:
+                        stale_ids.append(aid)
+
+                for aid in stale_ids:
+                    res = active.pop(aid)
+                    scope_k = res.get("scope", f"{res.get('provider')}:{res.get('model')}")
+                    expired_record = {
+                        "attempt_id": aid,
+                        "scope": scope_k,
+                        "provider": res.get("provider"),
+                        "model": res.get("model"),
+                        "reserved_at": res.get("reserved_at"),
+                        "timestamp": now,
+                        "success": False,
+                        "error": "expired_unresolved",
+                        "terminal_state": "expired_unresolved",
+                        "status_code": None,
+                        "usage": None,
+                        "usage_valid": False,
+                        "tokens_unresolved": True,
+                        "expired_at": now,
+                        "reason": (
+                            f"Active reservation exceeded in_flight_timeout_seconds "
+                            f"({self.config.in_flight_timeout_seconds}s)"
+                        ),
+                    }
+                    settled.append(expired_record)
 
                 if active:
                     in_flight_id = next(iter(active.keys()))
@@ -382,7 +422,7 @@ class QuotaLedger:
                     if now - last_dispatch < self.config.min_request_interval_seconds:
                         sleep_needed = self.config.min_request_interval_seconds - (now - last_dispatch)
                         time.sleep(sleep_needed)
-                        now = time.time()
+                        now = self._time()
 
                     attempt_id = str(uuid.uuid4())
                     active[attempt_id] = {
@@ -421,9 +461,29 @@ class QuotaLedger:
             active: dict[str, Any] = state.setdefault("active_reservations", {})
             settled: list[dict[str, Any]] = state.setdefault("settled_requests", [])
 
-            # Reject duplicate settlements
+            # Reject duplicate settlements or handle late settlement for expired attempts
             for s in settled:
                 if s.get("attempt_id") == attempt_id:
+                    if s.get("terminal_state") == "expired_unresolved":
+                        # Late settlement for expired attempt: do not double-count!
+                        # Attach late usage if valid, without changing the terminal outcome (success remains False)
+                        if usage is not None and isinstance(usage, dict) and s.get("late_usage") is None:
+                            p_tok = usage.get("prompt_tokens")
+                            c_tok = usage.get("completion_tokens")
+                            t_tok = usage.get("total_tokens")
+                            if (
+                                _is_strict_int(p_tok) and p_tok >= 0
+                                and _is_strict_int(c_tok) and c_tok >= 0
+                                and _is_strict_int(t_tok) and t_tok >= 0
+                                and p_tok + c_tok == t_tok
+                            ):
+                                s["late_usage"] = {
+                                    "prompt_tokens": p_tok,
+                                    "completion_tokens": c_tok,
+                                    "total_tokens": t_tok,
+                                }
+                        self._save_state(state)
+                        return
                     raise ValueError(f"Duplicate settlement: attempt '{attempt_id}' is already settled.")
 
             # Reject unknown attempts
@@ -432,7 +492,7 @@ class QuotaLedger:
 
             res = active.pop(attempt_id)
             scope_key = res.get("scope", f"{res.get('provider')}:{res.get('model')}")
-            now = time.time()
+            now = self._time()
 
             # Validate usage without inventing false counts
             parsed_usage: dict[str, Any] | None = None

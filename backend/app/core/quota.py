@@ -52,18 +52,25 @@ def _is_finite_number(val: Any) -> bool:
 
 @dataclass(frozen=True)
 class QuotaConfig:
-    """Configuration for durable quota management."""
+    """Configuration for durable quota management with campaign-scoped budgets."""
 
     enabled: bool = False
+    campaign_id: str = "default"
+    max_campaign_attempts: int | None = 500
     max_requests_per_minute: int = 30
     max_requests_per_day: int = 1000
-    max_total_attempts: int = 50
+    max_total_attempts: int = 1_000_000
     min_request_interval_seconds: float = 2.0
     in_flight_timeout_seconds: float = 60.0
     lock_timeout_seconds: float = 10.0
     state_path: Path | None = None
 
     def __post_init__(self):
+        if not isinstance(self.campaign_id, str) or not self.campaign_id.strip():
+            raise ValueError("campaign_id must be a non-empty string")
+        if self.max_campaign_attempts is not None:
+            if not _is_strict_int(self.max_campaign_attempts) or self.max_campaign_attempts < 0:
+                raise ValueError("max_campaign_attempts must be a non-negative integer (not boolean)")
         if not _is_strict_int(self.max_requests_per_minute) or self.max_requests_per_minute <= 0:
             raise ValueError("max_requests_per_minute must be a positive integer (not boolean)")
         if not _is_strict_int(self.max_requests_per_day) or self.max_requests_per_day <= 0:
@@ -97,6 +104,7 @@ class QuotaLedger:
         time_func: Any | None = None,
     ) -> None:
         self.config = config or QuotaConfig()
+        self.campaign_id = self.config.campaign_id
         self._time = time_func or time.time
         if self.config.state_path is not None:
             self._default_state_path = self.config.state_path
@@ -179,6 +187,17 @@ class QuotaLedger:
     def _validate_state_schema(self, data: Any) -> dict[str, Any]:
         if not isinstance(data, dict):
             raise QuotaStateCorruptError("Quota state root is not a dict")
+        # Migrate legacy records on read without destructively modifying on-disk records
+        active_res = data.get("active_reservations")
+        if isinstance(active_res, dict):
+            for rec in active_res.values():
+                if isinstance(rec, dict) and ("campaign_id" not in rec or not rec["campaign_id"]):
+                    rec["campaign_id"] = "legacy"
+        settled_req = data.get("settled_requests")
+        if isinstance(settled_req, list):
+            for rec in settled_req:
+                if isinstance(rec, dict) and ("campaign_id" not in rec or not rec["campaign_id"]):
+                    rec["campaign_id"] = "legacy"
         if data.get("version") != 1 or not _is_strict_int(data.get("version")):
             raise QuotaStateCorruptError(f"Unsupported or non-integer quota state version: {data.get('version')}")
         if not _is_finite_number(data.get("created_at")) or data["created_at"] <= 0:
@@ -390,6 +409,7 @@ class QuotaLedger:
                         "usage_valid": False,
                         "tokens_unresolved": True,
                         "expired_at": now,
+                        "campaign_id": res.get("campaign_id", "legacy"),
                         "reason": (
                             f"Active reservation exceeded in_flight_timeout_seconds "
                             f"({self.config.in_flight_timeout_seconds}s)"
@@ -409,13 +429,36 @@ class QuotaLedger:
                         )
                     should_retry = True
                 else:
+                    settled: list[dict[str, Any]] = state.setdefault("settled_requests", [])
+
+                    # Count total attempts per (campaign_id, scope)
+                    campaign_id = self.campaign_id
+                    active_campaign = sum(
+                        1 for r in active.values()
+                        if r.get("scope") == scope_key and r.get("campaign_id", "legacy") == campaign_id
+                    )
+                    settled_campaign = sum(
+                        1 for r in settled
+                        if r.get("scope") == scope_key and r.get("campaign_id", "legacy") == campaign_id
+                    )
+                    total_campaign_attempts = active_campaign + settled_campaign
+                    if (
+                        self.config.max_campaign_attempts is not None
+                        and total_campaign_attempts >= self.config.max_campaign_attempts
+                    ):
+                        raise QuotaExceededError(
+                            f"Scope '{scope_key}' campaign '{campaign_id}' attempt limit "
+                            f"({total_campaign_attempts}/{self.config.max_campaign_attempts}) reached."
+                        )
+
                     total_attempts = scope_info.get("total_attempts", 0)
-                    if total_attempts >= self.config.max_total_attempts:
+                    if (
+                        self.config.max_total_attempts is not None
+                        and total_attempts >= self.config.max_total_attempts
+                    ):
                         raise QuotaExceededError(
                             f"Scope '{scope_key}' total attempt ceiling ({self.config.max_total_attempts}) reached."
                         )
-
-                    settled: list[dict[str, Any]] = state.setdefault("settled_requests", [])
                     recent_60s = 0
                     daily = 0
                     for rec in settled:
@@ -447,6 +490,7 @@ class QuotaLedger:
                         "provider": provider,
                         "model": model,
                         "scope": scope_key,
+                        "campaign_id": self.campaign_id,
                     }
                     scope_info["total_attempts"] = total_attempts + 1
                     scope_info["last_dispatch_time"] = now
@@ -559,6 +603,7 @@ class QuotaLedger:
                 "usage": parsed_usage,
                 "usage_valid": usage_valid,
                 "tokens_unresolved": not usage_valid,
+                "campaign_id": res.get("campaign_id", self.campaign_id),
             }
             settled.append(record)
 
@@ -612,8 +657,15 @@ def get_process_quota_ledger() -> QuotaLedger:
 
                 state_path = settings.QUOTA_STATE_PATH
                 state_path.parent.mkdir(parents=True, exist_ok=True)
+                campaign_id = (
+                    settings.QUOTA_CAMPAIGN_ID.strip()
+                    if getattr(settings, "QUOTA_CAMPAIGN_ID", "").strip()
+                    else "default"
+                )
                 config = QuotaConfig(
                     enabled=settings.QUOTA_ENABLED,
+                    campaign_id=campaign_id,
+                    max_campaign_attempts=settings.QUOTA_CAMPAIGN_MAX_ATTEMPTS,
                     max_requests_per_minute=settings.QUOTA_MAX_REQUESTS_PER_MINUTE,
                     max_requests_per_day=settings.QUOTA_MAX_REQUESTS_PER_DAY,
                     max_total_attempts=settings.QUOTA_MAX_TOTAL_ATTEMPTS,

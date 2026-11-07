@@ -160,6 +160,10 @@ def get_generation_service(
         raise GenerationConfigurationError(
             "A configured QuotaLedger is strictly required whenever provider dispatch is authorized."
         )
+    if can_dispatch and not getattr(settings, "QUOTA_CAMPAIGN_ID", "").strip():
+        raise GenerationConfigurationError(
+            "QUOTA_CAMPAIGN_ID is required and must be non-empty whenever provider dispatch is authorized."
+        )
 
     provider = settings.GENERATION_PROVIDER or settings.OLLAMA_PROVIDER
     if not provider:

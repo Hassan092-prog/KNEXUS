@@ -561,6 +561,7 @@ def test_get_generation_service_calling_styles_direct_and_fastapi_override(monke
     assert svc_default.quota_ledger is get_generation_quota_ledger()
 
     # 2. Direct call with explicit keyword arguments
+    monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "test-campaign")
     custom_policy = MockDispatchPolicy("groq")
     custom_ledger = QuotaLedger()
     svc_custom = get_generation_service(dispatch_policy=custom_policy, quota_ledger=custom_ledger)
@@ -933,6 +934,7 @@ def test_dispatch_policy_guard_mock_policy_requires_ledger_even_with_test_transp
     monkeypatch.setattr(settings, "GENERATION_MODEL", "llama-3.3-70b-versatile")
     monkeypatch.setattr(settings, "GENERATION_API_KEY", type("Secret", (), {"get_secret_value": lambda self: "gsk_test"})())
 
+    monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "test-campaign")
     policy = MockDispatchPolicy("groq")
     mock_transport = httpx.MockTransport(lambda req: httpx.Response(200, json={}))
 
@@ -987,6 +989,7 @@ def test_dependency_overrides_replace_shared_ledger_across_all_dependencies(tmp_
         counter = get_token_counter(quota_ledger=custom_ledger)
         assert counter.quota_ledger is custom_ledger
 
+        monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "test-campaign")
         monkeypatch.setattr(settings, "GENERATION_PROVIDER", "groq")
         monkeypatch.setattr(settings, "GENERATION_MODEL", "llama-3.3-70b-versatile")
         monkeypatch.setattr(settings, "GENERATION_API_KEY", type("Secret", (), {"get_secret_value": lambda self: "gsk_test"})())

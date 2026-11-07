@@ -1,6 +1,7 @@
 import { apiErrorResponseSchema, documentDetailSchema, documentListSchema, documentStatusSchema, queryResponseSchema } from "@/lib/api/contracts"
 import { MockApiError } from "@/lib/api/error"
 import type { DocumentState, DocumentSummary } from "@/features/documents/types/document.types"
+import { randomUuid } from "@/lib/utils/random"
 
 import documentListRaw from "@/mocks/data/document-list.json"
 import documentDetailRaw from "@/mocks/data/document-detail.json"
@@ -74,7 +75,7 @@ function freshEnvelope(detail: string, code: string, status: number): MockApiErr
   const response = apiErrorResponseSchema.parse({
     detail,
     code,
-    request_id: crypto.randomUUID(),
+    request_id: randomUuid(),
   })
   return new MockApiError(response, status)
 }
@@ -93,7 +94,7 @@ export function validationError(): MockApiError {
 export function providerUnavailableError(): MockApiError {
   const response = apiErrorResponseSchema.parse({
     ...CANONICAL_PROVIDER_ERROR,
-    request_id: crypto.randomUUID(),
+    request_id: randomUuid(),
   })
   return new MockApiError(response, 503)
 }

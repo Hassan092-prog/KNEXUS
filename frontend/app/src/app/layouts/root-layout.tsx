@@ -4,6 +4,7 @@ import { Outlet } from "react-router-dom"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { PageContainer } from "@/components/shared/page-container"
+import { DataModeBanner } from "@/components/shared/data-mode-banner"
 
 /**
  * Application shell: fixed sidebar (lg+), Sheet drawer (below lg),
@@ -31,6 +32,7 @@ export function RootLayout() {
         <AppHeader onNavOpen={() => setMobileNavOpen(true)} />
         <main id="main-content" className="flex-1">
           <PageContainer>
+            <DataModeBanner />
             <Outlet />
           </PageContainer>
         </main>

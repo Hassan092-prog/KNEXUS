@@ -1,4 +1,5 @@
 import type { QueryRequest, QueryResponse } from "@/features/assistant/types/assistant.types"
+import { randomUuid } from "@/lib/utils/random"
 
 import { mockDelay } from "@/lib/api/mode"
 import { MockApiError } from "@/lib/api/error"
@@ -39,7 +40,7 @@ export const assistantHandlers = {
         {
           detail: "The local model service is unavailable.",
           code: "PROVIDER_UNAVAILABLE",
-          request_id: crypto.randomUUID(),
+          request_id: randomUuid(),
         },
         503,
       )

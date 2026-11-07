@@ -1,34 +1,74 @@
-import { MessageCircleIcon } from "lucide-react"
+import { BotIcon, UserIcon } from "lucide-react"
+
 import { cn } from "@/lib/utils"
 
 /**
- * Message bubble — presentation-only message container.
- * Renders answer text with inline [N] citation markers and optional citation
- * cards. No data fetching; content is passed in by the parent (Z04).
+ * Message container for an assistant exchange. Two variants:
+ * - `question` — the user's submitted question (muted surface).
+ * - `answer` — the assistant's response. Inline `[N]` citation markers are
+ *   rendered as small reference chips (they echo the returned citation IDs;
+ *   the backend supplies no document links, so they are not links).
+ * Citations/menus are passed in as children by the page.
  */
 export function MessageBubble({
+  variant,
   content,
-  citations,
+  children,
   className,
 }: {
+  variant: "question" | "answer"
   content: string
-  citations?: React.ReactNode[]
+  children?: React.ReactNode
   className?: string
 }) {
+  const isQuestion = variant === "question"
+
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-sm text-foreground leading-relaxed",
+        "flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-sm leading-relaxed text-foreground",
+        isQuestion && "bg-muted/50",
         className,
       )}
     >
-      <div className="flex items-start gap-2">
-        <MessageCircleIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <div className="prose prose-sm text-sm max-w-none">{content}</div>
+      <div className="flex items-start gap-2.5">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md",
+            isQuestion ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground",
+          )}
+        >
+          {isQuestion ? <UserIcon className="size-3.5" /> : <BotIcon className="size-3.5" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p role="heading" aria-level={4} className="sr-only">
+            {isQuestion ? "Your question" : "Assistant answer"}
+          </p>
+          <p className="break-words whitespace-pre-wrap">
+            {isQuestion ? content : renderAnswerMarkers(content)}
+          </p>
+        </div>
       </div>
-      {citations ? (
-        <div className="mt-2 flex flex-col gap-2">{citations}</div>
-      ) : null}
+      {children !== undefined && children !== null ? <div className="min-w-0">{children}</div> : null}
     </div>
   )
+}
+
+/** Renders answer text, styling `[N]` citation markers as reference chips. */
+function renderAnswerMarkers(answer: string): React.ReactNode[] {
+  return answer.split(/(\[\d+\])/g).map((piece, index) => {
+    if (/^\[\d+\]$/.test(piece)) {
+      return (
+        <span
+          key={`${piece}-${index}`}
+          className="mx-0.5 inline-flex items-center rounded-sm border border-border bg-muted px-1 align-super text-[10px] font-medium tabular-nums text-foreground"
+          title="Citation reference"
+        >
+          {piece}
+        </span>
+      )
+    }
+    return <span key={`text-${index}`}>{piece}</span>
+  })
 }

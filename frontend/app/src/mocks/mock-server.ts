@@ -1,4 +1,4 @@
-import type { DocumentApi } from "@/features/documents/services/document.api"
+import type { DocumentApi, UploadTransferOptions } from "@/features/documents/services/document.api"
 import type { AssistantApi } from "@/features/assistant/services/assistant.api"
 import type {
   DocumentDetail,
@@ -65,7 +65,11 @@ export function createMockDocumentApi(): DocumentApi {
       return validateStatus(await documentHandlers.getDocumentStatus(documentId))
     },
 
-    async uploadDocument(file: File, metadata: UploadMetadataInput): Promise<UploadAcceptedResponse> {
+    async uploadDocument(
+      file: File,
+      metadata: UploadMetadataInput,
+      _options?: UploadTransferOptions,
+    ): Promise<UploadAcceptedResponse> {
       return validateUploadAccepted(await documentHandlers.uploadDocument(file, metadata))
     },
   }

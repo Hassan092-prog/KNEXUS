@@ -1,69 +1,59 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMemo } from "react"
 
-import { getDocumentApi } from "@/lib/api"
+import { useDocumentCollection } from "@/features/documents/hooks/use-document-collection"
 import type { DocumentState, DocumentSummary } from "@/features/documents/types/document.types"
 
 /**
- * Live dashboard counters derived exclusively from `GET /api/v1/documents`
- * pagination meta and page payloads. The backend exposes no aggregate
- * analytics route, so counts are accumulated by paging through the list.
+ * Dashboard overview derived exclusively from `GET /api/v1/documents`
+ * (shared collection scan + pagination meta). The backend exposes no
+ * aggregate analytics route, so counters accumulate over the scanned pages.
  *
- * The scan is capped at `MAX_PAGES` pages; when capped, `total` still comes
- * from the backend meta but per-status counts reflect only the scanned pages
- * (`capped: true` lets the UI say so instead of implying full coverage).
+ * `capped` is honored: total remains the real backend total while per-status
+ * counts cover only scanned documents, so the UI can disclose partial
+ * coverage instead of implying exact totals.
  */
-
-const PAGE_SIZE = 100
-const MAX_PAGES = 5
-
 export interface DashboardOverview {
-  /** From backend pagination meta — reflects every accessible document. */
   total: number
   statusCounts: Record<DocumentState, number>
   /** Newest documents (list endpoint is ordered by `created_at desc`). */
   recent: DocumentSummary[]
-  /** How many documents the status counts actually scanned. */
   scanned: number
   capped: boolean
 }
+
+const RECENT_LIMIT = 5
 
 function emptyStatusCounts(): Record<DocumentState, number> {
   return { queued: 0, processing: 0, complete: 0, failed: 0 }
 }
 
-async function fetchOverview(): Promise<DashboardOverview> {
-  const statusCounts = emptyStatusCounts()
-  let offset = 0
-  let total = 0
-  let recent: DocumentSummary[] = []
-
-  for (let page = 0; page < MAX_PAGES; page += 1) {
-    const list = await getDocumentApi().listDocuments({ limit: PAGE_SIZE, offset })
-    total = list.meta.total
-    for (const document of list.data) {
+function useDashboardOverviewState(collection: ReturnType<typeof useDocumentCollection>) {
+  return useMemo(() => {
+    const data = collection.data
+    if (data === undefined) return undefined
+    const statusCounts = emptyStatusCounts()
+    for (const document of data.documents) {
       statusCounts[document.status] += 1
     }
-    recent = [...recent, ...list.data]
-    offset += PAGE_SIZE
-    if (list.data.length < PAGE_SIZE || offset >= total) {
-      return { total, statusCounts, recent: recent.slice(0, 5), scanned: offset, capped: false }
-    }
-  }
-
-  return {
-    total,
-    statusCounts,
-    recent: recent.slice(0, 5),
-    scanned: offset,
-    capped: true,
-  }
+    return {
+      total: data.total,
+      statusCounts,
+      recent: data.documents.slice(0, RECENT_LIMIT),
+      scanned: data.scanned,
+      capped: data.capped,
+    } satisfies DashboardOverview
+  }, [collection.data])
 }
 
 export function useDashboardOverview() {
-  return useQuery({
-    queryKey: ["documents", "overview"] as const,
-    queryFn: fetchOverview,
-    // Surfacing backend failures (e.g. offline dev backend) keeps the UI honest.
-    retry: false,
-  })
+  const collection = useDocumentCollection()
+  const overview = useDashboardOverviewState(collection)
+
+  return {
+    overview,
+    isLoading: collection.isPending,
+    isError: collection.isError,
+    error: collection.error,
+    refetch: collection.refetch,
+  }
 }

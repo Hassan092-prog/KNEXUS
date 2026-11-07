@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { ArrowRightIcon } from "lucide-react"
+import { ArrowRightIcon, UploadIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -10,6 +10,8 @@ import { StatusBadge } from "@/components/shared/status-badge"
 import { DocumentTypeIcon } from "@/components/shared/document-type-icon"
 import { StatCard } from "@/components/shared/stat-card"
 import { useDashboardOverview } from "@/features/dashboard/hooks/use-dashboard-overview"
+import { UploadDialog } from "@/features/documents/components/upload-dialog"
+import { DocumentCard } from "@/features/documents/components/document-card"
 import type { DocumentState } from "@/features/documents/types/document.types"
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -74,8 +76,8 @@ function RecentDocumentsSkeleton() {
  * Loading, error, and populated states are mutually exclusive.
  */
 export function DashboardPage() {
-  const overview = useDashboardOverview()
-  const data = overview.data
+  const { overview, isLoading, isError, error, refetch } = useDashboardOverview()
+  const data = overview
 
   return (
     <>
@@ -83,25 +85,38 @@ export function DashboardPage() {
         title="Overview"
         description="Monitor the state of your organization's knowledge base."
         actions={
-          <Button asChild variant="outline" size="sm">
-            <Link to="/documents">
-              View all documents
-              <ArrowRightIcon className="ml-1 size-4" aria-hidden="true" />
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <UploadDialog
+              trigger={
+                <Button size="sm">
+                  <UploadIcon className="size-4" aria-hidden="true" />
+                  Upload document
+                </Button>
+              }
+            />
+            <Button asChild variant="outline" size="sm">
+              <Link to="/assistant">
+                Ask the assistant
+                <ArrowRightIcon className="ml-1 size-4" aria-hidden="true" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/documents">View all documents</Link>
+            </Button>
+          </div>
         }
       />
 
-      {overview.isLoading ? (
+      {isLoading ? (
         <>
           <StatsSkeleton />
           <RecentDocumentsSkeleton />
         </>
-      ) : overview.isError ? (
+      ) : isError ? (
         <ErrorState
-          error={overview.error}
+          error={error}
           onRetry={() => {
-            overview.refetch()
+            void refetch()
           }}
         />
       ) : data ? (
@@ -122,6 +137,13 @@ export function DashboardPage() {
             ))}
           </div>
 
+          {data.capped ? (
+            <p className="mt-3 text-xs text-muted-foreground" role="status">
+              Status counts cover the {data.scanned.toLocaleString()} most recent of {data.total.toLocaleString()} documents
+              (scan limit); the total remains the complete backend count.
+            </p>
+          ) : null}
+
           <section className="mt-10">
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
@@ -139,63 +161,75 @@ export function DashboardPage() {
                 variant="surface"
                 title="No documents yet"
                 description="Documents uploaded through the backend appear here once they are visible to the server-side demo actor."
+                action={
+                  <Button asChild variant="outline" size="sm">
+                    <Link to="/documents">Open the document library</Link>
+                  </Button>
+                }
               />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="px-3 py-3 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                        Type
-                      </th>
-                      <th className="px-3 py-3 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                        Title
-                      </th>
-                      <th className="px-3 py-3 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                        Status
-                      </th>
-                      <th className="px-3 py-3 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                        Chunks
-                      </th>
-                      <th className="px-3 py-3 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                        Created
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.recent.map((document) => (
-                      <tr
-                        key={document.id}
-                        className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors"
-                      >
-                        <td className="px-3 py-3">
-                          <DocumentTypeIcon sourceType={document.source_type} />
-                        </td>
-                        <td className="px-3 py-3">
-                          <Link
-                            to={`/documents/${document.id}`}
-                            className="font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            {document.title}
-                          </Link>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {document.allowed_roles.join(", ")}
-                          </p>
-                        </td>
-                        <td className="px-3 py-3">
-                          <StatusBadge status={document.status} />
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums text-xs text-muted-foreground">
-                          {document.chunk_count}
-                        </td>
-                        <td className="px-3 py-3 text-right tabular-nums text-xs text-muted-foreground">
-                          {dateFormatter.format(new Date(document.created_at))}
-                        </td>
+              <>
+                <div className="hidden overflow-hidden rounded-lg border border-border bg-card lg:block">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/50 border-b border-border">
+                        <th className="w-14 px-3 py-2.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Type
+                        </th>
+                        <th className="px-3 py-2.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Title
+                        </th>
+                        <th className="w-28 px-3 py-2.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Status
+                        </th>
+                        <th className="w-16 px-3 py-2.5 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Chunks
+                        </th>
+                        <th className="w-40 px-3 py-2.5 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Created
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {data.recent.map((document) => (
+                        <tr
+                          key={document.id}
+                          className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors"
+                        >
+                          <td className="px-3 py-3">
+                            <DocumentTypeIcon sourceType={document.source_type} />
+                          </td>
+                          <td className="px-3 py-3">
+                            <Link
+                              to={`/documents/${document.id}`}
+                              className="font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {document.title}
+                            </Link>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {document.allowed_roles.join(", ")}
+                            </p>
+                          </td>
+                          <td className="px-3 py-3">
+                            <StatusBadge status={document.status} />
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums text-xs text-muted-foreground">
+                            {document.chunk_count}
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums text-xs text-muted-foreground">
+                            {dateFormatter.format(new Date(document.created_at))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="grid gap-3 lg:hidden">
+                  {data.recent.map((document) => (
+                    <DocumentCard key={document.id} document={document} />
+                  ))}
+                </div>
+              </>
             )}
           </section>
         </>

@@ -1,6 +1,6 @@
 import { uploadMetadataSchema } from "@/lib/api/contracts"
-import { MockApiError } from "@/lib/api/error"
 import type { DocumentDetail, DocumentListParams, DocumentState, DocumentStatusResponse, DocumentSummary, UploadAcceptedResponse, UploadMetadataInput } from "@/features/documents/types/document.types"
+import { randomUuid } from "@/lib/utils/random"
 
 import { mockDelay } from "@/lib/api/mode"
 import {
@@ -145,7 +145,7 @@ export const documentHandlers = {
     // never written. The accepted response matches the canonical
     // `upload-accepted.json` shape; ids are composed fresh per request, as on
     // the backend.
-    const documentId = crypto.randomUUID()
+    const documentId = randomUuid()
     const summary: DocumentSummary = {
       id: documentId,
       title:
@@ -167,7 +167,7 @@ export const documentHandlers = {
 
     return {
       document_id: documentId,
-      task_id: crypto.randomUUID(),
+      task_id: randomUuid(),
       status: "queued",
       message: "Document received. Processing in background.",
     }
@@ -191,17 +191,7 @@ function uploadedStatus(
       failure_message: CANONICAL_STATUS_FAILED.failure_message,
     }
   }
-  if (lifecycleState(lifecycle as { pollCount: number; totalChunks: number; failed: boolean } as never) === undefined) {
-    throw new MockApiError(
-      {
-        detail: "Internal mock lifecycle error.",
-        code: "INTERNAL_ERROR",
-        request_id: crypto.randomUUID(),
-      },
-      500,
-    )
-  }
-  const state = lifecycleState(lifecycle as never)
+  const state = lifecycleState(lifecycle)
   if (state === "complete") {
     // Contract-consistent terminal state: totals == processed, progress=100.
     return {

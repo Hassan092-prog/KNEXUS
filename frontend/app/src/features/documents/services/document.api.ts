@@ -1,5 +1,11 @@
 import type { DocumentDetail, DocumentListParams, DocumentListResponse, DocumentStatusResponse, UploadAcceptedResponse, UploadMetadataInput } from "@/features/documents/types/document.types"
 
+/** Optional transport-level upload reporting (HTTP progress, not processing). */
+export interface UploadTransferOptions {
+  /** 0–100 percentage of HTTP bytes sent; delays vary by connection. */
+  onProgress?: (percent: number) => void
+}
+
 /**
  * Shared document service interface (Z02 boundary).
  *
@@ -12,5 +18,9 @@ export interface DocumentApi {
   getDocument(documentId: string): Promise<DocumentDetail>
   getDocumentStatus(documentId: string): Promise<DocumentStatusResponse>
   /** One PDF/DOCX file with repeated `allowed_roles` roles; no identity fields. */
-  uploadDocument(file: File, metadata: UploadMetadataInput): Promise<UploadAcceptedResponse>
+  uploadDocument(
+    file: File,
+    metadata: UploadMetadataInput,
+    options?: UploadTransferOptions,
+  ): Promise<UploadAcceptedResponse>
 }

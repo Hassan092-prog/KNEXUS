@@ -207,11 +207,7 @@ async def upload_document(
         if any(hint in cause_text for hint in ("organizations", "users", "foreign key", "foreignkey", "demo identity", "violates foreign key")):
             logger.error(
                 "Upload failed because demo organization or user is missing. "
-                "Run the seed command from DEMO_RUNBOOK.md: "
-                'python -c "import asyncio; from app.core.database import AsyncSessionLocal; '
-                'from app.db.demo_seed import seed_demo_identity; '
-                'async def s(): async with AsyncSessionLocal() as session: '
-                'await seed_demo_identity(session); await session.commit(); asyncio.run(s())"'
+                "Run the seed command from DEMO_RUNBOOK.md: python -m app.db.demo_seed"
             )
         raise APIProblem(500, "INTERNAL_ERROR", "The upload could not be accepted.")
 

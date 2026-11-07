@@ -78,7 +78,7 @@ def test_upload_missing_demo_seed_logs_remediation_and_returns_safe_500(monkeypa
             assert f"request_id={request_id}" in log_text
             assert "Upload failed because demo organization or user is missing." in log_text
             assert "Run the seed command from DEMO_RUNBOOK.md:" in log_text
-            assert "seed_demo_identity" in log_text
+            assert "python -m app.db.demo_seed" in log_text
             assert session.rollbacks == 1
     finally:
         app.dependency_overrides.clear()
@@ -114,6 +114,6 @@ def test_upload_generic_flush_error_logs_exception_without_seed_message(monkeypa
             assert request_id is not None
             assert f"request_id={request_id}" in caplog.text
             assert "disk write failure" in caplog.text
-            assert "seed_demo_identity" not in caplog.text
+            assert "python -m app.db.demo_seed" not in caplog.text
     finally:
         app.dependency_overrides.clear()

@@ -364,6 +364,15 @@ class MemorySession:
             self.rows[(type(row), row.id)] = row
         self.pending.clear()
 
+    async def commit(self):
+        await self.flush()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
 
 @pytest.mark.asyncio
 async def test_demo_seed_is_idempotent_and_leaves_transaction_to_caller():
@@ -415,3 +424,34 @@ async def test_demo_seed_rejects_inactive_user_without_reactivating_it():
     with pytest.raises(DemoSeedConflictError, match="user ID"):
         await seed_demo_identity(session)
     assert user.is_active is False
+
+def test_demo_seed_main_module_execution_is_idempotent(monkeypatch):
+    """Running python -m app.db.demo_seed twice leaves exactly one demo org and one demo user."""
+    import runpy
+    from app.core.demo_identity import build_demo_actor
+
+    session = MemorySession()
+
+    class SessionContext:
+        def __call__(self):
+            return self
+
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    import app.core.database
+    monkeypatch.setattr(app.core.database, "AsyncSessionLocal", SessionContext())
+
+    runpy.run_module("app.db.demo_seed", run_name="__main__")
+    runpy.run_module("app.db.demo_seed", run_name="__main__")
+
+    actor = build_demo_actor()
+    org_rows = [k for k in session.rows if k[0] is Organization]
+    user_rows = [k for k in session.rows if k[0] is User]
+    assert len(org_rows) == 1
+    assert len(user_rows) == 1
+    assert (Organization, actor.org_id) in session.rows
+    assert (User, actor.user_id) in session.rows

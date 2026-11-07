@@ -1,9 +1,16 @@
 # KNEXUS Phase 1 Demo Runbook
 
 > [!NOTE]
+> Switching `EMBEDDING_PROVIDER` requires a fresh demo database or re-ingesting all documents, because vectors are tagged by embedding model name and revision in `document_chunks`. Chunks produced by other models are never scored or mixed into similarity rankings.
+
+---
+
+## Part 1: Local Test Mode (Verified)
+
+> [!NOTE]
 > **Status: VERIFIED**. Executed and verified live on server environment (2026-11-07).
 
-## 1. Environment Configuration (from config.py)
+### 1. Environment Configuration
 ```bash
 export POSTGRES_HOST="localhost"
 export POSTGRES_PORT=5435
@@ -16,19 +23,14 @@ export EMBEDDING_PROVIDER="local"
 export EMBEDDING_MODEL_NAME="sentence-transformers/all-MiniLM-L6-v2"
 export EMBEDDING_DIMENSIONS=384
 
-# For dry run: GENERATION_PROVIDER="fake"
-# For live demo: GENERATION_PROVIDER="groq", GENERATION_MODEL="openai/gpt-oss-120b", GENERATION_API_KEY="gsk_..."
 export GENERATION_PROVIDER="fake"
-export GENERATION_MODEL="openai/gpt-oss-120b"
-export GENERATION_API_KEY="gsk_..."
-export GENERATION_BASE_URL="https://api.groq.com/openai/v1"
 
 export QUOTA_ENABLED=True
 export QUOTA_CAMPAIGN_ID="phase1-demo-20261107"
 export PYTHONPATH=backend
 ```
 
-## 2. Start the Stack
+### 2. Start the Stack
 ```bash
 # 1. Start PostgreSQL with pgvector (port 5435)
 docker compose up -d postgres
@@ -46,7 +48,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 cd frontend/app && npm run dev
 ```
 
-## 3. Upload a Document
+### 3. Upload a Document
 ```bash
 curl -X POST http://localhost:8000/api/v1/documents/upload \
   -F "file=@demo_security_policy.docx" \
@@ -79,7 +81,7 @@ Expected completed response:
 }
 ```
 
-## 4. Query & Expected Response
+### 4. Query & Expected Response
 ```bash
 curl -X POST http://localhost:8000/api/v1/query \
   -H "Content-Type: application/json" \
@@ -111,3 +113,61 @@ Response contains inline bracketed citations matching citation objects referenci
   }
 }
 ```
+
+---
+
+## Part 2: Live Demo Mode (Hosted Providers)
+
+> [!WARNING]
+> **Status: UNVERIFIED**. Live demo mode requires approved server-held API credentials and has not yet been executed end-to-end live.
+
+### 1. Environment Configuration (from config.py)
+> [!IMPORTANT]
+> API keys must be set only in the server environment or private `.env`. Never commit API keys to version control.
+```bash
+# Database settings (from docker-compose.yml)
+export POSTGRES_HOST="localhost"
+export POSTGRES_PORT=5435
+export POSTGRES_DB="knexus"
+export POSTGRES_USER="knexus_admin"
+export POSTGRES_PASSWORD="knexus_password"
+export DATABASE_URL="postgresql+asyncpg://knexus_admin:knexus_password@localhost:5435/knexus"
+
+# Google Hosted Embeddings (gemini-embedding-001 at 384 dimensions)
+export EMBEDDING_PROVIDER="google"
+export EMBEDDING_MODEL_NAME="gemini-embedding-001"
+export EMBEDDING_DIMENSIONS=384
+export EMBEDDING_API_KEY="AIza..."
+
+# Groq Hosted Generation (openai/gpt-oss-120b)
+export GENERATION_PROVIDER="groq"
+export GENERATION_MODEL="openai/gpt-oss-120b"
+export GENERATION_API_KEY="gsk_..."
+export GENERATION_BASE_URL="https://api.groq.com/openai/v1"
+
+# Quota, Campaign and Module Resolution
+export QUOTA_ENABLED=True
+export QUOTA_CAMPAIGN_ID="phase1-live-demo-20261107"
+export PYTHONPATH=backend
+```
+
+### 2. Execution Steps
+```bash
+# 1. Start PostgreSQL (port 5435)
+docker compose up -d postgres
+
+# 2. Run migrations
+alembic -c alembic.ini upgrade head
+
+# 3. Seed Phase 1 demo identity
+python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.db.demo_seed import seed_demo_identity; async def s(): async with AsyncSessionLocal() as session: await seed_demo_identity(session); await session.commit(); asyncio.run(s())"
+
+# 4. Start backend
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 5. In a separate shell, start the frontend
+cd frontend/app && VITE_DATA_MODE=live npm run dev
+```
+
+### 3. Verification Queries
+Upload demo documents and query through the frontend or via `POST /api/v1/query`. Verify that citations link to the real chunk and document UUIDs, and that ungrounded questions result in structured abstentions.

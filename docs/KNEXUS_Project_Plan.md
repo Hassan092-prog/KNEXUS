@@ -18,7 +18,7 @@ Hassan coordinates backend/data/runtime/integration; Naveed generation/tools/res
 
 ## Scope after the core path
 
-Hosted generation and embeddings, with selective reuse from the pinned personal project in [TRD](TRD.md), are now the Phase 1 target. Hosted generation transport (PR #13), offline hosted embedding dispatch protection (PR #16), and hosted input token validation (PR #19) are merged in main; draft PR #15 contains the generation evaluation harness. Final provider/model choices, API wiring, live token correspondence verification, and browser frontend remain pending. Connectors and broader business modules remain later reviewed decisions. Preserve adapter boundaries and a single PostgreSQL store, but do not add platform breadth, queues or agents simply to match a future blueprint. No commercial readiness is claimed by the academic prototype.
+Hosted generation and embeddings, with selective reuse from the pinned personal project in [TRD](TRD.md), are now the Phase 1 target. Hosted generation transport (PR #13), generation evaluation harness (PR #15), offline hosted embedding dispatch protection (PR #16), hosted input token validation (PR #19), backend generation wiring (PR #21), frontend dashboard in frontend/app (PR #23), and CI tokenizer caching (PR #26) are merged into main. Frontend live-mode backend connection and live demo verification remain in progress. Connectors and broader business modules remain later reviewed decisions. Preserve adapter boundaries and a single PostgreSQL store, but do not add platform breadth, queues or agents simply to match a future blueprint. No commercial readiness is claimed by the academic prototype.
 
 ## Academic prerequisites
 

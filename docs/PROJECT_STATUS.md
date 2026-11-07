@@ -1,29 +1,40 @@
 # KNEXUS Project Status
 
-**Updated: 7 November 2026**
+**Date**: 7 November 2026
+**Phase 1 Status**: In progress (not complete).
 
-## What Works Now
-- **Contracts & Validation**: Canonical Pydantic contracts (contracts/phase1/models.py), schema export, and negative contract test suite.
-- **Persistence**: PostgreSQL 16 + pgvector schema (6 tables, Alembic migrations, 384-dimensional HNSW cosine index).
-- **Ingestion & Retrieval**: PDF/DOCX parsing, tokenizer-bounded chunking, source tracking, and tenant/role-filtered similarity retrieval with fail-closed model isolation.
-- **Embeddings**: Local MiniLM (sentence-transformers/all-MiniLM-L6-v2, 384-d) fully operational for ingestion and query vectors.
-- **Generation & Safety**: Async GenerationService supporting Groq hosted generation (openai/gpt-oss-120b) and offline fake provider; fail-closed BlockedLiveDispatchPolicy and cross-process atomic QuotaLedger.
-- **API Endpoints**: Document upload, listing, status polling, and non-streaming query endpoints with UTC timestamps and canonical error envelopes.
-- **Frontend**: Vite + React 19 UI in rontend/app merged on origin/main (PR #23) with overview, documents, and chat views.
-- **Verification**: Offline test suite (358 passed, 18 skipped); contract checker passes.
+## Merged into `main`
+- **PR #15** (Naveed): Hosted generation evaluation harness and adapter corrections.
+- **PR #21** (Hassan): Generation wiring, atomic QuotaLedger, UTC normalization, CI + CODEOWNERS, docs cleanup.
+- **PR #23** (Zaid): Vite/React 19 dashboard in `frontend/app` (documents and assistant views, mock mode).
+- **PR #26** (Hassan): CI Hugging Face tokenizer cache and pre-download step for offline tests.
 
-## Phase 1 Demo Architecture Decision
-- **Embeddings**: Local MiniLM (sentence-transformers/all-MiniLM-L6-v2, vector(384)).
-- **Generation**: Groq hosted provider (openai/gpt-oss-120b).
-- **Google Embedder**: Present in codebase (pp/services/ingestion/google_embedder.py), verified offline, but disabled (EMBEDDING_PROVIDER="local") for the Phase 1 demo to preserve existing 384-d vectors and zero-cost operation.
+## Continuous Integration (CI)
+- **Backend CI**: Passing on `main` (all offline tests and Phase 1 contract checks pass).
+- **Frontend CI**: Failing on `main` until Zaid's PR #25 fixes typecheck and test setup (`setup.ts:16`).
 
-## 4-Step Plan to Phase 1 Demo
-1. **Merge PR #15**: Integrate Naveed's generation harness and adapter corrections into main.
-2. **Merge PR #21**: Fast-forward and merge Hassan's generation wiring, quota ledger, and UTC normalization into main.
-3. **Frontend Endpoint Wiring**: Connect Zaid's frontend (rontend/app) to backend upload and query REST endpoints.
-4. **Live Smoke Acceptance**: Execute docs/DEMO_RUNBOOK.md with synthetic document upload, query verification, and citation check.
+## Open Pull Requests
+- **PR #24** (`dev-naveed` -> `main`): 5 Acme demo DOCX files + 12 questions + demo runner (in progress).
+- **PR #25** (`dev-zaid` -> `main`): Frontend fixes (typecheck and test resolution; live backend wiring to do).
 
-## Open Items & Ownership
-- **Hassan**: PR #21 merge readiness, stack startup, and live runbook verification.
-- **Naveed**: PR #15 merge readiness and generation handoff sign-off.
-- **Zaid**: Frontend API integration and browser citation display against live backend.
+## Model Policy
+- All real AI usage goes through hosted APIs, called by the backend with server-held keys:
+  - embeddings: Google gemini-embedding-001 at 384 dimensions via outputDimensionality, in backend/app/services/ingestion/embedding.py;
+  - generation: Groq openai/gpt-oss-120b.
+- The browser only calls the KNEXUS backend, never a provider, and holds no keys.
+- Local models (MiniLM sentence-transformers/all-MiniLM-L6-v2) and the fake generator are for tests, CI and local development only. They are not the demo or production path.
+- No automatic retries or fallback between providers. No paid usage without Hassan's approval.
+
+## Dry-Run Verification Evidence
+- **2026-11-07**: Local test mode (MiniLM + fake generator) verified live: health 200, DOCX upload 202, ingestion complete (3/3 chunks, 100%), document listed, query answered with real document citations [1].
+
+## Remaining Steps to Phase 1 Demo
+1. Merge PR #24 and PR #25 with green CI.
+2. Frontend live mode against the backend.
+3. An offline end-to-end test of the hosted path through the API (upload -> Google embeddings -> retrieval -> Groq answer) using mocked HTTP only.
+4. The live demo with Google embeddings + Groq. It needs Hassan to set GOOGLE/GENERATION API keys on the server and a QUOTA_CAMPAIGN_ID.
+5. Hassan signs off Phase 1.
+
+## Branch Policy
+- The only remote branches are `main`, `dev-hassan`, `dev-naveed`, and `dev-zaid`.
+- Members open PRs from their own branch; only Hassan merges into `main` and teammate branches.

@@ -156,4 +156,124 @@ def test_racing_recovery_produces_exactly_one_transition(tmp_path: Path):
     expired_records = [r for r in settled if r["attempt_id"] == aid]
     assert len(expired_records) == 1, "Expected exactly 1 transition for aid"
     assert expired_records[0]["terminal_state"] == "expired_unresolved"
+def test_quota_config_refuses_insufficient_in_flight_timeout():
+    """Settings and QuotaConfig refuse in_flight_timeout_seconds not greater than longest deadline + margin."""
+    from pydantic import ValidationError
+    from app.core.config import Settings
 
+    # Longest deadline = max(30.0, 20.0, 30.0) = 30.0. Margin = 5.0. Min required > 35.0.
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(
+            GENERATION_TIMEOUT=30.0,
+            EMBEDDING_TIMEOUT=20.0,
+            EMBEDDING_VALIDATION_DEADLINE_SECONDS=30.0,
+            QUOTA_IN_FLIGHT_TIMEOUT_SECONDS=35.0,  # <= 35.0 is refused
+        )
+    assert "must be strictly greater than longest provider deadline" in str(exc_info.value)
+
+    cfg = QuotaConfig(in_flight_timeout_seconds=35.0)
+    with pytest.raises(ValueError, match="must be strictly greater than longest deadline"):
+        cfg.validate_against_deadlines(max_deadline=30.0, safety_margin=5.0)
+
+
+def test_late_settlement_carrying_status_429_trips_rate_limit(tmp_path: Path):
+    """A late settlement for an expired attempt carrying HTTP 429 must trip the scope rate limit."""
+    from app.core.quota import RateLimitExceededError
+
+    state_file = tmp_path / "ledger_late_429.json"
+    fake_time = 1000.0
+    def clock():
+        return fake_time
+
+    cfg = QuotaConfig(
+        enabled=True,
+        state_path=state_file,
+        in_flight_timeout_seconds=10.0,
+        lock_timeout_seconds=0.05,
+    )
+    ledger = QuotaLedger(cfg, time_func=clock)
+
+    # 1. Reserve attempt
+    aid = ledger.reserve_attempt("google", "gemini-embedding-001")
+
+    # 2. Advance clock beyond in_flight_timeout_seconds so attempt expires
+    fake_time += 15.0
+
+    # 3. Next reservation triggers recovery of stale attempt to expired_unresolved
+    aid2 = ledger.reserve_attempt("google", "gemini-embedding-001")
+
+    # 4. Late settlement for expired attempt arrives carrying status_code=429
+    ledger.settle_attempt(
+        aid,
+        status_code=429,
+        success=False,
+        error="http_429_late",
+    )
+
+    # Settle aid2 normally so active reservations is empty
+    ledger.settle_attempt(aid2, success=True)
+
+    # 5. Subsequent reservation must raise RateLimitExceededError because late 429 tripped the tripwire
+    with pytest.raises(RateLimitExceededError, match="rate limit active"):
+        ledger.reserve_attempt("google", "gemini-embedding-001")
+
+
+def _worker_reserve_settle(state_path_str: str, attempts: int, result_queue):
+    import time
+    from pathlib import Path
+    from app.core.quota import QuotaConfig, QuotaLedger, QuotaError
+    cfg = QuotaConfig(
+        enabled=True,
+        state_path=Path(state_path_str),
+        lock_timeout_seconds=2.0,
+        min_request_interval_seconds=0.0,
+    )
+    ledger = QuotaLedger(cfg)
+    successes = 0
+    errors = 0
+    for _ in range(attempts):
+        try:
+            aid = ledger.reserve_attempt("groq", "mp-test-model")
+            time.sleep(0.01)
+            ledger.settle_attempt(aid, success=True)
+            successes += 1
+        except QuotaError:
+            errors += 1
+    result_queue.put((successes, errors))
+
+
+def test_true_multiprocessing_race_against_real_file_lock(tmp_path: Path):
+    """Separate OS processes race to reserve and settle against the real file lock."""
+    import multiprocessing
+
+    state_file = tmp_path / "mp_race_ledger.json"
+    queue = multiprocessing.Queue()
+    num_processes = 3
+    attempts_per_process = 5
+
+    processes = [
+        multiprocessing.Process(
+            target=_worker_reserve_settle,
+            args=(str(state_file), attempts_per_process, queue),
+        )
+        for _ in range(num_processes)
+    ]
+
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join(timeout=10.0)
+        assert not p.is_alive(), "Process hung or timed out on file lock"
+
+    results = [queue.get_nowait() for _ in range(num_processes)]
+    total_successes = sum(r[0] for r in results)
+    total_errors = sum(r[1] for r in results)
+
+    assert total_successes > 0, "Expected at least one successful reserve/settle"
+
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    # Exactly total_successes in settled_requests and 0 remaining in active_reservations
+    assert len(data.get("active_reservations", {})) == 0
+    assert len(data.get("settled_requests", [])) == total_successes

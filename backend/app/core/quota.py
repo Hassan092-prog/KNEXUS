@@ -76,6 +76,15 @@ class QuotaConfig:
         if not _is_finite_number(self.lock_timeout_seconds) or self.lock_timeout_seconds <= 0:
             raise ValueError("lock_timeout_seconds must be a positive finite number")
 
+    def validate_against_deadlines(self, max_deadline: float, safety_margin: float = 5.0) -> None:
+        min_required = float(max_deadline) + float(safety_margin)
+        if float(self.in_flight_timeout_seconds) <= min_required:
+            raise ValueError(
+                f"in_flight_timeout_seconds ({self.in_flight_timeout_seconds}s) must be strictly "
+                f"greater than longest deadline ({max_deadline}s) + safety margin ({safety_margin}s) = {min_required}s "
+                f"to prevent concurrent dispatches while an active request is legitimately in flight."
+            )
+
 
 class QuotaLedger:
     """Durable quota authority with cross-process locking and single in-flight gating."""
@@ -88,7 +97,14 @@ class QuotaLedger:
     ) -> None:
         self.config = config or QuotaConfig()
         self._time = time_func or time.time
-        self._default_state_path = Path("/tmp/knexus_quota_ledger.json")
+        if self.config.state_path is not None:
+            self._default_state_path = self.config.state_path
+        else:
+            try:
+                from app.core.config import settings
+                self._default_state_path = settings.QUOTA_STATE_PATH
+            except Exception:
+                self._default_state_path = Path(".knexus-private-storage/quota_state.json")
 
     @property
     def state_path(self) -> Path:
@@ -482,6 +498,13 @@ class QuotaLedger:
                                     "completion_tokens": c_tok,
                                     "total_tokens": t_tok,
                                 }
+                        # Late settlement carrying status 429 must still trip the rate-limit tripwire!
+                        if status_code == 429 or (error and "429" in str(error)):
+                            scope_k = s.get("scope") or f"{s.get('provider')}:{s.get('model')}"
+                            scopes = state.setdefault("scopes", {})
+                            scope_info = scopes.setdefault(scope_k, {})
+                            scope_info["rate_limited"] = True
+                            scope_info["rate_limit_reason"] = error or "HTTP 429 Too Many Requests (late settlement)"
                         self._save_state(state)
                         return
                     raise ValueError(f"Duplicate settlement: attempt '{attempt_id}' is already settled.")
@@ -571,3 +594,34 @@ class QuotaLedger:
             error=error,
             status_code=status_code,
         )
+# ==============================================================================
+# Process-wide Shared Quota Ledger Singleton
+# ==============================================================================
+
+_process_ledger: QuotaLedger | None = None
+
+
+def get_process_quota_ledger() -> QuotaLedger:
+    global _process_ledger
+    if _process_ledger is None:
+        from app.core.config import settings
+
+        state_path = settings.QUOTA_STATE_PATH
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        config = QuotaConfig(
+            enabled=settings.QUOTA_ENABLED,
+            max_requests_per_minute=settings.QUOTA_MAX_REQUESTS_PER_MINUTE,
+            max_requests_per_day=settings.QUOTA_MAX_REQUESTS_PER_DAY,
+            max_total_attempts=settings.QUOTA_MAX_TOTAL_ATTEMPTS,
+            min_request_interval_seconds=settings.QUOTA_MIN_REQUEST_INTERVAL_SECONDS,
+            in_flight_timeout_seconds=settings.QUOTA_IN_FLIGHT_TIMEOUT_SECONDS,
+            lock_timeout_seconds=settings.QUOTA_LOCK_TIMEOUT_SECONDS,
+            state_path=state_path,
+        )
+        _process_ledger = QuotaLedger(config)
+    return _process_ledger
+
+
+def reset_process_quota_ledger() -> None:
+    global _process_ledger
+    _process_ledger = None

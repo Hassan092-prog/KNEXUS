@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,13 +40,24 @@ class Settings(BaseSettings):
     GENERATION_MAX_PROMPT_CHARS: int = Field(default=16000, gt=0)
     GENERATION_SEED: int | None = None
 
-    # Legacy Ollama provider settings (preserved for backward compatibility)
+    # Deprecated: Local Ollama provider is refused in Phase 1 (hosted providers only).
+    # Preserved for backward compatibility in environment definitions; refused at query execution.
     OLLAMA_PROVIDER: str | None = None
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
     OLLAMA_TIMEOUT: float = Field(default=30.0, gt=0)
     OLLAMA_NUM_CTX: int = Field(default=8192, gt=0)
     OLLAMA_NUM_PREDICT: int = Field(default=512, gt=0)
+
+    # Durable Quota & Metering Configuration
+    QUOTA_ENABLED: bool = True
+    QUOTA_MAX_REQUESTS_PER_MINUTE: int = Field(default=30, gt=0)
+    QUOTA_MAX_REQUESTS_PER_DAY: int = Field(default=1000, gt=0)
+    QUOTA_MAX_TOTAL_ATTEMPTS: int = Field(default=50, ge=0)
+    QUOTA_MIN_REQUEST_INTERVAL_SECONDS: float = Field(default=2.0, ge=0.0)
+    QUOTA_IN_FLIGHT_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0)
+    QUOTA_LOCK_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0)
+    QUOTA_STATE_PATH: Path = Field(default_factory=lambda: DEFAULT_STORAGE_ROOT / "quota_state.json")
 
     # Embedding and ingestion configuration
     # Supported providers: 'local' (sentence-transformers), 'google', 'fake'
@@ -93,6 +104,26 @@ class Settings(BaseSettings):
         if not math.isfinite(val) or val <= 0:
             raise ValueError("Must be a finite positive number")
         return val
+
+    @model_validator(mode="after")
+    def _validate_quota_in_flight_timeout(self) -> "Settings":
+        max_deadline = max(
+            float(self.GENERATION_TIMEOUT),
+            float(self.EMBEDDING_TIMEOUT),
+            float(self.EMBEDDING_VALIDATION_DEADLINE_SECONDS),
+        )
+        # Margin justification: 5.0s safety margin accommodates socket teardown, async cancellation,
+        # disk flush, and cross-process file-lock acquisition so an active request is never
+        # prematurely expired and duplicated while legitimately in flight.
+        safety_margin = 5.0
+        min_required = max_deadline + safety_margin
+        if float(self.QUOTA_IN_FLIGHT_TIMEOUT_SECONDS) <= min_required:
+            raise ValueError(
+                f"QUOTA_IN_FLIGHT_TIMEOUT_SECONDS ({self.QUOTA_IN_FLIGHT_TIMEOUT_SECONDS}s) must be "
+                f"strictly greater than longest provider deadline ({max_deadline}s) + safety margin ({safety_margin}s) = {min_required}s "
+                f"to prevent concurrent dispatches while an active request is legitimately in flight."
+            )
+        return self
 
     DOCUMENT_STORAGE_ROOT: Path = DEFAULT_STORAGE_ROOT
     MAX_UPLOAD_BYTES: int = Field(default=10 * 1024 * 1024, gt=0, le=10 * 1024 * 1024)

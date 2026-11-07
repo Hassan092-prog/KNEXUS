@@ -75,7 +75,8 @@ async def drain_cleanup_tasks() -> None:
     """Await all active background cleanup tasks (for testing and graceful shutdown).
 
     Cleanup is best-effort if the event loop shuts down, with stale-reservation
-    recovery in the quota ledger serving as the durable backstop.
+    recovery in the quota ledger (governed by in_flight_timeout_seconds, default 60.0s)
+    serving as the durable backstop.
     """
     if _background_cleanup_tasks:
         await asyncio.gather(*list(_background_cleanup_tasks), return_exceptions=True)

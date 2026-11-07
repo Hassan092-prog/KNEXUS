@@ -118,7 +118,7 @@ class QuotaLedger:
                 from app.core.config import settings
                 self._default_state_path = settings.QUOTA_STATE_PATH
             except Exception:
-                self._default_state_path = Path(".knexus-private-storage/quota_state.json")
+                self._default_state_path = Path(".knexus-private-storage") / "quota_state.json"
 
     @property
     def state_path(self) -> Path:

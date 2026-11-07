@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
+    DEMO_ACTOR_ROLE: Literal["employee", "manager", "orgadmin", "superadmin"] = "orgadmin"
 
     # PostgreSQL & pgvector
     POSTGRES_DB: str = "knexus"

@@ -4,9 +4,17 @@
 
 Read [status](PROJECT_STATUS.md) for completion, [CONTRIBUTING](../CONTRIBUTING.md) for setup/branches and [ownership](TEAM_RESPONSIBILITIES.md) before selecting work. [Canonical contracts](PHASE_1_CONTRACT.md) and [models](../contracts/phase1/models.py) define interfaces.
 
-## Current handoff gate (6 November 2026)
+## Current handoff gate (7 November 2026)
 
-PR #15 is open draft and supplies the hosted generation evaluation harness; Naveed's corrections have been incorporated. Hassan coordinates backend generation wiring (PR #21) and the Phase 1 demo runbook (docs/DEMO_RUNBOOK.md). The Phase 1 demo uses local MiniLM embeddings (384-d) with Groq hosted generation (openai/gpt-oss-120b); Google embedder is present in the codebase but kept off for the demo.
+PR #15 (hosted generation harness), PR #21 (generation wiring & QuotaLedger), PR #23 (frontend dashboard in `frontend/app`), and PR #26 (CI tokenizer cache) are merged into `main`. PR #24 (demo corpus & questions) and PR #25 (frontend fixes & live wiring) are open in progress.
+
+### Model Policy
+- All real AI usage goes through hosted APIs, called by the backend with server-held keys:
+  - embeddings: Google gemini-embedding-001 at 384 dimensions via outputDimensionality, in backend/app/services/ingestion/embedding.py;
+  - generation: Groq openai/gpt-oss-120b.
+- The browser only calls the KNEXUS backend, never a provider, and holds no keys.
+- Local models (MiniLM sentence-transformers/all-MiniLM-L6-v2) and the fake generator are for tests, CI and local development only. They are not the demo or production path.
+- No automatic retries or fallback between providers. No paid usage without Hassan's approval.
 
 Use current free-first instructions: the earlier OpenAI-1536/$5 envelope is not a grant. Resolve strict input-token enforcement, reasoning/output accounting, account quotas, provider schema handling and durable shared reservations before live acceptance. Tests explicitly inject fake; application misconfiguration stays a clear error. No fallback, automatic retries or billing upgrade.
 
@@ -52,7 +60,7 @@ H03-H06 backend implementation is merged into main via PR #7, PR #16 (offline em
 
 | Task | Behavior and completion gate |
 |---|---|
-| N01 - Service | PR #13 hosted transport and legacy fake/Ollama service are H01-compatible; preserve that boundary and reuse draft PR #15 rather than recreate it. Verify concrete injection and canonical types; never restore old heuristics. No DB reads, identity selection, routes or tools in generation. |
+| N01 - Service | PR #13 hosted transport and legacy fake/Ollama service are H01-compatible; preserve that boundary and reuse merged PR #15 rather than recreate it. Verify concrete injection and canonical types; never restore old heuristics. No DB reads, identity selection, routes or tools in generation. |
 | N02 - Prompt/context | Preserve all authorized evidence and source IDs. Treat document instructions as untrusted. Version prompt/settings; test relevant conflict, irrelevant/adversarial content and oversized input without fixture-specific rules or request mutation. The character ceiling is not token counting; real context fit remains unresolved. |
 | N03 - Adapter | Preserve explicit selection, propagated URL/model/limits, strict parsing, network/overall deadlines and cancellation. Offline HTTP coverage exists; add mocked hosted-HTTP coverage, then record an authorized bounded hosted run. |
 | N04 - Result | Preserve answer/abstention, inline-marker and evidence-membership validation. Keep malformed output as typed failure. Evaluate factual support separately; never drop invalid citations or disguise errors as abstention. |

@@ -4,9 +4,15 @@ Use [project status](PROJECT_STATUS.md) for delivered behavior. This document re
 
 ## Current integration decision record (7 November 2026)
 
-The Phase 1 demo architecture pairs local MiniLM embeddings (sentence-transformers/all-MiniLM-L6-v2, 384 dimensions) with Groq hosted generation (openai/gpt-oss-120b). The Google hosted embedder (gemini-embedding-001, 	ext-embedding-004) is implemented and verified offline in ackend/app/services/ingestion/google_embedder.py but kept disabled (EMBEDDING_PROVIDER="local") for the demo to preserve existing 384-d vectors and zero-cost operation.
+### Model Policy
+- All real AI usage goes through hosted APIs, called by the backend with server-held keys:
+  - embeddings: Google gemini-embedding-001 at 384 dimensions via outputDimensionality, in backend/app/services/ingestion/embedding.py;
+  - generation: Groq openai/gpt-oss-120b.
+- The browser only calls the KNEXUS backend, never a provider, and holds no keys.
+- Local models (MiniLM sentence-transformers/all-MiniLM-L6-v2) and the fake generator are for tests, CI and local development only. They are not the demo or production path.
+- No automatic retries or fallback between providers. No paid usage without Hassan's approval.
 
-Project direction remains free-first:  expenditure, no billing upgrades, and no automatic model/provider fallback. Groq openai/gpt-oss-120b is the confirmed generation model. PR #13 merged hosted transport; PR #15 supplies the generation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged input token validation and candidate splitting; PR #21 wires generation into backend dependencies. Local Ollama LLM hosting is deprecated and refused.
+Project direction remains free-first: no unauthorized expenditure, no billing upgrades, and no automatic model/provider fallback. Groq openai/gpt-oss-120b is the confirmed generation model. PR #13 merged hosted transport; PR #15 merged the generation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged input token validation and candidate splitting; PR #21 wired generation into backend dependencies; PR #23 merged the frontend dashboard; PR #26 added CI tokenizer caching. Local Ollama LLM hosting is deprecated and refused.
 
 Hassan's CLI proposal described a parallel hosted index, immutable configuration profile and explicit resumable re-embedding while preserving legacy vectors. That is an unimplemented preservation design, not approval to alter data. No plain ALTER converts 384-dimensional vectors into another model's space. No API calls belong in migrations; any destructive downgrade or data removal requires explicit approval.
 
@@ -20,7 +26,7 @@ Any provider schema projection must be deliberate and provider-aware: retain nam
 
 ## Approved hosted-API and reuse decision (2 November 2026)
 
-For the Phase 1 demo, generation uses Groq hosted API (openai/gpt-oss-120b) while embeddings use local MiniLM (sentence-transformers/all-MiniLM-L6-v2, 384 dimensions). The Google hosted embedder is implemented and verified offline in ackend/app/services/ingestion/google_embedder.py but kept disabled (EMBEDDING_PROVIDER="local") for the Phase 1 demo to preserve existing 384-d vectors and zero-cost operation. Laptop Ollama LLM hosting is deprecated and refused.
+All real AI usage goes through hosted APIs: Google gemini-embedding-001 at 384 dimensions (via backend/app/services/ingestion/embedding.py) and Groq openai/gpt-oss-120b. Local models (MiniLM) and fake providers are strictly for tests, CI and local development only.
 
 Selectively adapt relevant code/features from [enterprise-knowledge-bot](https://github.com/Hassan092-prog/enterprise-knowledge-bot/tree/e67771a15f49a79443a365fbce85b8559ef43fb7), pinned to `e67771a15f49a79443a365fbce85b8559ef43fb7`. Inspect that revision before reuse; do not silently substitute newer source. Preserve applicable copyright/licence notices and accurate authorship. Verify actual adaptation through code review; this decision is not proof that migration is complete.
 
@@ -42,11 +48,11 @@ Preserve canonical GenerationRequest, EvidenceChunk, GenerationResult, H01 run_g
 |---|---|
 | Backend | Python 3.12, FastAPI, Pydantic v2, async SQLAlchemy 2, asyncpg |
 | Persistence | PostgreSQL 16, pgvector, Alembic; one database engine |
-| Embeddings | Local MiniLM (sentence-transformers/all-MiniLM-L6-v2, 384-d) for demo; Google embedder present in codebase but off |
+| Embeddings | Google gemini-embedding-001 (384-d) hosted API; local MiniLM for testing/CI only |
 | Chunking | Source-preserving candidate proposal with bounded exact token validation and splitting merged (PR #19) |
 | Generation | Groq hosted provider (openai/gpt-oss-120b), offline fake provider; PR #13 transport, PR #21 wiring |
-| Model host | Hosted Groq generation; local MiniLM embeddings for demo; no laptop LLM inference or model tunnel |
-| Frontend | Vite + React 19 UI in rontend/app merged on origin/main (PR #23) |
+| Model host | Hosted Groq generation + Google embeddings; no local inference for product |
+| Frontend | Vite + React 19 UI in frontend/app merged on origin/main (PR #23) |
 | Ingestion | Persisted jobs with explicit interruption/retry behavior; no durable worker implemented |
 | CI | GitHub Actions workflow committed (.github/workflows/ci.yml) running backend and frontend checks |
 

@@ -16,6 +16,9 @@ from app.services.generation.generator import GenerationService as ConfiguredGen
 from app.core.token_counter import TokenCounter, get_default_token_counter
 from app.services.ingestion.embedding import Embedder, get_default_embedder
 from app.services.retrieval.service import RetrievalService
+from fastapi.params import Depends as DependsSentinel
+from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, MockDispatchPolicy
+from app.core.quota import QuotaLedger
 
 
 _IDENTITY_FIELDS = {
@@ -73,8 +76,47 @@ class _UnconfiguredGenerationService:
         )
 
 
-@lru_cache(maxsize=1)
-def _configured_generation_service() -> GenerationService:
+def get_dispatch_policy() -> DispatchPolicy:
+    """Return the server-owned dispatch authorization policy (fail-closed by default)."""
+    return BlockedLiveDispatchPolicy()
+
+
+def get_generation_quota_ledger() -> QuotaLedger | None:
+    """Return runtime quota ledger if configured; None allows ledger-free operation."""
+    return None
+
+
+def get_generation_service(
+    dispatch_policy: DispatchPolicy = Depends(get_dispatch_policy),
+    quota_ledger: QuotaLedger | None = Depends(get_generation_quota_ledger),
+) -> GenerationService:
+    """Explicit configured provider; missing configuration fails closed at query.
+
+    Instantiates a configured service using the active dispatch policy and quota ledger.
+    Cached service instances are avoided so test overrides and policy changes are never
+    leaked across requests or test runs. Direct Python calls without arguments resolve
+    the default policy/ledger cleanly without receiving raw FastAPI Depends sentinels.
+    """
+    resolved_policy: DispatchPolicy = (
+        get_dispatch_policy()
+        if isinstance(dispatch_policy, DependsSentinel)
+        else dispatch_policy
+    )
+    resolved_ledger: QuotaLedger | None = (
+        get_generation_quota_ledger()
+        if isinstance(quota_ledger, DependsSentinel)
+        else quota_ledger
+    )
+
+    # Guard against live policy without ledger:
+    # Any policy allowing live calls (i.e. not BlockedLiveDispatchPolicy and not MockDispatchPolicy)
+    # strictly requires an explicit, configured QuotaLedger to prevent unmetered live dispatch.
+    if not isinstance(resolved_policy, (BlockedLiveDispatchPolicy, MockDispatchPolicy)):
+        if resolved_ledger is None:
+            raise GenerationConfigurationError(
+                "A configured QuotaLedger is required when live provider dispatch is authorized."
+            )
+
     provider = settings.GENERATION_PROVIDER or settings.OLLAMA_PROVIDER
     if not provider:
         return _UnconfiguredGenerationService()
@@ -96,6 +138,8 @@ def _configured_generation_service() -> GenerationService:
                 api_base_url=settings.GENERATION_BASE_URL,
                 temperature=settings.GENERATION_TEMPERATURE,
                 seed=settings.GENERATION_SEED,
+                dispatch_policy=resolved_policy,
+                quota_ledger=resolved_ledger,
             )
         else:
             return ConfiguredGenerationService(
@@ -109,8 +153,3 @@ def _configured_generation_service() -> GenerationService:
             )
     except GenerationConfigurationError:
         return _UnconfiguredGenerationService()
-
-
-def get_generation_service() -> GenerationService:
-    """Explicit configured provider; missing configuration fails closed at query."""
-    return _configured_generation_service()

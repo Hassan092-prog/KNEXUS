@@ -23,9 +23,11 @@ from app.schemas import (
     QueryRequest,
     QueryResponse,
 )
+from app.core.quota import QuotaError
 from app.services.generation.errors import (
     ContextBudgetExceededError,
     GenerationConfigurationError,
+    GenerationSettlementError,
     MalformedOutputError,
     ProviderTimeoutError,
     ProviderUnavailableError,
@@ -99,6 +101,24 @@ async def query_documents(
         result = await run_generation(
             generator,
             GenerationRequest(question=payload.question, evidence=evidence),
+        )
+    except LiveInferenceBlockedError:
+        raise APIProblem(
+            503,
+            "PROVIDER_UNAVAILABLE",
+            "The generation service is not authorized for live dispatch.",
+        )
+    except QuotaError:
+        raise APIProblem(
+            503,
+            "PROVIDER_UNAVAILABLE",
+            "The generation service is rate or quota limited.",
+        )
+    except GenerationSettlementError:
+        raise APIProblem(
+            503,
+            "PROVIDER_UNAVAILABLE",
+            "The generation accounting settlement failed.",
         )
     except ProviderTimeoutError:
         raise APIProblem(504, "PROVIDER_UNAVAILABLE", "The generation request timed out.")

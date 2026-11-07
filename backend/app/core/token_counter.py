@@ -19,7 +19,7 @@ import math
 from typing import Any, Callable, Protocol
 import httpx
 
-from app.core.config import settings
+from app.core.config import canonicalize_embedding_model_name, settings
 from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, LiveInferenceBlockedError
 from app.core.quota import QuotaCampaignError, QuotaLedger, validate_dispatch_campaign
 from app.services.ingestion.errors import TokenCountingError, TokenCountingSettlementError
@@ -104,10 +104,12 @@ class GoogleGenAITokenCounter:
     ) -> None:
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("timeout must be a finite positive number")
-        self.model_name = model_name or (
-            settings.EMBEDDING_MODEL_NAME
-            if settings.EMBEDDING_PROVIDER == "google"
-            else "gemini-embedding-001"
+        self.model_name = canonicalize_embedding_model_name(
+            model_name or (
+                settings.EMBEDDING_MODEL_NAME
+                if settings.EMBEDDING_PROVIDER == "google"
+                else "gemini-embedding-001"
+            )
         )
         self.overhead_tokens = overhead_tokens
         self.max_allowed_tokens = max_allowed_tokens
@@ -180,8 +182,8 @@ class GoogleGenAITokenCounter:
         request_type: str = "document",
         timeout: float | None = None,
     ) -> TokenCountResult:
-        target_model = model or self.model_name
-        normalized_target_model = target_model.removeprefix("models/")
+        target_model = canonicalize_embedding_model_name(model or self.model_name)
+        normalized_target_model = target_model
         content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
         cache_key = (normalized_target_model, request_type, content_hash)
 
@@ -361,8 +363,8 @@ class MockTokenCounter:
                 raise ValueError("timeout must be a finite positive number")
         self.last_timeout = timeout
 
-        target_model = model or self.model_name
-        normalized_target_model = target_model.removeprefix("models/")
+        target_model = canonicalize_embedding_model_name(model or self.model_name)
+        normalized_target_model = target_model
         content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
         cache_key = (normalized_target_model, request_type, content_hash)
         if cache_key in self._cache:

@@ -18,6 +18,19 @@ APPROVED_GOOGLE_EMBEDDING_MODELS: tuple[str, ...] = (
     "models/text-embedding-004",
 )
 
+def canonicalize_embedding_model_name(name: str | None) -> str:
+    """Return the canonical unprefixed embedding model name.
+
+    Strips redundant 'models/' prefix so both 'models/gemini-embedding-001'
+    and 'gemini-embedding-001' map to the same persisted and queried identifier.
+    Model names without 'models/' (such as MiniLM) are returned unchanged.
+    """
+    trimmed = (name or "").strip()
+    if trimmed.startswith("models/"):
+        return trimmed[len("models/"):]
+    return trimmed
+
+
 
 class Settings(BaseSettings):
     # App Information
@@ -156,13 +169,14 @@ class Settings(BaseSettings):
     def _validate_embedding_provider_and_model(self) -> "Settings":
         provider = (self.EMBEDDING_PROVIDER or "").strip().lower()
         if provider == "google":
-            model = (self.EMBEDDING_MODEL_NAME or "").strip()
-            if model not in APPROVED_GOOGLE_EMBEDDING_MODELS:
+            raw_model = (self.EMBEDDING_MODEL_NAME or "").strip()
+            if raw_model not in APPROVED_GOOGLE_EMBEDDING_MODELS:
                 raise ValueError(
                     f"When EMBEDDING_PROVIDER is 'google', EMBEDDING_MODEL_NAME must be explicitly configured "
                     f"to an approved Google embedding model ({sorted(APPROVED_GOOGLE_EMBEDDING_MODELS)}), "
                     f"got {self.EMBEDDING_MODEL_NAME!r}."
                 )
+            self.EMBEDDING_MODEL_NAME = canonicalize_embedding_model_name(raw_model)
         return self
 
     DOCUMENT_STORAGE_ROOT: Path = DEFAULT_STORAGE_ROOT

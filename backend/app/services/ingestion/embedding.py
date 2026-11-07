@@ -11,7 +11,7 @@ from typing import Any, Protocol, Sequence
 
 import httpx
 
-from app.core.config import settings
+from app.core.config import canonicalize_embedding_model_name, settings
 from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, LiveInferenceBlockedError
 from app.core.quota import QuotaCampaignError, QuotaLedger, validate_dispatch_campaign
 from app.models.documents import VECTOR_DIMENSIONS
@@ -171,8 +171,8 @@ class GoogleGenAIEmbedder:
         dispatch_policy: DispatchPolicy | None = None,
         quota_ledger: QuotaLedger | None = None,
     ) -> None:
-        self.model_name = model_name
-        self.normalized_model_name = model_name.removeprefix("models/")
+        self.model_name = canonicalize_embedding_model_name(model_name)
+        self.normalized_model_name = self.model_name
         self.model_revision = model_revision
         self.output_dimensions = output_dimensions
         self.api_key = api_key or (

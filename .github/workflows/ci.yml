@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EMBEDDING_PROVIDER: local
-      DISPATCH_POLICY: blocked
+      GENERATION_PROVIDER: fake
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -43,20 +43,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Run frontend checks
         run: |
-          if [ -d "frontend/app" ]; then
-            cd frontend/app
-            npm ci
-            npm run typecheck
-            npm run test
-            npm run lint
-            npm run build
-          else
-            echo "frontend/app directory does not exist on this branch; skipping frontend checks."
-          fi
+          cd frontend/app
+          npm ci
+          npm run typecheck
+          npm run test
+          npm run lint
+          npm run build

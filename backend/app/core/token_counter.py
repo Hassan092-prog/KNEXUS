@@ -91,7 +91,7 @@ class GoogleGenAITokenCounter:
 
     def __init__(
         self,
-        model_name: str = "gemini-embedding-001",
+        model_name: str | None = None,
         *,
         overhead_tokens: int = 8,
         max_allowed_tokens: int = 2048,
@@ -104,7 +104,11 @@ class GoogleGenAITokenCounter:
     ) -> None:
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("timeout must be a finite positive number")
-        self.model_name = model_name
+        self.model_name = model_name or (
+            settings.EMBEDDING_MODEL_NAME
+            if settings.EMBEDDING_PROVIDER == "google"
+            else "gemini-embedding-001"
+        )
         self.overhead_tokens = overhead_tokens
         self.max_allowed_tokens = max_allowed_tokens
         self.api_key = api_key or (
@@ -397,7 +401,7 @@ class MockTokenCounter:
 
 
 def get_default_token_counter(
-    model_name: str = "gemini-embedding-001",
+    model_name: str | None = None,
     *,
     dispatch_policy: DispatchPolicy | None = None,
     quota_ledger: QuotaLedger | None = None,
@@ -405,8 +409,13 @@ def get_default_token_counter(
     from app.core.quota import get_process_quota_ledger
 
     active_ledger = quota_ledger if quota_ledger is not None else get_process_quota_ledger()
+    resolved_model = model_name or (
+        settings.EMBEDDING_MODEL_NAME
+        if settings.EMBEDDING_PROVIDER == "google"
+        else "gemini-embedding-001"
+    )
     return GoogleGenAITokenCounter(
-        model_name=model_name,
+        model_name=resolved_model,
         overhead_tokens=settings.EMBEDDING_COUNTING_OVERHEAD_TOKENS,
         max_allowed_tokens=settings.EMBEDDING_MAX_INPUT_TOKENS,
         timeout=settings.EMBEDDING_TIMEOUT,

@@ -1496,3 +1496,30 @@ def test_google_token_counter_settles_and_reraises_base_exception_unchanged(tmp_
     assert len(settled) == 1
     assert settled[0]["success"] is False
     assert settled[0]["error"] == exc_cls.__name__
+
+
+def test_token_counter_and_embedder_share_single_model_settings_key(monkeypatch):
+    """2a: Token counter and embedder derive their model identity from the single Settings key."""
+    from app.services.ingestion.embedding import get_default_embedder
+
+    # Test 1: text-embedding-004 alignment
+    monkeypatch.setattr(settings, "EMBEDDING_PROVIDER", "google")
+    monkeypatch.setattr(settings, "EMBEDDING_MODEL_NAME", "text-embedding-004")
+
+    embedder = get_default_embedder(provider="google")
+    counter = get_default_token_counter()
+    assert embedder.model_name == "text-embedding-004"
+    assert counter.model_name == "text-embedding-004"
+    assert embedder.model_name == counter.model_name
+
+    # Test 2: gemini-embedding-001 alignment
+    monkeypatch.setattr(settings, "EMBEDDING_MODEL_NAME", "gemini-embedding-001")
+    embedder2 = get_default_embedder(provider="google")
+    counter2 = get_default_token_counter()
+    assert embedder2.model_name == "gemini-embedding-001"
+    assert counter2.model_name == "gemini-embedding-001"
+    assert embedder2.model_name == counter2.model_name
+
+    # Test 3: explicit model override alignment
+    counter_override = get_default_token_counter(model_name="custom-google-model")
+    assert counter_override.model_name == "custom-google-model"

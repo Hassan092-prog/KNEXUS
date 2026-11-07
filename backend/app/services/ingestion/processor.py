@@ -145,8 +145,9 @@ async def process_document(
                 or getattr(active_embedder, "model_name", "") in {"gemini-embedding-001", "text-embedding-004"}
             ):
                 active_counter = get_default_token_counter(
-                    getattr(active_embedder, "model_name", "gemini-embedding-001"),
+                    getattr(active_embedder, "model_name", None),
                     dispatch_policy=getattr(active_embedder, "dispatch_policy", None),
+                    quota_ledger=getattr(active_embedder, "quota_ledger", None),
                 )
                 chunks: list[ChunkDraft] = await asyncio.to_thread(
                     chunk_document,

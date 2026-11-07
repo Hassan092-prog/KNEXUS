@@ -405,3 +405,164 @@ async def test_ingestion_internal_type_error_not_caught_or_retried():
     assert res is False
     assert len(call_records) == 1
     assert call_records[0]["task_type"] == "RETRIEVAL_DOCUMENT"
+# ==============================================================================
+# Task 2: Quota metering regressions for GoogleGenAIEmbedder
+# ==============================================================================
+
+from app.core.quota import QuotaConfig, QuotaLedger, RateLimitExceededError
+from app.services.ingestion.errors import EmbeddingSettlementError
+
+
+def test_google_embedder_reserves_and_settles_on_200_with_usage(tmp_path):
+    """Reserve before dispatch, settle on 200 with usage metadata."""
+    state_file = tmp_path / "ledger_embed_200.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+
+    embed_response = {
+        "embeddings": [{"values": [0.1, 0.2, 0.3]}],
+        "usageMetadata": {
+            "promptTokenCount": 12,
+            "totalTokenCount": 12,
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=embed_response)
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        api_key="mock-key-123",
+        output_dimensions=3,
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    vecs = embedder.embed_texts(["sample text"])
+    assert len(vecs) == 1
+
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert len(data.get("active_reservations", {})) == 0
+    settled = data.get("settled_requests", [])
+    assert len(settled) == 1
+    rec = settled[0]
+    assert rec["success"] is True
+    assert rec["usage_valid"] is True
+    assert rec["tokens_unresolved"] is False
+    assert rec["usage"] == {"prompt_tokens": 12, "completion_tokens": 0, "total_tokens": 12}
+
+
+def test_google_embedder_missing_usage_leaves_tokens_unresolved(tmp_path):
+    """Missing usageMetadata settles with tokens_unresolved=True."""
+    state_file = tmp_path / "ledger_embed_nousage.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+
+    embed_response = {
+        "embeddings": [{"values": [0.1, 0.2, 0.3]}],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=embed_response)
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        api_key="mock-key-123",
+        output_dimensions=3,
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    vecs = embedder.embed_texts(["sample text"])
+    assert len(vecs) == 1
+
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    settled = data.get("settled_requests", [])
+    assert len(settled) == 1
+    rec = settled[0]
+    assert rec["success"] is True
+    assert rec["usage"] is None
+    assert rec["tokens_unresolved"] is True
+
+
+def test_google_embedder_429_trips_tripwire_no_retries(tmp_path):
+    """HTTP 429 records settlement failure, trips circuit breaker, raises without retries."""
+    state_file = tmp_path / "ledger_embed_429.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(429, json={"error": "Rate limit exceeded"})
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        api_key="mock-key-123",
+        output_dimensions=3,
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    # First call fails with EmbeddingUnavailableError
+    with pytest.raises(EmbeddingUnavailableError, match="rate limit exceeded"):
+        embedder.embed_texts(["sample text"])
+
+    assert call_count == 1
+
+    # Verify ledger state has rate limit set
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    scope_info = data.get("scopes", {}).get("google:gemini-embedding-001", {})
+    assert scope_info.get("rate_limited") is True
+
+    # Second call trips circuit breaker during reserve_attempt BEFORE any HTTP call
+    with pytest.raises(RateLimitExceededError, match="rate limit active"):
+        embedder.embed_texts(["another text"])
+
+    # No additional HTTP call was made
+    assert call_count == 1
+
+
+def test_google_embedder_settlement_failure_preserves_reservation_and_raises(tmp_path):
+    """Settlement failure raises EmbeddingSettlementError and preserves reservation."""
+    state_file = tmp_path / "ledger_embed_settle_fail.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+
+    def failing_settle(attempt_id, **kwargs):
+        raise OSError("Disk full during settlement")
+
+    ledger.settle_attempt = failing_settle
+
+    embed_response = {
+        "embeddings": [{"values": [0.1, 0.2, 0.3]}],
+        "usageMetadata": {"promptTokenCount": 10, "totalTokenCount": 10},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=embed_response)
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        api_key="mock-key-123",
+        output_dimensions=3,
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    with pytest.raises(EmbeddingSettlementError, match="Quota settlement failed"):
+        embedder.embed_texts(["sample text"])
+
+    # Active reservation remains un-settled (outstanding preserved)
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert len(data.get("active_reservations", {})) == 1

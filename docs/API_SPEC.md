@@ -6,14 +6,14 @@ The routes below are implemented in the Phase 1 backend application. See [Projec
 
 ## Hosted transition
 
-The target remains hosted generation and embeddings. PR #13 has merged the hosted generation transport; draft PR #15 supplies the unmerged evaluation harness. PR #16 merged the offline hosted embedding dispatch foundation, and PR #19 merged hosted input-token validation and candidate splitting. API wiring and live acceptance remain pending, and historical database vectors still use local MiniLM. No provider account access, paid expenditure or hosted embedding dimension is established by these docs. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior. Public routes and fields remain unchanged. MiniLM token limits and the Ollama health probe below describe historical code; provider-aware health, hosted Settings wiring, live token correspondence, and corpus activation remain pending.
+For the Phase 1 demo, the architecture uses local MiniLM embeddings (sentence-transformers/all-MiniLM-L6-v2, 384 dimensions) paired with Groq hosted generation (openai/gpt-oss-120b). The Google hosted embedder is implemented and verified offline in the codebase but kept disabled (EMBEDDING_PROVIDER="local") for the demo to preserve existing 384-d vectors and zero-cost operation. PR #13 merged hosted transport; PR #15 supplies the generation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged hosted input validation; PR #21 wires generation into backend dependencies. No local LLM hosting, downloads or model reverse tunnels are required. Public routes and canonical fields remain unchanged.
 
 ## Registered routes
 
 | Method/path | Actual behavior |
 |---|---|
 | GET / | Welcome message and docs/health links |
-| GET /api/v1/health | DB, pgvector and Ollama reachability summary; always HTTP 200, not readiness |
+| GET /api/v1/health | DB, pgvector, generation, and embedding status summary; always HTTP 200, not readiness |
 | POST /api/v1/documents/upload | One PDF/DOCX up to 10 MiB; repeated allowed_roles form fields; validates signature and extractable text, stores under generated private key, commits document and job, then returns 202 |
 | GET /api/v1/documents | Lists same-tenant, nondeleted documents visible to the server-owned demo actor; filters before count and pagination |
 | GET /api/v1/documents/{document_id} | Accessible document details; 404 for missing/cross-tenant/deleted, 403 for same-tenant role denial |
@@ -33,6 +33,7 @@ Use the canonical [upload](../contracts/phase1/examples/upload-metadata.json), [
 - Ingestion uses a FastAPI background task, not a durable queue. The job and document are committed before 202; polling reports persisted states. Internal retry and abandoned-job recovery exist, but no public retry route is contracted. Run recovery only after confirming the old process and all ingestion workers are stopped; it marks queued and processing attempts failed for explicit retry.
 - Embeddings use all-MiniLM-L6-v2 at 384 dimensions. The historical implementation loads local-files-only and caches per process; an injected deterministic fake is for tests only and has no semantic quality.
 - Retrieval pushes tenant, role overlap, current parent-document completion/deletion, active-vector and model-revision filters into the pgvector SQL query before top-k. The 0.35 similarity cutoff is uncalibrated.
+- Re-ingest documents after switching EMBEDDING_PROVIDER: retrieval strictly isolates embedding spaces by filtering on the active model name and revision. Chunks embedded under another model/provider are never scored or ranked, and untagged legacy chunks are excluded fail-closed.
 - No authorized evidence or only weak evidence returns an HTTP 200 abstention before calling the generation provider. Provider unavailable/timeout and malformed citations remain errors.
 - CORS remains limited to configured local origins. Error bodies use the canonical detail/code/request_id envelope and do not include exception text.
 

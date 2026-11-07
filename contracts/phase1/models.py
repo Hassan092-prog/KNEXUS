@@ -1,12 +1,13 @@
 """Phase 1 contract references. These models do not register application routes."""
 import re
 from collections.abc import Sequence
+from datetime import datetime, timezone
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
 from pydantic import (
     AwareDatetime, BaseModel, ConfigDict, Field, JsonValue,
-    StringConstraints, model_validator,
+    StringConstraints, field_validator, model_validator,
 )
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -165,6 +166,13 @@ class DocumentSummary(Contract):
     allowed_roles: list[Role] = Field(min_length=1)
     chunk_count: int = Field(ge=0, strict=True)
     created_at: AwareDatetime
+
+    @field_validator("created_at", mode="after")
+    @classmethod
+    def _normalize_created_at_utc(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v.astimezone(timezone.utc)
 
 
 class DocumentDetail(DocumentSummary):

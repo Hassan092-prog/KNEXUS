@@ -16,6 +16,8 @@ class LiveInferenceBlockedError(Exception):
 class DispatchPolicy(Protocol):
     """Contract for authorizing provider dispatch."""
 
+    can_dispatch: bool
+
     def check_dispatch(self, provider: str, model: str) -> None:
         """Raise LiveInferenceBlockedError if dispatch is unauthorized."""
         ...
@@ -23,6 +25,8 @@ class DispatchPolicy(Protocol):
 
 class BlockedLiveDispatchPolicy:
     """Default fail-closed policy: rejects all live dispatches before HTTP."""
+
+    can_dispatch: bool = False
 
     def check_dispatch(self, provider: str, model: str) -> None:
         raise LiveInferenceBlockedError(
@@ -33,6 +37,9 @@ class BlockedLiveDispatchPolicy:
 
 class MockDispatchPolicy:
     """Explicitly injected policy for offline tests using mocked transports."""
+
+    can_dispatch: bool = True
+    is_mock_only: bool = True
 
     def __init__(self, allowed_provider: str | None = None) -> None:
         self.allowed_provider = allowed_provider

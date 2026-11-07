@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { LibraryBigIcon, UploadIcon } from "lucide-react"
 
@@ -16,6 +16,7 @@ import { useDocumentCollection } from "@/features/documents/hooks/use-document-c
 import { useDocumentFilters } from "@/features/documents/hooks/use-document-filters"
 
 const LIBRARY_PAGE_SIZE = 20
+const LG_BREAKPOINT = 1024
 
 /**
  * Document library over `GET /api/v1/documents`.
@@ -30,6 +31,13 @@ export function DocumentLibraryPage() {
   const { filters, updateFilters, clearFilters, filtered, isFiltered } = useDocumentFilters()
 
   const [page, setPage] = useState(1)
+  const [isLg, setIsLg] = useState(() => typeof window !== "undefined" ? window.innerWidth >= LG_BREAKPOINT : false)
+
+  useEffect(() => {
+    const handleResize = () => setIsLg(window.innerWidth >= LG_BREAKPOINT)
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
   // Reset to the first page whenever the filter criteria change (state
   // adjustment during render — avoids a cascading setState effect).
   const [lastFilters, setLastFilters] = useState(filters)
@@ -119,14 +127,15 @@ export function DocumentLibraryPage() {
               />
             ) : (
               <>
-                <div className="hidden lg:block">
+                {isLg ? (
                   <DocumentsTable documents={pageSlice} caption="Accessible documents" />
-                </div>
-                <div className="flex flex-col gap-3 px-2 pb-2 lg:hidden">
-                  {pageSlice.map((document) => (
-                    <DocumentCard key={document.id} document={document} />
-                  ))}
-                </div>
+                ) : (
+                  <div>
+                    {pageSlice.map((document) => (
+                      <DocumentCard key={document.id} document={document} />
+                    ))}
+                  </div>
+                )}
                 {pageCount > 1 ? (
                   <TablePagination page={currentPage} pageCount={pageCount} onPageChange={setPage} />
                 ) : (

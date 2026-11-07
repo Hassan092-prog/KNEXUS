@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 import { ThemeProvider } from "@/components/shared/theme-provider"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 /**
  * Single TanStack Query client for server-state. Query keys follow the
@@ -19,7 +20,9 @@ const queryClient = new QueryClient({
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>{children}</ThemeProvider>
+      <ThemeProvider>
+        <TooltipProvider>{children}</TooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   )
 }

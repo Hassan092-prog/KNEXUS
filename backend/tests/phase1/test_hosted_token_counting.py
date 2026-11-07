@@ -1524,3 +1524,112 @@ def test_token_counter_and_embedder_share_single_model_settings_key(monkeypatch)
     # Test 3: explicit model override alignment
     counter_override = get_default_token_counter(model_name="custom-google-model")
     assert counter_override.model_name == "custom-google-model"
+
+
+def test_byte_bound_skip_flag_off_makes_same_calls_as_before(monkeypatch):
+    """When TOKEN_COUNT_BYTE_BOUND_SKIP is False, token counting calls occur as before."""
+    from app.services.ingestion.chunking import chunk_document_with_token_validation
+    from app.services.ingestion.parsing import ParsedSection
+
+    monkeypatch.setattr(settings, "TOKEN_COUNT_BYTE_BOUND_SKIP", False)
+    call_count = 0
+
+    class CountingCounter:
+        overhead_tokens = 8
+        def count_tokens(self, text, model="test-model", request_type="document", timeout=None):
+            nonlocal call_count
+            call_count += 1
+            import hashlib
+            from app.core.token_counter import TokenCountResult
+            return TokenCountResult(
+                raw_tokens=50,
+                overhead_tokens=8,
+                effective_tokens=58,
+                model_name=model,
+                content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                request_type=request_type,
+            )
+
+    import uuid
+    doc_id = uuid.uuid4()
+    sections = [ParsedSection(text="This is a safe English test paragraph under 1000 characters.", source_metadata={}, page=1)]
+    chunks = chunk_document_with_token_validation(doc_id, sections, CountingCounter(), model="test-model")
+    assert call_count == 1, "Counter must be invoked when flag is False"
+    assert len(chunks) == 1
+    assert chunks[0].source_metadata["skipped_by_byte_bound"] is False
+
+
+def test_byte_bound_skip_flag_on_skips_provably_safe_candidates(monkeypatch):
+    """When TOKEN_COUNT_BYTE_BOUND_SKIP is True, candidates with bytes + overhead <= ceiling skip remote count."""
+    from app.services.ingestion.chunking import chunk_document_with_token_validation
+    from app.services.ingestion.parsing import ParsedSection
+
+    monkeypatch.setattr(settings, "TOKEN_COUNT_BYTE_BOUND_SKIP", True)
+    call_count = 0
+
+    class CountingCounter:
+        overhead_tokens = 8
+        def count_tokens(self, text, model="test-model", request_type="document", timeout=None):
+            nonlocal call_count
+            call_count += 1
+            raise AssertionError("Remote counter should not be called for safe candidate when flag is True")
+
+    import uuid
+    doc_id = uuid.uuid4()
+    sections = [ParsedSection(text="This is an English test paragraph with 800 bytes, well under 2048." * 10, source_metadata={}, page=1)]
+    chunks = chunk_document_with_token_validation(doc_id, sections, CountingCounter(), model="test-model")
+    assert call_count == 0, "Counter must NOT be invoked when candidate is provably byte-safe"
+    assert len(chunks) >= 1
+    for chunk in chunks:
+        assert chunk.source_metadata["skipped_by_byte_bound"] is True
+        assert chunk.token_count == len(chunk.content.encode("utf-8"))
+
+
+def test_byte_bound_skip_multibyte_near_2000_chars_not_skipped(monkeypatch):
+    """Multibyte paragraph (Urdu/Arabic) exceeding the byte bound is NOT skipped and calls the counter."""
+    from app.services.ingestion.chunking import chunk_document_with_token_validation
+    from app.services.ingestion.parsing import ParsedSection
+    import hashlib
+    from app.core.token_counter import TokenCountResult
+
+    monkeypatch.setattr(settings, "TOKEN_COUNT_BYTE_BOUND_SKIP", True)
+    call_count = 0
+
+    class CountingCounter:
+        overhead_tokens = 8
+        def count_tokens(self, text, model="test-model", request_type="document", timeout=None):
+            nonlocal call_count
+            call_count += 1
+            # In Gemini/BPE, subwords might be e.g. 500 tokens
+            return TokenCountResult(
+                raw_tokens=500,
+                overhead_tokens=8,
+                effective_tokens=508,
+                model_name=model,
+                content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                request_type=request_type,
+            )
+
+    # Multibyte Urdu/Arabic characters: each character is 2 UTF-8 bytes.
+    # A candidate paragraph near 1200-1500 characters produces ~2400-3000 UTF-8 bytes.
+    # 2400 + 8 overhead = 2408 > 2048 effective ceiling.
+    # Using unicode escapes ensures encoding safety across filesystems.
+    multibyte_unit = "\u0647\u0630\u0627 \u0646\u0635 \u0639\u0631\u0628\u064a \u0645\u062a\u0639\u062f\u062f \u0627\u0644\u0628\u0627\u064a\u062a\u0627\u062a. "
+    urdu_text = multibyte_unit * 50  # ~1700 chars, ~3400 bytes
+    assert len(urdu_text.encode("utf-8")) + 8 > 2048
+
+    import uuid
+    doc_id = uuid.uuid4()
+    sections = [ParsedSection(text=urdu_text, source_metadata={}, page=1)]
+    chunks = chunk_document_with_token_validation(
+        doc_id,
+        sections,
+        CountingCounter(),
+        model="test-model",
+        target_chars=1200,
+        max_candidate_chars=2000,
+    )
+    assert call_count >= 1, "Counter must be invoked for candidate exceeding byte bound"
+    assert len(chunks) >= 1
+    # Check that at least one candidate that exceeded byte bound was not skipped
+    assert any(c.source_metadata["skipped_by_byte_bound"] is False for c in chunks)

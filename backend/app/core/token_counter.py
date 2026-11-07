@@ -34,6 +34,7 @@ class TokenCountResult:
     model_name: str
     content_hash: str          # SHA-256 of the exact input string
     request_type: str          # "document" or "query"
+    skipped_by_byte_bound: bool = False
 
 
 def validate_token_count_result(

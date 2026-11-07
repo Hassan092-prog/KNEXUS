@@ -103,6 +103,7 @@ class Settings(BaseSettings):
     EMBEDDING_MAX_INPUT_TOKENS: int = Field(default=2048, gt=0)
     EMBEDDING_MAX_VALIDATION_CALLS_PER_DOC: int = Field(default=50, gt=0)
     EMBEDDING_VALIDATION_DEADLINE_SECONDS: float = Field(default=30.0, gt=0)
+    TOKEN_COUNT_BYTE_BOUND_SKIP: bool = False
 
     @field_validator("GENERATION_PROVIDER", mode="before")
     @classmethod

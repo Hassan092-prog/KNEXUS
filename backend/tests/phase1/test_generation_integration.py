@@ -949,7 +949,7 @@ def test_all_three_dependencies_share_same_process_ledger(monkeypatch):
 
     # In Settings, QUOTA_STATE_PATH is the persistent gitignored storage path
     assert ledger_gen.config.state_path == settings.QUOTA_STATE_PATH
-    assert str(settings.QUOTA_STATE_PATH).endswith(".knexus-private-storage/quota_state.json")
+    assert settings.QUOTA_STATE_PATH.as_posix().endswith(".knexus-private-storage/quota_state.json")
 
     # Embedder and token counter dependencies resolve to this exact same ledger instance
     embedder = get_embedder()

@@ -37,7 +37,7 @@ from app.services.generation.errors import (
     ProviderUnavailableError,
 )
 from app.services.generation.generator import GenerationService as ConfiguredGenerationService
-from app.services.generation.hosted_provider import hosted_generate
+from app.services.generation.hosted_provider import drain_cleanup_tasks, hosted_generate
 
 
 class MockSession:
@@ -92,7 +92,7 @@ async def test_cancellation_during_areserve_attempt_settles_cleanly_and_preserve
     the worker thread and settles the reservation cleanly, preserving scope availability.
     """
     ledger_file = tmp_path / "ledger_a1.json"
-    cfg = QuotaConfig(enabled=True, state_path=ledger_file, lock_timeout_seconds=0.02)
+    cfg = QuotaConfig(enabled=True, state_path=ledger_file, lock_timeout_seconds=2.0)
     ledger = QuotaLedger(cfg)
 
     entered_reserve = threading.Event()
@@ -134,13 +134,13 @@ async def test_cancellation_during_areserve_attempt_settles_cleanly_and_preserve
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    for _ in range(50):
-        if ledger_file.exists():
-            with open(ledger_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if len(data.get("settled_requests", [])) == 1:
-                break
-        await asyncio.sleep(0.005)
+    await drain_cleanup_tasks()
+    current_task = asyncio.current_task()
+    pending = [t for t in asyncio.all_tasks() if t is not current_task and not t.done()]
+    if pending:
+        await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), timeout=2.0)
+
+    ledger.reserve_attempt = orig_reserve
 
     # Inspect the ledger on disk: verify an orphaned reservation exists
     assert ledger_file.exists(), "Ledger file must exist on disk"

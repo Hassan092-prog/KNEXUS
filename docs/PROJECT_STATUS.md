@@ -7,14 +7,14 @@
 - **Persistence**: PostgreSQL 16 + pgvector schema (6 tables, Alembic migrations, 384-dimensional HNSW cosine index).
 - **Ingestion & Retrieval**: PDF/DOCX parsing, tokenizer-bounded chunking, source tracking, and tenant/role-filtered similarity retrieval with fail-closed model isolation.
 - **Embeddings**: Local MiniLM (sentence-transformers/all-MiniLM-L6-v2, 384-d) fully operational for ingestion and query vectors.
-- **Generation & Safety**: Async GenerationService supporting Groq hosted generation (llama-3.3-70b-versatile) and offline fake provider; fail-closed BlockedLiveDispatchPolicy and cross-process atomic QuotaLedger.
+- **Generation & Safety**: Async GenerationService supporting Groq hosted generation (openai/gpt-oss-120b) and offline fake provider; fail-closed BlockedLiveDispatchPolicy and cross-process atomic QuotaLedger.
 - **API Endpoints**: Document upload, listing, status polling, and non-streaming query endpoints with UTC timestamps and canonical error envelopes.
 - **Frontend**: Vite + React 19 UI in rontend/app merged on origin/main (PR #23) with overview, documents, and chat views.
 - **Verification**: Offline test suite (358 passed, 18 skipped); contract checker passes.
 
 ## Phase 1 Demo Architecture Decision
 - **Embeddings**: Local MiniLM (sentence-transformers/all-MiniLM-L6-v2, vector(384)).
-- **Generation**: Groq hosted provider (llama-3.3-70b-versatile).
+- **Generation**: Groq hosted provider (openai/gpt-oss-120b).
 - **Google Embedder**: Present in codebase (pp/services/ingestion/google_embedder.py), verified offline, but disabled (EMBEDDING_PROVIDER="local") for the Phase 1 demo to preserve existing 384-d vectors and zero-cost operation.
 
 ## 4-Step Plan to Phase 1 Demo

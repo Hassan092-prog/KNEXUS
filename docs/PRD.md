@@ -8,7 +8,7 @@ Employees ask questions over accessible documents; managers later review action 
 
 Phase 1 delivers a local synthetic PDF/DOCX upload-to-answer flow with a server-owned demo actor. It is not authenticated multi-tenant deployment. Phase 2 adds real identity, governance and audit before sensitive/shared data is accepted.
 
-For the Phase 1 demo, the architecture uses local MiniLM embeddings (sentence-transformers/all-MiniLM-L6-v2, 384 dimensions) paired with Groq hosted generation (llama-3.3-70b-versatile). The Google hosted embedder is implemented and verified offline in the codebase but kept disabled (EMBEDDING_PROVIDER="local") for the demo to preserve existing 384-d vectors and zero-cost operation. PR #13 merged hosted transport; PR #15 supplies the generation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged hosted input validation; PR #21 wires generation into backend dependencies. No local LLM hosting, downloads or model reverse tunnels are required.
+For the Phase 1 demo, the architecture uses local MiniLM embeddings (sentence-transformers/all-MiniLM-L6-v2, 384 dimensions) paired with Groq hosted generation (openai/gpt-oss-120b). The Google hosted embedder is implemented and verified offline in the codebase but kept disabled (EMBEDDING_PROVIDER="local") for the demo to preserve existing 384-d vectors and zero-cost operation. PR #13 merged hosted transport; PR #15 supplies the generation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged hosted input validation; PR #21 wires generation into backend dependencies. No local LLM hosting, downloads or model reverse tunnels are required.
 
 ## Functional requirements
 

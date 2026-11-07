@@ -4,7 +4,7 @@ KNEXUS is a modular FastAPI application with PostgreSQL/pgvector persistence and
 
 ## Target versus implemented architecture
 
-The Phase 1 demo architecture pairs local MiniLM embeddings (sentence-transformers/all-MiniLM-L6-v2, 384 dimensions) with Groq hosted generation (llama-3.3-70b-versatile). The Google hosted embedder (gemini-embedding-001, 	ext-embedding-004) is implemented and verified offline in the codebase but kept disabled (EMBEDDING_PROVIDER="local") for the demo to preserve 384-d vectors and zero-cost operation. PR #13 merged hosted generation transport; PR #15 supplies the generation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged hosted input token validation; PR #21 wires generation into backend dependencies. No local LLM hosting, downloads or Ollama tunnels are required.
+The Phase 1 demo architecture pairs local MiniLM embeddings (sentence-transformers/all-MiniLM-L6-v2, 384 dimensions) with Groq hosted generation (openai/gpt-oss-120b). The Google hosted embedder (gemini-embedding-001, 	ext-embedding-004) is implemented and verified offline in the codebase but kept disabled (EMBEDDING_PROVIDER="local") for the demo to preserve 384-d vectors and zero-cost operation. PR #13 merged hosted generation transport; PR #15 supplies the generation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged hosted input token validation; PR #21 wires generation into backend dependencies. No local LLM hosting, downloads or Ollama tunnels are required.
 
 ## Implemented components
 
@@ -33,7 +33,7 @@ flowchart LR
     RET --> DB
     RET --> BOUNDARY["H01 run_generation"]
     BOUNDARY --> GEN["Naveed: structured generator"]
-    GEN --> HOSTED["Hosted Groq generation (llama-3.3-70b-versatile)"]
+    GEN --> HOSTED["Hosted Groq generation (openai/gpt-oss-120b)"]
     GEN --> API
     API --> UI
 ~~~

@@ -6,7 +6,7 @@ Read [status](PROJECT_STATUS.md) for completion, [CONTRIBUTING](../CONTRIBUTING.
 
 ## Current handoff gate (6 November 2026)
 
-PR #15 is open draft and supplies the hosted generation evaluation harness; Naveed's corrections have been incorporated. Hassan coordinates backend generation wiring (PR #21) and the Phase 1 demo runbook (docs/DEMO_RUNBOOK.md). The Phase 1 demo uses local MiniLM embeddings (384-d) with Groq hosted generation (llama-3.3-70b-versatile); Google embedder is present in the codebase but kept off for the demo.
+PR #15 is open draft and supplies the hosted generation evaluation harness; Naveed's corrections have been incorporated. Hassan coordinates backend generation wiring (PR #21) and the Phase 1 demo runbook (docs/DEMO_RUNBOOK.md). The Phase 1 demo uses local MiniLM embeddings (384-d) with Groq hosted generation (openai/gpt-oss-120b); Google embedder is present in the codebase but kept off for the demo.
 
 Use current free-first instructions: the earlier OpenAI-1536/$5 envelope is not a grant. Resolve strict input-token enforcement, reasoning/output accounting, account quotas, provider schema handling and durable shared reservations before live acceptance. Tests explicitly inject fake; application misconfiguration stays a clear error. No fallback, automatic retries or billing upgrade.
 

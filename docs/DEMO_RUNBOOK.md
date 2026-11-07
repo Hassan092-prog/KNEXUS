@@ -10,7 +10,7 @@ export POSTGRES_DB="knexus" POSTGRES_USER="knexus_admin" POSTGRES_PASSWORD="knex
 export DATABASE_URL="postgresql+asyncpg://knexus_admin:knexus_password@localhost:5435/knexus"
 export EMBEDDING_PROVIDER="local" EMBEDDING_MODEL_NAME="sentence-transformers/all-MiniLM-L6-v2"
 export EMBEDDING_DIMENSIONS=384
-export GENERATION_PROVIDER="groq" GENERATION_MODEL="llama-3.3-70b-versatile"
+export GENERATION_PROVIDER="groq" GENERATION_MODEL="openai/gpt-oss-120b"
 export GENERATION_API_KEY="gsk_..." GENERATION_BASE_URL="https://api.groq.com/openai/v1"
 export QUOTA_ENABLED=True QUOTA_CAMPAIGN_ID="phase1-demo-20261107"
 `

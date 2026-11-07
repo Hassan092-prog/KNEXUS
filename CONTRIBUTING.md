@@ -93,7 +93,7 @@ For an approved local PostgreSQL service:
 ```bash
 docker compose up -d postgres
 alembic -c alembic.ini upgrade head
-python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.db.demo_seed import seed_demo_identity; async def s(): async with AsyncSessionLocal() as session: await seed_demo_identity(session); await session.commit(); asyncio.run(s())"
+python -m app.db.demo_seed
 ```
 
 Start the backend:

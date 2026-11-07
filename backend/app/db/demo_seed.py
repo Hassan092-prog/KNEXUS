@@ -67,3 +67,17 @@ async def seed_demo_identity(session: AsyncSession) -> ActorContext:
         raise DemoSeedConflictError("Reserved demo user ID is already in use")
 
     return actor
+
+
+async def main() -> None:
+    from app.core.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        await seed_demo_identity(session)
+        await session.commit()
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(main())

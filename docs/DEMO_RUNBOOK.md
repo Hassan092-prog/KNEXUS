@@ -4,7 +4,7 @@
 > Switching `EMBEDDING_PROVIDER` requires a fresh demo database or re-ingesting all documents, because vectors are tagged by embedding model name and revision in `document_chunks`. Chunks produced by other models are never scored or mixed into similarity rankings.
 
 > [!IMPORTANT]
-> The backend port is configurable. The demo default on this server is **8001** (to avoid collisions with other host services on 8000). Set `VITE_API_BASE_URL=http://localhost:8001` for the frontend to match.
+> The backend port is configurable. The demo default on this server is **8002** (to avoid collisions with other host services on 8000). Set `VITE_API_BASE_URL=http://localhost:8002` for the frontend to match.
 
 ---
 
@@ -43,18 +43,18 @@ docker compose up -d postgres
 alembic -c alembic.ini upgrade head
 
 # 3. Seed Phase 1 demo identity (required for tenant foreign key integrity)
-python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.db.demo_seed import seed_demo_identity; async def s(): async with AsyncSessionLocal() as session: await seed_demo_identity(session); await session.commit(); asyncio.run(s())"
+python -m app.db.demo_seed
 
-# 4. Start backend (port 8001 default on this server)
-uvicorn app.main:app --host 0.0.0.0 --port 8001
+# 4. Start backend (port 8002 default on this server)
+uvicorn app.main:app --host 0.0.0.0 --port 8002
 
 # 5. Start frontend (port 5173, optional during dry run)
-cd frontend/app && VITE_API_BASE_URL=http://localhost:8001 npm run dev
+cd frontend/app && VITE_API_BASE_URL=http://localhost:8002 npm run dev
 ```
 
 ### 3. Upload a Document
 ```bash
-curl -X POST http://localhost:8001/api/v1/documents/upload \
+curl -X POST http://localhost:8002/api/v1/documents/upload \
   -F "file=@demo_security_policy.docx" \
   -F "allowed_roles=employee"
 ```
@@ -70,7 +70,7 @@ Returns HTTP 202 with `document_id` and `task_id`:
 
 Poll status until `status` becomes `complete`:
 ```bash
-curl -s http://localhost:8001/api/v1/documents/<document_id>/status
+curl -s http://localhost:8002/api/v1/documents/<document_id>/status
 ```
 Expected completed response:
 ```json
@@ -87,7 +87,7 @@ Expected completed response:
 
 ### 4. Query & Expected Response
 ```bash
-curl -X POST http://localhost:8001/api/v1/query \
+curl -X POST http://localhost:8002/api/v1/query \
   -H "Content-Type: application/json" \
   -d '{"question": "How often is the security policy reviewed?", "top_k": 3}'
 ```
@@ -122,14 +122,14 @@ Response contains inline bracketed citations matching citation objects referenci
 To run the automated demo test suite against the running backend:
 ```bash
 # Run orgadmin questions (uploads demo corpus)
-python backend/scripts/run_demo.py --base-url http://localhost:8001 --actor-role orgadmin --upload
+python backend/scripts/run_demo.py --base-url http://localhost:8002 --actor-role orgadmin --upload
 
 # To run employee question group: restart backend with DEMO_ACTOR_ROLE=employee
 export DEMO_ACTOR_ROLE="employee"
-uvicorn app.main:app --host 0.0.0.0 --port 8001
+uvicorn app.main:app --host 0.0.0.0 --port 8002
 
 # Run employee questions
-python backend/scripts/run_demo.py --base-url http://localhost:8001 --actor-role employee
+python backend/scripts/run_demo.py --base-url http://localhost:8002 --actor-role employee
 ```
 
 ---
@@ -179,13 +179,13 @@ docker compose up -d postgres
 alembic -c alembic.ini upgrade head
 
 # 3. Seed Phase 1 demo identity
-python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.db.demo_seed import seed_demo_identity; async def s(): async with AsyncSessionLocal() as session: await seed_demo_identity(session); await session.commit(); asyncio.run(s())"
+python -m app.db.demo_seed
 
-# 4. Start backend (port 8001)
-uvicorn app.main:app --host 0.0.0.0 --port 8001
+# 4. Start backend (port 8002)
+uvicorn app.main:app --host 0.0.0.0 --port 8002
 
 # 5. In a separate shell, start the frontend
-cd frontend/app && VITE_API_BASE_URL=http://localhost:8001 VITE_DATA_MODE=live npm run dev
+cd frontend/app && VITE_API_BASE_URL=http://localhost:8002 VITE_DATA_MODE=live npm run dev
 ```
 
 ### 3. Verification Queries

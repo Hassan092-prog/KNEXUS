@@ -87,12 +87,9 @@ def _make_generation_request() -> GenerationRequest:
 # ==============================================================================
 
 @pytest.mark.asyncio
-async def test_cancellation_during_areserve_attempt_leaves_orphaned_reservation_blocking_scope(tmp_path: Path):
-    """When areserve_attempt is cancelled mid-flight, the worker thread still completes
-
-    writing the active reservation to disk. Because hosted_generate was cancelled before
-    receiving attempt_id, it cannot settle it. The orphaned active reservation remains in
-    the ledger and conservatively blocks subsequent attempts for that scope.
+async def test_cancellation_during_areserve_attempt_settles_cleanly_and_preserves_scope_availability(tmp_path: Path):
+    """When areserve_attempt is cancelled mid-flight, background cleanup task awaits
+    the worker thread and settles the reservation cleanly, preserving scope availability.
     """
     ledger_file = tmp_path / "ledger_a1.json"
     cfg = QuotaConfig(enabled=True, state_path=ledger_file, lock_timeout_seconds=0.02)
@@ -141,7 +138,7 @@ async def test_cancellation_during_areserve_attempt_leaves_orphaned_reservation_
         if ledger_file.exists():
             with open(ledger_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            if len(data.get("active_reservations", {})) == 1:
+            if len(data.get("settled_requests", [])) == 1:
                 break
         await asyncio.sleep(0.005)
 
@@ -152,22 +149,12 @@ async def test_cancellation_during_areserve_attempt_leaves_orphaned_reservation_
 
     active_res = data.get("active_reservations", {})
     settled = data.get("settled_requests", [])
-    if len(active_res) == 0:
-        # Patched generation provider (review/pr15-corrections):
-        # Background cleanup settled the cancelled reservation cleanly without leaking
-        assert len(settled) == 1, "Settlement must occur via background cleanup task"
-        assert settled[0]["success"] is False
-        assert settled[0]["error"] in {"CancelledError", "cancelled"}
-        aid2 = ledger.reserve_attempt("groq", "llama-3.3-70b-versatile")
-        assert aid2 is not None
-    else:
-        # Baseline generation provider before PR #15 corrections:
-        # Documents the orphaned reservation leak until PR #15 corrections are merged
-        assert len(active_res) == 1, f"Expected exactly 1 orphaned active reservation, found: {active_res}"
-        attempt_id, record = next(iter(active_res.items()))
-        assert record["scope"] == "groq:llama-3.3-70b-versatile"
-        with pytest.raises(QuotaExceededError, match="currently in flight"):
-            ledger.reserve_attempt("groq", "llama-3.3-70b-versatile")
+    assert len(active_res) == 0, f"Expected 0 active reservations, found: {active_res}"
+    assert len(settled) == 1, "Settlement must occur via background cleanup task"
+    assert settled[0]["success"] is False
+    assert settled[0]["error"] == "CancelledError"
+    aid2 = ledger.reserve_attempt("groq", "llama-3.3-70b-versatile")
+    assert aid2 is not None
 
 
 # ==============================================================================

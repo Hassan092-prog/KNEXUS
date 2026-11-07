@@ -13,5 +13,5 @@ beforeAll(() => {
   if (typeof Element.prototype.scrollIntoView !== "function") {
     Element.prototype.scrollIntoView = () => {}
   }
-  ;(global as Window).innerWidth = 1440
+  Object.defineProperty(window, "innerWidth", { value: 1440, configurable: true })
 })

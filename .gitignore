@@ -88,3 +88,6 @@ desktop.ini
 
 # Private local document uploads
 .knexus-private-storage/
+
+# Large build / debug artifacts
+/lib/

@@ -563,7 +563,7 @@ def test_get_generation_service_calling_styles_direct_and_fastapi_override(monke
     # 2. Direct call with explicit keyword arguments
     monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "test-campaign")
     custom_policy = MockDispatchPolicy("groq")
-    custom_ledger = QuotaLedger()
+    custom_ledger = QuotaLedger(QuotaConfig(campaign_id="test-campaign"))
     svc_custom = get_generation_service(dispatch_policy=custom_policy, quota_ledger=custom_ledger)
     assert svc_custom.dispatch_policy is custom_policy
     assert svc_custom.quota_ledger is custom_ledger
@@ -943,7 +943,7 @@ def test_dispatch_policy_guard_mock_policy_requires_ledger_even_with_test_transp
         get_generation_service(dispatch_policy=policy, quota_ledger=None, transport=mock_transport)
 
     # Supplying a ledger in a temporary path succeeds
-    test_ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "test_ledger.json"))
+    test_ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=tmp_path / "test_ledger.json"))
     svc = get_generation_service(dispatch_policy=policy, quota_ledger=test_ledger, transport=mock_transport)
     assert svc.dispatch_policy is policy
     assert svc.quota_ledger is test_ledger
@@ -981,7 +981,7 @@ def test_dependency_overrides_replace_shared_ledger_across_all_dependencies(tmp_
     from app.api.dependencies import get_embedder, get_token_counter, get_generation_quota_ledger
 
     custom_state = tmp_path / "custom_override_ledger.json"
-    custom_ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=custom_state))
+    custom_ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="test-campaign", state_path=custom_state))
 
     app.dependency_overrides[get_generation_quota_ledger] = lambda: custom_ledger
     try:

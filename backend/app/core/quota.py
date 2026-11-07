@@ -70,8 +70,8 @@ class QuotaConfig:
     state_path: Path | None = None
 
     def __post_init__(self):
-        if not isinstance(self.campaign_id, str) or not self.campaign_id.strip():
-            raise ValueError("campaign_id must be a non-empty string")
+        if not isinstance(self.campaign_id, str):
+            raise ValueError("campaign_id must be a string")
         if self.max_campaign_attempts is not None:
             if not _is_strict_int(self.max_campaign_attempts) or self.max_campaign_attempts < 0:
                 raise ValueError("max_campaign_attempts must be a non-negative integer (not boolean)")
@@ -673,11 +673,7 @@ def validate_dispatch_campaign(
         )
 
     campaign_id = getattr(quota_ledger, "campaign_id", None)
-    if campaign_id is None or not str(campaign_id).strip() or str(campaign_id).strip().lower() == "default":
-        from app.core.config import settings
-        campaign_id = getattr(settings, "QUOTA_CAMPAIGN_ID", "")
-
-    campaign_id_str = str(campaign_id).strip()
+    campaign_id_str = str(campaign_id or "").strip()
     if not campaign_id_str:
         raise QuotaCampaignError(
             "QUOTA_CAMPAIGN_ID is required and must be non-empty whenever provider dispatch is authorized."
@@ -708,11 +704,7 @@ def get_process_quota_ledger() -> QuotaLedger:
 
                 state_path = settings.QUOTA_STATE_PATH
                 state_path.parent.mkdir(parents=True, exist_ok=True)
-                campaign_id = (
-                    settings.QUOTA_CAMPAIGN_ID.strip()
-                    if getattr(settings, "QUOTA_CAMPAIGN_ID", "").strip()
-                    else "default"
-                )
+                campaign_id = getattr(settings, "QUOTA_CAMPAIGN_ID", "").strip()
                 config = QuotaConfig(
                     enabled=settings.QUOTA_ENABLED,
                     campaign_id=campaign_id,

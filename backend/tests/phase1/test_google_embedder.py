@@ -707,3 +707,145 @@ def test_google_embedder_rejects_non_384_dimensions(tmp_path: Path):
 
     with pytest.raises(EmbeddingUnavailableError, match="dimension mismatch: expected 384, got 512"):
         embedder.embed_texts(["test text"])
+
+
+@pytest.mark.asyncio
+async def test_captured_request_payload_task_types(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Captured Google request payload has taskType RETRIEVAL_QUERY for retrieval and RETRIEVAL_DOCUMENT for ingestion."""
+    import json
+    from uuid import uuid4
+    from app.services.retrieval.service import RetrievalService
+    from app.services.ingestion.processor import process_document
+    from app.services.ingestion.parsing import ParsedSection
+    from app.models import Document, IngestionJob
+
+    state_file = tmp_path / "ledger_task_types.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, campaign_id="task-type-campaign", state_path=state_file))
+
+    captured_requests: list[dict] = []
+
+    def handler(request: httpx.Request):
+        data = json.loads(request.content.decode("utf-8"))
+        captured_requests.append(data)
+        # Mock valid 384-d response for each item in requests
+        num_items = len(data.get("requests", []))
+        return httpx.Response(
+            200,
+            json={
+                "embeddings": [{"values": [0.05] * 384} for _ in range(num_items)],
+                "usageMetadata": {"promptTokenCount": 10 * num_items, "totalTokenCount": 10 * num_items},
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    embedder = GoogleGenAIEmbedder(
+        model_name="gemini-embedding-001",
+        output_dimensions=384,
+        api_key="mock-key",
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    # 1. Retrieval Query: must send taskType="RETRIEVAL_QUERY"
+    class MockSession:
+        async def execute(self, stmt):
+            class MockResult:
+                def all(self):
+                    return []
+            return MockResult()
+
+    actor = ActorContext(org_id=uuid4(), user_id=uuid4(), effective_roles=["employee"])
+    service = RetrievalService(embedder=embedder)
+
+    captured_requests.clear()
+    await service.retrieve(MockSession(), actor, "What is our travel policy?", top_k=5)
+
+    assert len(captured_requests) == 1, "Expected 1 HTTP request for retrieval query"
+    query_reqs = captured_requests[0].get("requests", [])
+    assert len(query_reqs) == 1
+    assert query_reqs[0]["taskType"] == "RETRIEVAL_QUERY", (
+        f"Expected taskType 'RETRIEVAL_QUERY' for query embedding, got: {query_reqs[0].get('taskType')}"
+    )
+
+    # 2. Ingestion Document: must send taskType="RETRIEVAL_DOCUMENT"
+    doc_id = uuid4()
+    document = Document(
+        id=doc_id,
+        org_id=actor.org_id,
+        title="Travel Guidelines",
+        source_type="docx",
+        storage_key="test-travel-key",
+        status="queued",
+        allowed_roles=["employee"],
+        chunk_count=0,
+    )
+    job = IngestionJob(
+        id=uuid4(),
+        org_id=actor.org_id,
+        document_id=doc_id,
+        attempt_number=1,
+        status="queued",
+    )
+
+    class MockProcessorSession:
+        def __init__(self):
+            self.added = []
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+        async def get(self, entity, ident):
+            if entity is Document:
+                return document
+            return None
+        async def execute(self, stmt):
+            class ScalarOne:
+                def scalar_one_or_none(self):
+                    return job
+            return ScalarOne()
+        def add(self, item):
+            self.added.append(item)
+        async def flush(self):
+            pass
+        async def commit(self):
+            pass
+
+    class FakeSimpleTokenizer:
+        model_max_length = 256
+        def encode(self, text, add_special_tokens=False):
+            return [1] * len(text)
+        def num_special_tokens_to_add(self, pair=False):
+            return 0
+
+    captured_requests.clear()
+    sections = [ParsedSection("Standard business travel must be pre-approved by the department manager.", 1, {"page": 1})]
+    success = await process_document(
+        doc_id,
+        parsed_sections=sections,
+        session_factory=lambda: MockProcessorSession(),
+        embedder=embedder,
+        tokenizer=FakeSimpleTokenizer(),
+    )
+    assert success is True
+    assert len(captured_requests) >= 1, "Expected at least 1 HTTP request for document ingestion"
+    ingest_reqs = captured_requests[0].get("requests", [])
+    assert len(ingest_reqs) >= 1
+    assert ingest_reqs[0]["taskType"] == "RETRIEVAL_DOCUMENT", (
+        f"Expected taskType 'RETRIEVAL_DOCUMENT' for ingestion embedding, got: {ingest_reqs[0].get('taskType')}"
+    )
+
+    # 3. Local MiniLM embedder: accepts task_type keyword without error or mutation
+    import numpy as np
+    from types import SimpleNamespace
+    from app.services.ingestion.embedding import SentenceTransformerEmbedder
+
+    local_embedder = SentenceTransformerEmbedder("sentence-transformers/all-MiniLM-L6-v2", "main")
+    monkeypatch.setattr(
+        local_embedder,
+        "_get_model",
+        lambda: SimpleNamespace(encode=lambda texts, **kw: np.array([[0.1] * 384 for _ in texts])),
+    )
+    res = local_embedder.embed_texts(["hello world"], task_type="RETRIEVAL_QUERY")
+    assert len(res) == 1
+    assert len(res[0]) == 384

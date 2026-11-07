@@ -3,6 +3,8 @@ import { cn } from "@/lib/utils"
 /**
  * Metric card: prominent value with label, optional icon and caption.
  * Surface, border, and padding are consistent across all instances.
+ * Labels use sentence case at a readable size; the numeric value is the
+ * strongest visual element on the card.
  */
 export function StatCard({
   value,
@@ -20,12 +22,12 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "flex h-full flex-col justify-between rounded-lg border border-border bg-card p-4",
+        "flex h-full flex-col justify-between rounded-lg border border-border bg-card p-5",
         className,
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <p className="text-xs font-medium text-muted-foreground">
           {label}
         </p>
         {icon ? <span className="text-muted-foreground">{icon}</span> : null}
@@ -34,7 +36,7 @@ export function StatCard({
         {value}
       </p>
       {caption ? (
-        <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{caption}</p>
+        <p className="mt-2 text-xs text-muted-foreground leading-relaxed">{caption}</p>
       ) : null}
     </div>
   )

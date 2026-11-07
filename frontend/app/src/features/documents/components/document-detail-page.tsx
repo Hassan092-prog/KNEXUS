@@ -1,13 +1,12 @@
 import { useParams } from "react-router-dom"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageHeader } from "@/components/shared/page-header"
 
 /**
  * Document detail — visual foundation only.
- * Renders metadata and status presentation using verified contract fields.
- * No data fetching, status polling, or document-management interactions
- * (those land in phase Z03). No fabricated values are shown.
+ * Presents the document identifier and groups unavailable metadata into clear
+ * sections with honest messaging. No data fetching, no fabricated values,
+ * no invented progress bars. Detail rendering lands in phase Z03.
  */
 export function DocumentDetailPage() {
   const { documentId } = useParams<{ documentId: string }>()
@@ -19,60 +18,42 @@ export function DocumentDetailPage() {
     <>
       <PageHeader
         title="Document details"
-        description={`Document ${documentId}. Detail and status rendering land in phase Z03.`}
+        description={`Information about document ${documentId} and its processing state.`}
       />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="col-span-2 lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">Document metadata</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-muted-foreground">Document ID</p>
-                <p className="text-sm font-mono text-foreground truncate" title={documentId}>
-                  {documentId}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Source type</p>
-                <p className="text-sm font-medium text-foreground">Not loaded</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Allowed roles</p>
-                <p className="text-sm font-medium text-foreground">Not loaded</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Chunk count</p>
-                <p className="text-sm tabular-nums text-foreground">Not available</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Status</p>
-                <p className="text-sm font-medium text-foreground">Not connected</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Created</p>
-                <p className="text-sm font-mono text-foreground">Not loaded</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <section className="rounded-lg border border-border bg-card p-5">
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold tracking-tight text-foreground">
+            Document identifier
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            The document ID is used to reference this document across KNEXUS.
+          </p>
+          <div className="mt-2 font-mono text-sm text-foreground break-all">
+            {documentId}
+          </div>
+        </div>
 
-        <Card className="col-span-2 lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">Processing status</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-foreground">Ingestion</span>
-              <span className="text-xs font-medium text-muted-foreground">Not connected</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Status polling and failure rendering land in phase Z03.
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight text-foreground mb-3">
+              Document information
+            </h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Source type, access roles, chunk count, and creation date will
+              appear here once the document-detail workflow is connected.
             </p>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight text-foreground mb-3">
+              Processing information
+            </h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Processing status and chunk details will be available in Z03.
+            </p>
+          </div>
+        </div>
+      </section>
     </>
   )
 }

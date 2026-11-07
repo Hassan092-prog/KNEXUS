@@ -1,12 +1,11 @@
 import { PageHeader } from "@/components/shared/page-header"
 import { EmptyState } from "@/components/shared/empty-state"
-import { DataTable } from "@/features/documents/components/data-table"
 
 /**
  * Document library — visual foundation only.
- * Renders the table column-header convention and an empty state.
- * Data population, upload, search, filtering, and interactive pagination
- * land in phase Z03.
+ * Renders a clean library surface with a section header and a deliberate
+ * disconnected empty state. Data population, upload, search, filtering, and
+ * interactive pagination land in phase Z03.
  */
 export function DocumentLibraryPage() {
   return (
@@ -15,15 +14,23 @@ export function DocumentLibraryPage() {
         title="Documents"
         description="Manage documents available to your organization's knowledge base."
       />
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <DataTable headers={["Type", "Title", "Roles", "Status", "Chunks", "Created"]} />
-        <div className="p-6">
-          <EmptyState
-            title="Document library not connected"
-            description="List, upload, search, filtering, and pagination workflows are implemented in phase Z03. This view is a visual foundation only."
-          />
+      <section className="rounded-lg border border-border bg-card p-5">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight text-foreground">
+              Document library
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Documents and their processing information.
+            </p>
+          </div>
         </div>
-      </div>
+        <EmptyState
+          variant="surface"
+          title="Document library not connected"
+          description="List, upload, search, filtering, and pagination workflows are implemented in phase Z03. This view is a visual foundation only."
+        />
+      </section>
     </>
   )
 }

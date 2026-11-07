@@ -23,7 +23,7 @@ export function QueryInput({
   return (
     <div
       className={cn(
-        "flex items-end gap-2 rounded-xl border border-border bg-card p-3",
+        "flex items-center gap-2 rounded-lg border border-border bg-card p-3",
         className,
       )}
     >
@@ -31,7 +31,9 @@ export function QueryInput({
         type="text"
         placeholder={placeholder}
         disabled={disabled}
-        className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 outline-none"
+        className={cn(
+          "flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 outline-none disabled:cursor-not-allowed disabled:text-muted-foreground/40",
+        )}
       />
       <Button
         onClick={onSubmit}

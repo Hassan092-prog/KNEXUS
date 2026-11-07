@@ -114,7 +114,8 @@ def test_embedding_model_coherence_under_google_provider():
     assert s_gemini.EMBEDDING_MODEL_NAME == "gemini-embedding-001"
 
     s_prefixed = Settings(EMBEDDING_PROVIDER="google", EMBEDDING_MODEL_NAME="models/text-embedding-004")
-    assert s_prefixed.EMBEDDING_MODEL_NAME == "models/text-embedding-004"
+    # Settings validator canonicalizes prefixed model names to unprefixed canonical tag
+    assert s_prefixed.EMBEDDING_MODEL_NAME == "text-embedding-004"
 
 
 def test_token_counter_and_embedder_model_congruence(monkeypatch):

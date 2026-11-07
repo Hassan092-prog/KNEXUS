@@ -11,6 +11,14 @@ REPOSITORY_ENV_FILE = REPOSITORY_ROOT / ".env"
 DEFAULT_STORAGE_ROOT = (REPOSITORY_ROOT / ".knexus-private-storage").resolve()
 
 
+APPROVED_GOOGLE_EMBEDDING_MODELS: frozenset[str] = frozenset({
+    "text-embedding-004",
+    "gemini-embedding-001",
+    "models/text-embedding-004",
+    "models/gemini-embedding-001",
+})
+
+
 class Settings(BaseSettings):
     # App Information
     APP_NAME: str = "KNEXUS API"
@@ -135,6 +143,19 @@ class Settings(BaseSettings):
                 f"strictly greater than longest provider deadline ({max_deadline}s) + safety margin ({safety_margin}s) = {min_required}s "
                 f"to prevent concurrent dispatches while an active request is legitimately in flight."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_embedding_provider_and_model(self) -> "Settings":
+        provider = (self.EMBEDDING_PROVIDER or "").strip().lower()
+        if provider == "google":
+            model = (self.EMBEDDING_MODEL_NAME or "").strip()
+            if model not in APPROVED_GOOGLE_EMBEDDING_MODELS:
+                raise ValueError(
+                    f"When EMBEDDING_PROVIDER is 'google', EMBEDDING_MODEL_NAME must be explicitly configured "
+                    f"to an approved Google embedding model ({sorted(APPROVED_GOOGLE_EMBEDDING_MODELS)}), "
+                    f"got {self.EMBEDDING_MODEL_NAME!r}."
+                )
         return self
 
     DOCUMENT_STORAGE_ROOT: Path = DEFAULT_STORAGE_ROOT

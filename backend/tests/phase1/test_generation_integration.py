@@ -951,6 +951,7 @@ def test_dispatch_policy_guard_mock_policy_requires_ledger_even_with_test_transp
 
 def test_all_three_dependencies_share_same_process_ledger(monkeypatch):
     monkeypatch.setattr(settings, "EMBEDDING_PROVIDER", "google")
+    monkeypatch.setattr(settings, "EMBEDDING_MODEL_NAME", "text-embedding-004")
     monkeypatch.setattr(settings, "EMBEDDING_API_KEY", type("Secret", (), {"get_secret_value": lambda self: "fake_key"})())
     """F2: Generation, embedding, and token counter all resolve to the same shared QuotaLedger."""
     from app.api.dependencies import get_embedder, get_token_counter, get_generation_quota_ledger
@@ -974,6 +975,7 @@ def test_all_three_dependencies_share_same_process_ledger(monkeypatch):
 
 def test_dependency_overrides_replace_shared_ledger_across_all_dependencies(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(settings, "EMBEDDING_PROVIDER", "google")
+    monkeypatch.setattr(settings, "EMBEDDING_MODEL_NAME", "text-embedding-004")
     monkeypatch.setattr(settings, "EMBEDDING_API_KEY", type("Secret", (), {"get_secret_value": lambda self: "fake_key"})())
     """F2: FastAPI dependency overrides cleanly replace the ledger across all dependencies."""
     from app.api.dependencies import get_embedder, get_token_counter, get_generation_quota_ledger

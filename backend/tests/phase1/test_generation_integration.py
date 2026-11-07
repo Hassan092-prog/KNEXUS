@@ -4,6 +4,7 @@ Covers Task A adversarial verification of PR #15 generation adapter and Task B
 hardening of Hassan-owned shared dependency wiring.
 """
 from __future__ import annotations
+import threading
 
 import asyncio
 import json
@@ -94,15 +95,16 @@ async def test_cancellation_during_areserve_attempt_leaves_orphaned_reservation_
     the ledger and conservatively blocks subsequent attempts for that scope.
     """
     ledger_file = tmp_path / "ledger_a1.json"
-    cfg = QuotaConfig(enabled=True, state_path=ledger_file)
+    cfg = QuotaConfig(enabled=True, state_path=ledger_file, lock_timeout_seconds=0.02)
     ledger = QuotaLedger(cfg)
 
-    # Slow down reserve_attempt so we can deterministically cancel the task during the call
+    entered_reserve = threading.Event()
+    release_reserve = threading.Event()
     orig_reserve = ledger.reserve_attempt
 
     def slow_reserve(provider, model):
-        import time
-        time.sleep(0.15)
+        entered_reserve.set()
+        release_reserve.wait(timeout=2.0)
         return orig_reserve(provider, model)
 
     ledger.reserve_attempt = slow_reserve
@@ -127,14 +129,21 @@ async def test_cancellation_during_areserve_attempt_leaves_orphaned_reservation_
         )
 
     task = asyncio.create_task(run_gen())
-    await asyncio.sleep(0.04)  # Ensure task entered areserve_attempt (in threadpool)
+    while not entered_reserve.is_set():
+        await asyncio.sleep(0.001)
     task.cancel()
+    release_reserve.set()
 
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    # Allow worker thread in threadpool to complete writing to disk
-    await asyncio.sleep(0.2)
+    for _ in range(50):
+        if ledger_file.exists():
+            with open(ledger_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if len(data.get("active_reservations", {})) == 1:
+                break
+        await asyncio.sleep(0.005)
 
     # Inspect the ledger on disk: verify an orphaned reservation exists
     assert ledger_file.exists(), "Ledger file must exist on disk"
@@ -166,12 +175,13 @@ async def test_cancellation_during_asettle_attempt_has_no_double_settle_and_prop
     cfg = QuotaConfig(enabled=True, state_path=ledger_file)
     ledger = QuotaLedger(cfg)
 
-    # Slow down settle_attempt so cancellation arrives while inside asettle_attempt
+    entered_settle = threading.Event()
+    release_settle = threading.Event()
     orig_settle = ledger.settle_attempt
 
     def slow_settle(attempt_id, **kwargs):
-        import time
-        time.sleep(0.15)
+        entered_settle.set()
+        release_settle.wait(timeout=2.0)
         return orig_settle(attempt_id, **kwargs)
 
     ledger.settle_attempt = slow_settle
@@ -218,15 +228,21 @@ async def test_cancellation_during_asettle_attempt_has_no_double_settle_and_prop
         )
     )
 
-    # Wait until HTTP request completes and asettle_attempt is entered
-    await asyncio.sleep(0.05)
+    while not entered_settle.is_set():
+        await asyncio.sleep(0.001)
     task.cancel()
+    release_settle.set()
 
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    # Allow worker thread to complete
-    await asyncio.sleep(0.2)
+    for _ in range(50):
+        if ledger_file.exists():
+            with open(ledger_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if len(data.get("settled_requests", [])) == 1:
+                break
+        await asyncio.sleep(0.005)
 
     with open(ledger_file, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -261,9 +277,13 @@ async def test_synchronous_settle_attempt_exception_does_not_mask_cancellation(t
     req = _make_generation_request()
     mock_policy = MockDispatchPolicy("groq")
 
-    # Mock transport hangs so we cancel during HTTP call
+    entered_http = asyncio.Event()
+    release_http = asyncio.Event()
+
+    # Mock transport signals entry and waits on event instead of sleep
     async def hanging_handler(request: httpx.Request) -> httpx.Response:
-        await asyncio.sleep(10.0)
+        entered_http.set()
+        await release_http.wait()
         return httpx.Response(200, json={})
 
     transport = httpx.MockTransport(hanging_handler)
@@ -285,7 +305,7 @@ async def test_synchronous_settle_attempt_exception_does_not_mask_cancellation(t
         )
     )
 
-    await asyncio.sleep(0.05)
+    await entered_http.wait()
     task.cancel()
 
     # CancelledError must be raised to the caller, not OSError
@@ -540,11 +560,13 @@ def test_get_generation_service_calling_styles_direct_and_fastapi_override(monke
 
     # 3. FastAPI override resolution
     app.dependency_overrides[get_dispatch_policy] = lambda: custom_policy
+    app.dependency_overrides[get_generation_quota_ledger] = lambda: custom_ledger
     try:
         with TestClient(app) as client:
             # Overriding get_dispatch_policy is reflected when endpoint resolves get_generation_service
-            svc_from_fastapi = get_generation_service(dispatch_policy=custom_policy)
+            svc_from_fastapi = get_generation_service(dispatch_policy=custom_policy, quota_ledger=custom_ledger)
             assert svc_from_fastapi.dispatch_policy is custom_policy
+            assert svc_from_fastapi.quota_ledger is custom_ledger
     finally:
         app.dependency_overrides.clear()
 
@@ -877,3 +899,53 @@ def test_query_missing_evidence_abstains_without_generation_call():
             assert generator_called is False
     finally:
         app.dependency_overrides.clear()
+# ==============================================================================
+# Task 3 & Task 4: Capability dispatch guard and Ollama refusal tests
+# ==============================================================================
+
+def test_dispatch_policy_guard_mock_subclass_with_real_transport_fails_closed():
+    """MockDispatchPolicy with no test transport and no ledger fails closed."""
+    class SubclassMockPolicy(MockDispatchPolicy):
+        pass
+
+    policy = SubclassMockPolicy("groq")
+    with pytest.raises(GenerationConfigurationError, match="A configured QuotaLedger is required"):
+        get_generation_service(dispatch_policy=policy, quota_ledger=None, transport=None)
+
+
+def test_dispatch_policy_guard_mock_policy_with_test_transport_succeeds(monkeypatch):
+    """MockDispatchPolicy with an injected test transport succeeds without a ledger."""
+    monkeypatch.setattr(settings, "GENERATION_PROVIDER", "groq")
+    monkeypatch.setattr(settings, "GENERATION_MODEL", "llama-3.3-70b-versatile")
+    monkeypatch.setattr(settings, "GENERATION_API_KEY", type("Secret", (), {"get_secret_value": lambda self: "gsk_test"})())
+
+    policy = MockDispatchPolicy("groq")
+    mock_transport = httpx.MockTransport(lambda req: httpx.Response(200, json={}))
+    svc = get_generation_service(dispatch_policy=policy, quota_ledger=None, transport=mock_transport)
+    assert svc.dispatch_policy is policy
+    assert svc.quota_ledger is None
+
+
+def test_settings_validation_refuses_ollama_provider():
+    """Settings rejects GENERATION_PROVIDER='ollama' with ValueError."""
+    from pydantic import ValidationError
+    from app.core.config import Settings
+
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(GENERATION_PROVIDER="ollama")
+    assert "Local Ollama provider is deprecated and refused" in str(exc_info.value)
+
+
+def test_dependencies_refuses_ollama_generation_provider(monkeypatch):
+    """get_generation_service refuses GENERATION_PROVIDER='ollama'."""
+    monkeypatch.setattr(settings, "GENERATION_PROVIDER", "ollama")
+    with pytest.raises(GenerationConfigurationError, match="Local Ollama provider is deprecated and refused"):
+        get_generation_service()
+
+
+def test_dependencies_refuses_legacy_ollama_provider(monkeypatch):
+    """get_generation_service refuses legacy OLLAMA_PROVIDER='ollama'."""
+    monkeypatch.setattr(settings, "GENERATION_PROVIDER", None)
+    monkeypatch.setattr(settings, "OLLAMA_PROVIDER", "ollama")
+    with pytest.raises(GenerationConfigurationError, match="Local Ollama provider is deprecated and refused"):
+        get_generation_service()

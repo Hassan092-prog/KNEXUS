@@ -2,23 +2,25 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Any
 
+import httpx
 from fastapi import Depends, Request
+from fastapi.params import Depends as DependsSentinel
 
 from app.api.errors import APIProblem
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.demo_identity import build_demo_actor
+from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, MockDispatchPolicy
 from app.core.generation import GenerationService
+from app.core.quota import QuotaLedger
+from app.core.token_counter import TokenCounter, get_default_token_counter
 from app.schemas import ActorContext
 from app.services.generation.errors import GenerationConfigurationError
 from app.services.generation.generator import GenerationService as ConfiguredGenerationService
-from app.core.token_counter import TokenCounter, get_default_token_counter
 from app.services.ingestion.embedding import Embedder, get_default_embedder
 from app.services.retrieval.service import RetrievalService
-from fastapi.params import Depends as DependsSentinel
-from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, MockDispatchPolicy
-from app.core.quota import QuotaLedger
 
 
 _IDENTITY_FIELDS = {
@@ -41,41 +43,6 @@ def get_current_actor(request: Request) -> ActorContext:
     return build_demo_actor()
 
 
-def get_embedder() -> Embedder:
-    return get_default_embedder(
-        provider=settings.EMBEDDING_PROVIDER,
-        model_name=settings.EMBEDDING_MODEL_NAME,
-        revision=settings.EMBEDDING_MODEL_REVISION,
-    )
-
-
-def get_token_counter() -> TokenCounter | None:
-    if settings.EMBEDDING_PROVIDER == "google":
-        return get_default_token_counter(model_name=settings.EMBEDDING_MODEL_NAME)
-    return None
-
-
-def get_retrieval_service(
-    embedder: Embedder = Depends(get_embedder),
-    token_counter: TokenCounter | None = Depends(get_token_counter),
-) -> RetrievalService:
-    """Dependency override point for offline tests; production uses configured embedder and counter."""
-    return RetrievalService(embedder=embedder, token_counter=token_counter)
-
-
-class _UnconfiguredGenerationService:
-    """Delay provider configuration failure until a valid query uses generation."""
-
-    provider = None
-    model = "not_configured"
-
-    async def generate(self, request):
-        raise GenerationConfigurationError(
-            "Set GENERATION_PROVIDER or OLLAMA_PROVIDER explicitly to one of: "
-            "fake, groq, openai, mistral, ollama"
-        )
-
-
 def get_dispatch_policy() -> DispatchPolicy:
     """Return the server-owned dispatch authorization policy (fail-closed by default)."""
     return BlockedLiveDispatchPolicy()
@@ -86,9 +53,78 @@ def get_generation_quota_ledger() -> QuotaLedger | None:
     return None
 
 
+def get_generation_transport() -> httpx.AsyncBaseTransport | None:
+    """Return runtime HTTP transport for generation; None uses default network client."""
+    return None
+
+
+def get_embedder(
+    quota_ledger: QuotaLedger | None = Depends(get_generation_quota_ledger),
+) -> Embedder:
+    resolved_ledger: QuotaLedger | None = (
+        get_generation_quota_ledger()
+        if isinstance(quota_ledger, DependsSentinel)
+        else quota_ledger
+    )
+    return get_default_embedder(
+        provider=settings.EMBEDDING_PROVIDER,
+        model_name=settings.EMBEDDING_MODEL_NAME,
+        revision=settings.EMBEDDING_MODEL_REVISION,
+        quota_ledger=resolved_ledger,
+    )
+
+
+def get_token_counter(
+    quota_ledger: QuotaLedger | None = Depends(get_generation_quota_ledger),
+) -> TokenCounter | None:
+    resolved_ledger: QuotaLedger | None = (
+        get_generation_quota_ledger()
+        if isinstance(quota_ledger, DependsSentinel)
+        else quota_ledger
+    )
+    if settings.EMBEDDING_PROVIDER == "google":
+        return get_default_token_counter(
+            model_name=settings.EMBEDDING_MODEL_NAME,
+            quota_ledger=resolved_ledger,
+        )
+    return None
+
+
+def get_retrieval_service(
+    embedder: Embedder = Depends(get_embedder),
+    token_counter: TokenCounter | None = Depends(get_token_counter),
+) -> RetrievalService:
+    """Dependency override point for offline tests; production uses configured embedder and counter."""
+    resolved_embedder = (
+        get_embedder()
+        if isinstance(embedder, DependsSentinel)
+        else embedder
+    )
+    resolved_token_counter = (
+        get_token_counter()
+        if isinstance(token_counter, DependsSentinel)
+        else token_counter
+    )
+    return RetrievalService(embedder=resolved_embedder, token_counter=resolved_token_counter)
+
+
+class _UnconfiguredGenerationService:
+    """Delay provider configuration failure until a valid query uses generation."""
+
+    provider = None
+    model = "not_configured"
+
+    async def generate(self, request):
+        raise GenerationConfigurationError(
+            "Set GENERATION_PROVIDER explicitly to one of: "
+            "fake, groq, openai, mistral. Local Ollama provider is refused."
+        )
+
+
 def get_generation_service(
     dispatch_policy: DispatchPolicy = Depends(get_dispatch_policy),
     quota_ledger: QuotaLedger | None = Depends(get_generation_quota_ledger),
+    transport: httpx.AsyncBaseTransport | None = Depends(get_generation_transport),
 ) -> GenerationService:
     """Explicit configured provider; missing configuration fails closed at query.
 
@@ -107,28 +143,42 @@ def get_generation_service(
         if isinstance(quota_ledger, DependsSentinel)
         else quota_ledger
     )
+    resolved_transport: httpx.AsyncBaseTransport | None = (
+        get_generation_transport()
+        if isinstance(transport, DependsSentinel)
+        else transport
+    )
 
-    # Guard against live policy without ledger:
-    # Any policy allowing live calls (i.e. not BlockedLiveDispatchPolicy and not MockDispatchPolicy)
-    # strictly requires an explicit, configured QuotaLedger to prevent unmetered live dispatch.
-    if not isinstance(resolved_policy, (BlockedLiveDispatchPolicy, MockDispatchPolicy)):
-        if resolved_ledger is None:
+    # Capability-based guard:
+    # Any policy that can dispatch (can_dispatch=True or not BlockedLiveDispatchPolicy)
+    # strictly requires an explicit QuotaLedger, UNLESS an injected non-network test transport
+    # (transport is not None) is supplied.
+    can_dispatch = getattr(
+        resolved_policy, "can_dispatch", not isinstance(resolved_policy, BlockedLiveDispatchPolicy)
+    )
+    if can_dispatch:
+        if resolved_transport is None and resolved_ledger is None:
             raise GenerationConfigurationError(
-                "A configured QuotaLedger is required when live provider dispatch is authorized."
+                "A configured QuotaLedger is required when provider dispatch is authorized without a mock test transport."
             )
 
     provider = settings.GENERATION_PROVIDER or settings.OLLAMA_PROVIDER
     if not provider:
         return _UnconfiguredGenerationService()
+    provider_clean = provider.strip().lower()
+    if provider_clean == "ollama":
+        raise GenerationConfigurationError(
+            "Local Ollama provider is deprecated and refused. KNEXUS Phase 1 uses hosted providers only."
+        )
     try:
-        if provider in {"openai", "groq", "mistral"}:
+        if provider_clean in {"openai", "groq", "mistral"}:
             api_key = (
                 settings.GENERATION_API_KEY.get_secret_value()
                 if settings.GENERATION_API_KEY is not None
                 else None
             )
             return ConfiguredGenerationService(
-                provider=provider,
+                provider=provider_clean,
                 url=settings.GENERATION_BASE_URL,
                 model=settings.GENERATION_MODEL,
                 timeout=settings.GENERATION_TIMEOUT,
@@ -140,16 +190,20 @@ def get_generation_service(
                 seed=settings.GENERATION_SEED,
                 dispatch_policy=resolved_policy,
                 quota_ledger=resolved_ledger,
+                transport=resolved_transport,
+            )
+        elif provider_clean == "fake":
+            return ConfiguredGenerationService(
+                provider="fake",
+                model="mock",
+                dispatch_policy=resolved_policy,
+                quota_ledger=resolved_ledger,
+                transport=resolved_transport,
             )
         else:
-            return ConfiguredGenerationService(
-                provider=provider,
-                url=settings.OLLAMA_BASE_URL,
-                model=settings.OLLAMA_MODEL,
-                timeout=settings.OLLAMA_TIMEOUT,
-                num_ctx=settings.OLLAMA_NUM_CTX,
-                num_predict=settings.OLLAMA_NUM_PREDICT,
-                max_prompt_chars=settings.GENERATION_MAX_PROMPT_CHARS,
+            raise GenerationConfigurationError(
+                f"Unsupported generation provider {provider!r}. "
+                "Must be one of: fake, groq, openai, mistral"
             )
     except GenerationConfigurationError:
-        return _UnconfiguredGenerationService()
+        raise

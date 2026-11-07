@@ -63,6 +63,18 @@ class Settings(BaseSettings):
     EMBEDDING_MAX_VALIDATION_CALLS_PER_DOC: int = Field(default=50, gt=0)
     EMBEDDING_VALIDATION_DEADLINE_SECONDS: float = Field(default=30.0, gt=0)
 
+    @field_validator("GENERATION_PROVIDER", mode="before")
+    @classmethod
+    def _validate_generation_provider(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        val = str(v).strip().lower()
+        if val == "ollama":
+            raise ValueError(
+                "Local Ollama provider is deprecated and refused. KNEXUS Phase 1 uses hosted providers only."
+            )
+        return val
+
     @field_validator(
         "EMBEDDING_TIMEOUT",
         "EMBEDDING_VALIDATION_DEADLINE_SECONDS",

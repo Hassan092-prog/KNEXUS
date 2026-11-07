@@ -1,3 +1,4 @@
+from pathlib import Path
 """Focused mocked regressions for Google hosted embedding adapter and task wiring."""
 from math import isclose, sqrt
 from uuid import uuid4
@@ -29,10 +30,12 @@ def test_google_embedder_blocked_by_default_before_http():
         embedder.embed_texts(["Unapproved live attempt"])
 
 
-def test_google_embedder_missing_key_fails_closed():
+def test_google_embedder_missing_key_fails_closed(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     embedder = GoogleGenAIEmbedder(
         api_key=None,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="Set EMBEDDING_API_KEY"):
         embedder.embed_texts(["test document text"])
@@ -51,16 +54,19 @@ def test_google_embedder_max_input_tokens():
     assert embedder.get_max_input_tokens() == 2048
 
 
-def test_google_embedder_unsupported_task_type_fails():
+def test_google_embedder_unsupported_task_type_fails(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     embedder = GoogleGenAIEmbedder(
         api_key="test-key",
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="Unsupported Google embedding task_type"):
         embedder.embed_texts(["sample"], task_type="INVALID_TASK")
 
 
-def test_google_embedder_successful_batch_embedding():
+def test_google_embedder_successful_batch_embedding(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     recorded_requests = []
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -80,6 +86,7 @@ def test_google_embedder_successful_batch_embedding():
         task_type="RETRIEVAL_DOCUMENT",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
 
     texts = ["First chunk of text", "Second chunk of text"]
@@ -103,7 +110,8 @@ def test_google_embedder_successful_batch_embedding():
         assert isclose(norm, 1.0, rel_tol=1e-5)
 
 
-def test_google_embedder_rejects_boolean_and_non_numeric_elements():
+def test_google_embedder_rejects_boolean_and_non_numeric_elements(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     def mock_handler_bool(request: httpx.Request) -> httpx.Response:
         vals = [1.0] * 383 + [True]  # Boolean element
         return httpx.Response(200, json={"embeddings": [{"values": vals}]})
@@ -113,12 +121,14 @@ def test_google_embedder_rejects_boolean_and_non_numeric_elements():
         api_key="mock-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="must be a finite number"):
         embedder.embed_texts(["Text with bool element"])
 
 
-def test_google_embedder_rejects_zero_norm_vector():
+def test_google_embedder_rejects_zero_norm_vector(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"embeddings": [{"values": [0.0] * 384}]})
 
@@ -127,12 +137,14 @@ def test_google_embedder_rejects_zero_norm_vector():
         api_key="mock-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="zero or non-finite norm"):
         embedder.embed_texts(["Text with zero vector"])
 
 
-def test_google_embedder_rejects_service_error_payload():
+def test_google_embedder_rejects_service_error_payload(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -144,12 +156,14 @@ def test_google_embedder_rejects_service_error_payload():
         api_key="mock-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="Google embedding service error"):
         embedder.embed_texts(["Text with error payload"])
 
 
-def test_google_embedder_dimension_mismatch_fails():
+def test_google_embedder_dimension_mismatch_fails(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"embeddings": [{"values": [1.0] * 768}]})
 
@@ -159,18 +173,20 @@ def test_google_embedder_dimension_mismatch_fails():
         output_dimensions=384,
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="dimension mismatch"):
         embedder.embed_texts(["Text expecting 384"])
 
 
-def test_google_embedder_maps_http_errors():
+def test_google_embedder_maps_http_errors(tmp_path: Path):
     for status, match_str in [
         (401, "authentication failed"),
         (403, "authentication failed"),
         (429, "rate limit exceeded"),
         (503, "HTTP 503"),
     ]:
+        ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / f"ledger_{status}.json"))
         def mock_handler(request: httpx.Request, code=status) -> httpx.Response:
             return httpx.Response(code, text="Error payload")
 
@@ -179,12 +195,14 @@ def test_google_embedder_maps_http_errors():
             api_key="mock-key",
             transport=transport,
             dispatch_policy=MockDispatchPolicy(),
+            quota_ledger=ledger,
         )
         with pytest.raises(EmbeddingUnavailableError, match=match_str):
             embedder.embed_texts(["Test error mapping"])
 
 
-def test_google_embedder_maps_timeout():
+def test_google_embedder_maps_timeout(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     def mock_handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("Read timed out")
 
@@ -193,6 +211,7 @@ def test_google_embedder_maps_timeout():
         api_key="mock-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(EmbeddingUnavailableError, match="timed out"):
         embedder.embed_texts(["Test timeout"])
@@ -566,3 +585,44 @@ def test_google_embedder_settlement_failure_preserves_reservation_and_raises(tmp
         data = json.load(f)
 
     assert len(data.get("active_reservations", {})) == 1
+
+
+def test_google_embedder_without_ledger_fails_closed_when_dispatch_authorized():
+    """F3: When dispatch is authorized, GoogleGenAIEmbedder without a ledger fails closed before HTTP."""
+    embedder = GoogleGenAIEmbedder(
+        api_key="test-key",
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=None,
+    )
+    with pytest.raises(EmbeddingUnavailableError, match="A configured QuotaLedger is strictly required"):
+        embedder.embed_texts(["any test text"])
+
+
+def test_google_embedder_settles_on_base_exception(tmp_path: Path):
+    """F5: Exactly-once settlement is guaranteed on BaseException (e.g. GeneratorExit)."""
+    state_file = tmp_path / "ledger_base_exc.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+
+    def raise_generator_exit(req):
+        raise GeneratorExit("simulated generator exit / cancellation")
+
+    transport = httpx.MockTransport(raise_generator_exit)
+    embedder = GoogleGenAIEmbedder(
+        api_key="mock-key-123",
+        output_dimensions=3,
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    with pytest.raises(GeneratorExit):
+        embedder.embed_texts(["sample text"])
+
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert len(data.get("active_reservations", {})) == 0
+    settled = data.get("settled_requests", [])
+    assert len(settled) == 1
+    assert settled[0]["success"] is False
+    assert settled[0]["error"] == "GeneratorExit"

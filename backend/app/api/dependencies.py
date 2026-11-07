@@ -14,7 +14,7 @@ from app.core.database import get_db
 from app.core.demo_identity import build_demo_actor
 from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, MockDispatchPolicy
 from app.core.generation import GenerationService
-from app.core.quota import QuotaLedger
+from app.core.quota import QuotaLedger, get_process_quota_ledger
 from app.core.token_counter import TokenCounter, get_default_token_counter
 from app.schemas import ActorContext
 from app.services.generation.errors import GenerationConfigurationError
@@ -49,8 +49,8 @@ def get_dispatch_policy() -> DispatchPolicy:
 
 
 def get_generation_quota_ledger() -> QuotaLedger | None:
-    """Return runtime quota ledger if configured; None allows ledger-free operation."""
-    return None
+    """Return runtime quota ledger. Resolves to the shared process-wide ledger built from Settings."""
+    return get_process_quota_ledger()
 
 
 def get_generation_transport() -> httpx.AsyncBaseTransport | None:
@@ -149,18 +149,17 @@ def get_generation_service(
         else transport
     )
 
-    # Capability-based guard:
-    # Any policy that can dispatch (can_dispatch=True or not BlockedLiveDispatchPolicy)
-    # strictly requires an explicit QuotaLedger, UNLESS an injected non-network test transport
-    # (transport is not None) is supplied.
+    # Capability-based guard (F1):
+    # Any policy where can_dispatch is True strictly requires an explicit QuotaLedger.
+    # No transport exemption exists: injected transports (including AsyncHTTPTransport)
+    # still require an explicit ledger so live or mock dispatch is never unmetered.
     can_dispatch = getattr(
         resolved_policy, "can_dispatch", not isinstance(resolved_policy, BlockedLiveDispatchPolicy)
     )
-    if can_dispatch:
-        if resolved_transport is None and resolved_ledger is None:
-            raise GenerationConfigurationError(
-                "A configured QuotaLedger is required when provider dispatch is authorized without a mock test transport."
-            )
+    if can_dispatch and resolved_ledger is None:
+        raise GenerationConfigurationError(
+            "A configured QuotaLedger is strictly required whenever provider dispatch is authorized."
+        )
 
     provider = settings.GENERATION_PROVIDER or settings.OLLAMA_PROVIDER
     if not provider:

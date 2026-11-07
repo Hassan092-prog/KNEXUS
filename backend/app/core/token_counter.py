@@ -194,6 +194,12 @@ class GoogleGenAITokenCounter:
         # 1. Enforce dispatch policy: fails closed before creating client or HTTP socket
         self.dispatch_policy.check_dispatch("google", target_model)
 
+        can_dispatch = getattr(self.dispatch_policy, "can_dispatch", not isinstance(self.dispatch_policy, BlockedLiveDispatchPolicy))
+        if can_dispatch and self.quota_ledger is None:
+            raise TokenCountingError(
+                "A configured QuotaLedger is strictly required whenever provider dispatch is authorized."
+            )
+
         # 2. Credential validation
         if not self.api_key or not self.api_key.strip():
             raise TokenCountingError(
@@ -226,94 +232,80 @@ class GoogleGenAITokenCounter:
             ]
         }
 
-        try:
-            with httpx.Client(transport=self.transport, timeout=effective_timeout) as client:
-                response = client.post(endpoint, headers=headers, json=payload)
-        except httpx.TimeoutException:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error="timeout",
-                status_code=None,
-                provider_failure_detail="Google countTokens request timed out.",
-            )
-            raise TokenCountingError("Google countTokens request timed out.")
-        except httpx.HTTPError:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error="network_error",
-                status_code=None,
-                provider_failure_detail="Google countTokens network transport error.",
-            )
-            raise TokenCountingError("Google countTokens network transport error.")
-
-        status_code = response.status_code
-        if status_code != 200:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error=f"http_{status_code}",
-                status_code=status_code,
-                provider_failure_detail=f"Google countTokens failed with HTTP status {status_code}.",
-            )
-            raise TokenCountingError(
-                f"Google countTokens failed with HTTP status {status_code}."
-            )
+        settled = False
+        outcome_success = False
+        outcome_error: str | None = None
+        outcome_status: int | None = None
+        outcome_detail: str | None = None
 
         try:
-            data = response.json()
-        except Exception:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error="malformed_json",
-                status_code=status_code,
-                provider_failure_detail="Google countTokens returned malformed JSON payload.",
-            )
-            raise TokenCountingError("Google countTokens returned malformed JSON payload.")
+            try:
+                with httpx.Client(transport=self.transport, timeout=effective_timeout) as client:
+                    response = client.post(endpoint, headers=headers, json=payload)
+            except httpx.TimeoutException:
+                outcome_error = "timeout"
+                outcome_detail = "Google countTokens request timed out."
+                raise TokenCountingError("Google countTokens request timed out.")
+            except httpx.HTTPError:
+                outcome_error = "network_error"
+                outcome_detail = "Google countTokens network transport error."
+                raise TokenCountingError("Google countTokens network transport error.")
 
-        if not isinstance(data, dict) or "totalTokens" not in data:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error="missing_total_tokens",
-                status_code=status_code,
-                provider_failure_detail="Google countTokens response missing 'totalTokens' field.",
-            )
-            raise TokenCountingError("Google countTokens response missing 'totalTokens' field.")
+            status_code = response.status_code
+            outcome_status = status_code
+            if status_code != 200:
+                outcome_error = f"http_{status_code}"
+                outcome_detail = f"Google countTokens failed with HTTP status {status_code}."
+                raise TokenCountingError(
+                    f"Google countTokens failed with HTTP status {status_code}."
+                )
 
-        raw_tokens = data["totalTokens"]
-        if not isinstance(raw_tokens, int) or isinstance(raw_tokens, bool) or raw_tokens < 0:
-            self._settle_attempt(
-                attempt_id,
-                success=False,
-                error="invalid_total_tokens",
-                status_code=status_code,
-                provider_failure_detail="Google countTokens returned non-integer or negative token count.",
-            )
-            raise TokenCountingError(
-                "Google countTokens returned non-integer or negative token count."
-            )
+            try:
+                data = response.json()
+            except Exception:
+                outcome_error = "malformed_json"
+                outcome_detail = "Google countTokens returned malformed JSON payload."
+                raise TokenCountingError("Google countTokens returned malformed JSON payload.")
 
-        # Settle attempt on real ledger. Do not invent completion tokens; leave usage=None (unresolved tokens).
-        self._settle_attempt(
-            attempt_id,
-            success=True,
-            status_code=status_code,
-        )
+            if not isinstance(data, dict) or "totalTokens" not in data:
+                outcome_error = "missing_total_tokens"
+                outcome_detail = "Google countTokens response missing 'totalTokens' field."
+                raise TokenCountingError("Google countTokens response missing 'totalTokens' field.")
 
-        effective_tokens = raw_tokens + self.overhead_tokens
-        res = TokenCountResult(
-            raw_tokens=raw_tokens,
-            overhead_tokens=self.overhead_tokens,
-            effective_tokens=effective_tokens,
-            model_name=target_model,
-            content_hash=content_hash,
-            request_type=request_type,
-        )
-        self._cache[cache_key] = res
-        return res
+            raw_tokens = data["totalTokens"]
+            if not isinstance(raw_tokens, int) or isinstance(raw_tokens, bool) or raw_tokens < 0:
+                outcome_error = "invalid_total_tokens"
+                outcome_detail = "Google countTokens returned non-integer or negative token count."
+                raise TokenCountingError(
+                    "Google countTokens returned non-integer or negative token count."
+                )
+
+            outcome_success = True
+            effective_tokens = raw_tokens + self.overhead_tokens
+            res = TokenCountResult(
+                raw_tokens=raw_tokens,
+                overhead_tokens=self.overhead_tokens,
+                effective_tokens=effective_tokens,
+                model_name=target_model,
+                content_hash=content_hash,
+                request_type=request_type,
+            )
+            self._cache[cache_key] = res
+            return res
+        except BaseException as exc:
+            if not outcome_error and not outcome_success:
+                outcome_error = type(exc).__name__
+            raise
+        finally:
+            if attempt_id is not None and not settled:
+                settled = True
+                self._settle_attempt(
+                    attempt_id,
+                    success=outcome_success,
+                    error=outcome_error,
+                    status_code=outcome_status,
+                    provider_failure_detail=outcome_detail,
+                )
 
 
 class MockTokenCounter:
@@ -410,11 +402,14 @@ def get_default_token_counter(
     dispatch_policy: DispatchPolicy | None = None,
     quota_ledger: QuotaLedger | None = None,
 ) -> TokenCounter:
+    from app.core.quota import get_process_quota_ledger
+
+    active_ledger = quota_ledger if quota_ledger is not None else get_process_quota_ledger()
     return GoogleGenAITokenCounter(
         model_name=model_name,
         overhead_tokens=settings.EMBEDDING_COUNTING_OVERHEAD_TOKENS,
         max_allowed_tokens=settings.EMBEDDING_MAX_INPUT_TOKENS,
         timeout=settings.EMBEDDING_TIMEOUT,
         dispatch_policy=dispatch_policy,
-        quota_ledger=quota_ledger,
+        quota_ledger=active_ledger,
     )

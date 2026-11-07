@@ -229,6 +229,12 @@ class GoogleGenAIEmbedder:
         # 1. Dispatch authorization check fails closed before any HTTP request or client
         self.dispatch_policy.check_dispatch("google", self.model_name)
 
+        can_dispatch = getattr(self.dispatch_policy, "can_dispatch", not isinstance(self.dispatch_policy, BlockedLiveDispatchPolicy))
+        if can_dispatch and self.quota_ledger is None:
+            raise EmbeddingUnavailableError(
+                "A configured QuotaLedger is strictly required whenever provider dispatch is authorized."
+            )
+
         # 2. Credential validation
         if not self.api_key or not self.api_key.strip():
             raise EmbeddingUnavailableError(
@@ -247,124 +253,148 @@ class GoogleGenAIEmbedder:
         if self.quota_ledger:
             attempt_id = self.quota_ledger.reserve_attempt("google", self.model_name)
 
-        endpoint = f"{self.base_url}/v1beta/models/{self.model_name}:batchEmbedContents"
-        headers = {
-            "x-goog-api-key": self.api_key,
-            "Content-Type": "application/json",
-        }
-        for t in texts:
-            if not isinstance(t, str):
-                raise EmbeddingUnavailableError("Input text must be a string")
-            if len(t) > 8000:
-                raise InputTokenLimitExceededError(
-                    f"Input text length ({len(t)}) exceeds maximum safe boundary (8000 chars)"
-                )
+        settled = False
+        outcome_success = False
+        outcome_error: str | None = None
+        outcome_status: int | None = None
+        outcome_usage: dict[str, Any] | None = None
+        outcome_detail: str | None = None
 
-        requests_payload = [
-            {
-                "model": f"models/{self.model_name}",
-                "content": {"parts": [{"text": t}]},
-                "taskType": effective_task,
-                "outputDimensionality": self.output_dimensions,
+        try:
+            endpoint = f"{self.base_url}/v1beta/models/{self.model_name}:batchEmbedContents"
+            headers = {
+                "x-goog-api-key": self.api_key,
+                "Content-Type": "application/json",
             }
-            for t in texts
-        ]
-        body = {"requests": requests_payload}
-
-        try:
-            with httpx.Client(
-                timeout=httpx.Timeout(self.timeout), transport=self.transport
-            ) as client:
-                response = client.post(endpoint, json=body, headers=headers)
-                response.raise_for_status()
-        except httpx.TimeoutException as exc:
-            self._settle_attempt(attempt_id, success=False, error="timeout", provider_failure_detail="Google embedding provider timed out")
-            raise EmbeddingUnavailableError("Google embedding provider timed out") from exc
-        except httpx.HTTPStatusError as exc:
-            status = exc.response.status_code
-            self._settle_attempt(attempt_id, success=False, error=f"http_{status}", status_code=status, provider_failure_detail=f"HTTP {status}")
-            if status == 429:
-                raise EmbeddingUnavailableError("Google embedding rate limit exceeded") from exc
-            if status in {401, 403}:
-                raise EmbeddingUnavailableError(
-                    "Google embedding authentication failed: invalid or unauthorized key"
-                ) from exc
-            raise EmbeddingUnavailableError(
-                f"Google embedding provider returned HTTP {status}"
-            ) from exc
-        except httpx.HTTPError as exc:
-            self._settle_attempt(attempt_id, success=False, error="network_error", provider_failure_detail="Google embedding provider request failed")
-            raise EmbeddingUnavailableError("Google embedding provider request failed") from exc
-
-        try:
-            data = response.json()
-        except Exception as exc:
-            self._settle_attempt(attempt_id, success=False, error="invalid_response")
-            raise EmbeddingUnavailableError(
-                "Google embedding provider returned non-JSON response"
-            ) from exc
-
-        usage_data = data.get("usageMetadata") if isinstance(data, dict) else None
-        parsed_usage: dict[str, Any] | None = None
-        if isinstance(usage_data, dict):
-            p_tok = usage_data.get("promptTokenCount")
-            t_tok = usage_data.get("totalTokenCount")
-            if isinstance(p_tok, int) and isinstance(t_tok, int) and p_tok >= 0 and t_tok >= 0:
-                parsed_usage = {"prompt_tokens": p_tok, "completion_tokens": 0, "total_tokens": t_tok}
-
-        if not isinstance(data, dict):
-            self._settle_attempt(attempt_id, success=False, error="malformed_root", usage=parsed_usage)
-            raise EmbeddingUnavailableError("Google embedding response root must be an object")
-
-        if "error" in data:
-            err_msg = data.get("error", {}).get("message") if isinstance(data.get("error"), dict) else str(data.get("error"))
-            self._settle_attempt(attempt_id, success=False, error="service_error", usage=parsed_usage)
-            raise EmbeddingUnavailableError(f"Google embedding service error: {err_msg}")
-
-        raw_embeddings = data.get("embeddings")
-        if not isinstance(raw_embeddings, list) or len(raw_embeddings) != len(texts):
-            self._settle_attempt(attempt_id, success=False, error="malformed_embeddings", usage=parsed_usage)
-            raise EmbeddingUnavailableError(
-                "Google embedding response missing embeddings array or count mismatch"
-            )
-
-        vectors: list[list[float]] = []
-        for idx, item in enumerate(raw_embeddings):
-            if not isinstance(item, dict) or "values" not in item:
-                self._settle_attempt(attempt_id, success=False, error="malformed_item", usage=parsed_usage)
-                raise EmbeddingUnavailableError(f"Google embedding item {idx} missing 'values'")
-            values = item["values"]
-            if not isinstance(values, list) or len(values) != self.output_dimensions:
-                self._settle_attempt(attempt_id, success=False, error="dimension_mismatch", usage=parsed_usage)
-                raise EmbeddingUnavailableError(
-                    f"Google embedding values dimension mismatch: expected {self.output_dimensions}, "
-                    f"got {len(values) if isinstance(values, list) else None}"
-                )
-            float_vals: list[float] = []
-            for elem in values:
-                # Reject booleans or non-numbers
-                if isinstance(elem, bool) or not isinstance(elem, (int, float)):
-                    self._settle_attempt(attempt_id, success=False, error="invalid_vector_element", usage=parsed_usage)
-                    raise EmbeddingUnavailableError(
-                        f"Google embedding vector element must be a finite number, got {type(elem).__name__}"
+            for t in texts:
+                if not isinstance(t, str):
+                    raise EmbeddingUnavailableError("Input text must be a string")
+                if len(t) > 8000:
+                    raise InputTokenLimitExceededError(
+                        f"Input text length ({len(t)}) exceeds maximum safe boundary (8000 chars)"
                     )
-                fv = float(elem)
-                if not isfinite(fv):
-                    self._settle_attempt(attempt_id, success=False, error="non_finite_vector_value", usage=parsed_usage)
-                    raise EmbeddingUnavailableError("Google embedding values contain non-finite numbers")
-                float_vals.append(fv)
 
-            norm = sqrt(sum(v * v for v in float_vals))
-            if norm <= 0.0 or not isfinite(norm):
-                self._settle_attempt(attempt_id, success=False, error="invalid_vector_norm", usage=parsed_usage)
-                raise EmbeddingUnavailableError("Google embedding vector has zero or non-finite norm")
-            vectors.append([v / norm for v in float_vals])
+            requests_payload = [
+                {
+                    "model": f"models/{self.model_name}",
+                    "content": {"parts": [{"text": t}]},
+                    "taskType": effective_task,
+                    "outputDimensionality": self.output_dimensions,
+                }
+                for t in texts
+            ]
+            body = {"requests": requests_payload}
 
-        self._settle_attempt(attempt_id, success=True, usage=parsed_usage)
-        return vectors
+            try:
+                with httpx.Client(
+                    timeout=httpx.Timeout(self.timeout), transport=self.transport
+                ) as client:
+                    response = client.post(endpoint, json=body, headers=headers)
+                    response.raise_for_status()
+            except httpx.TimeoutException as exc:
+                outcome_error = "timeout"
+                outcome_detail = "Google embedding provider timed out"
+                raise EmbeddingUnavailableError("Google embedding provider timed out") from exc
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                outcome_status = status
+                outcome_error = f"http_{status}"
+                outcome_detail = f"HTTP {status}"
+                if status == 429:
+                    raise EmbeddingUnavailableError("Google embedding rate limit exceeded") from exc
+                if status in {401, 403}:
+                    raise EmbeddingUnavailableError(
+                        "Google embedding authentication failed: invalid or unauthorized key"
+                    ) from exc
+                raise EmbeddingUnavailableError(
+                    f"Google embedding provider returned HTTP {status}"
+                ) from exc
+            except httpx.HTTPError as exc:
+                outcome_error = "network_error"
+                outcome_detail = "Google embedding provider request failed"
+                raise EmbeddingUnavailableError("Google embedding provider request failed") from exc
+
+            try:
+                data = response.json()
+            except Exception as exc:
+                outcome_error = "invalid_response"
+                raise EmbeddingUnavailableError(
+                    "Google embedding provider returned non-JSON response"
+                ) from exc
+
+            usage_data = data.get("usageMetadata") if isinstance(data, dict) else None
+            if isinstance(usage_data, dict):
+                p_tok = usage_data.get("promptTokenCount")
+                t_tok = usage_data.get("totalTokenCount")
+                if isinstance(p_tok, int) and isinstance(t_tok, int) and p_tok >= 0 and t_tok >= 0:
+                    outcome_usage = {"prompt_tokens": p_tok, "completion_tokens": 0, "total_tokens": t_tok}
+
+            if not isinstance(data, dict):
+                outcome_error = "malformed_root"
+                raise EmbeddingUnavailableError("Google embedding response root must be an object")
+
+            if "error" in data:
+                err_msg = data.get("error", {}).get("message") if isinstance(data.get("error"), dict) else str(data.get("error"))
+                outcome_error = "service_error"
+                raise EmbeddingUnavailableError(f"Google embedding service error: {err_msg}")
+
+            raw_embeddings = data.get("embeddings")
+            if not isinstance(raw_embeddings, list) or len(raw_embeddings) != len(texts):
+                outcome_error = "malformed_embeddings"
+                raise EmbeddingUnavailableError(
+                    "Google embedding response missing embeddings array or count mismatch"
+                )
+
+            vectors: list[list[float]] = []
+            for idx, item in enumerate(raw_embeddings):
+                if not isinstance(item, dict) or "values" not in item:
+                    outcome_error = "malformed_item"
+                    raise EmbeddingUnavailableError(f"Google embedding item {idx} missing 'values'")
+                values = item["values"]
+                if not isinstance(values, list) or len(values) != self.output_dimensions:
+                    outcome_error = "dimension_mismatch"
+                    raise EmbeddingUnavailableError(
+                        f"Google embedding values dimension mismatch: expected {self.output_dimensions}, "
+                        f"got {len(values) if isinstance(values, list) else None}"
+                    )
+                float_vals: list[float] = []
+                for elem in values:
+                    if isinstance(elem, bool) or not isinstance(elem, (int, float)):
+                        outcome_error = "invalid_vector_element"
+                        raise EmbeddingUnavailableError(
+                            f"Google embedding vector element must be a finite number, got {type(elem).__name__}"
+                        )
+                    fv = float(elem)
+                    if not isfinite(fv):
+                        outcome_error = "non_finite_vector_value"
+                        raise EmbeddingUnavailableError("Google embedding values contain non-finite numbers")
+                    float_vals.append(fv)
+
+                norm = sqrt(sum(v * v for v in float_vals))
+                if norm <= 0.0 or not isfinite(norm):
+                    outcome_error = "invalid_vector_norm"
+                    raise EmbeddingUnavailableError("Google embedding vector has zero or non-finite norm")
+                vectors.append([v / norm for v in float_vals])
+
+            outcome_success = True
+            return vectors
+        except BaseException as exc:
+            if not outcome_error and not outcome_success:
+                outcome_error = type(exc).__name__
+            raise
+        finally:
+            if attempt_id is not None and not settled:
+                settled = True
+                self._settle_attempt(
+                    attempt_id,
+                    success=outcome_success,
+                    error=outcome_error,
+                    status_code=outcome_status,
+                    usage=outcome_usage,
+                    provider_failure_detail=outcome_detail,
+                )
 
 
-@lru_cache(maxsize=4)
 def get_default_embedder(
     provider: str | None = None,
     model_name: str | None = None,
@@ -375,6 +405,9 @@ def get_default_embedder(
     dispatch_policy: DispatchPolicy | None = None,
     quota_ledger: QuotaLedger | None = None,
 ) -> Embedder:
+    from app.core.quota import get_process_quota_ledger
+
+    active_ledger = quota_ledger if quota_ledger is not None else get_process_quota_ledger()
     raw_provider = provider or settings.EMBEDDING_PROVIDER
     if not raw_provider or not raw_provider.strip():
         raise ValueError("Embedding provider must be explicitly configured")
@@ -400,7 +433,7 @@ def get_default_embedder(
             task_type=settings.EMBEDDING_TASK_TYPE,
             transport=transport,
             dispatch_policy=dispatch_policy,
-            quota_ledger=quota_ledger,
+            quota_ledger=active_ledger,
         )
     if selected_provider == "fake":
         return FakeEmbedder()

@@ -593,62 +593,73 @@ def test_physical_size_guard_boundary():
 # 5. Counter Failures & Secret Sanitization
 # ==============================================================================
 
-def test_google_token_counter_http_error_sanitized():
+def test_google_token_counter_http_error_sanitized(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(500, text="Internal Server Error"))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens failed with HTTP status 500"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_google_token_counter_malformed_json_sanitized():
+def test_google_token_counter_malformed_json_sanitized(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, text="not json {"))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens returned malformed JSON payload"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_google_token_counter_missing_total_tokens_sanitized():
+def test_google_token_counter_missing_total_tokens_sanitized(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"other": 123}))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens response missing 'totalTokens' field"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_google_token_counter_rejects_boolean_total_tokens():
+def test_google_token_counter_rejects_boolean_total_tokens(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"totalTokens": True}))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens returned non-integer or negative token count"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_google_token_counter_rejects_negative_total_tokens():
+def test_google_token_counter_rejects_negative_total_tokens(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"totalTokens": -5}))
     counter = GoogleGenAITokenCounter(
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens returned non-integer or negative token count"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
 
 
-def test_google_token_counter_timeout():
+def test_google_token_counter_timeout(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     def timeout_handler(req):
         raise httpx.TimeoutException("Connection timed out")
 
@@ -657,6 +668,7 @@ def test_google_token_counter_timeout():
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
     with pytest.raises(TokenCountingError, match="Google countTokens request timed out"):
         counter.count_tokens("Test text", model="gemini-embedding-001")
@@ -1102,7 +1114,8 @@ def test_document_and_query_validation_cache_semantics():
     assert res_doc_2 == res_doc
 
 
-def test_counting_failure_no_retries():
+def test_counting_failure_no_retries(tmp_path: Path):
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "ledger.json"))
     counter_calls = 0
 
     def mock_failure(req):
@@ -1115,6 +1128,7 @@ def test_counting_failure_no_retries():
         api_key="test-key",
         transport=transport,
         dispatch_policy=MockDispatchPolicy(),
+        quota_ledger=ledger,
     )
 
     with pytest.raises(TokenCountingError):
@@ -1441,3 +1455,43 @@ def test_asgi_query_route_zero_leaked_credentials_or_bodies():
             assert "AIzaSy" not in text_body
     finally:
         app.dependency_overrides.clear()
+
+
+def test_google_token_counter_without_ledger_fails_closed_when_dispatch_authorized():
+    """F3: When dispatch is authorized, GoogleGenAITokenCounter without a ledger fails closed before HTTP."""
+    counter = GoogleGenAITokenCounter(
+        api_key="test-key",
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=None,
+    )
+    with pytest.raises(TokenCountingError, match="A configured QuotaLedger is strictly required"):
+        counter.count_tokens("any input text")
+
+
+def test_google_token_counter_settles_on_base_exception(tmp_path: Path):
+    """F5: Exactly-once settlement is guaranteed on BaseException (e.g. GeneratorExit)."""
+    state_file = tmp_path / "ledger_base_exc_counter.json"
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=state_file))
+
+    def raise_generator_exit(req):
+        raise GeneratorExit("simulated generator exit / cancellation in counter")
+
+    transport = httpx.MockTransport(raise_generator_exit)
+    counter = GoogleGenAITokenCounter(
+        api_key="mock-key-123",
+        transport=transport,
+        dispatch_policy=MockDispatchPolicy("google"),
+        quota_ledger=ledger,
+    )
+
+    with pytest.raises(GeneratorExit):
+        counter.count_tokens("sample text to count")
+
+    with open(state_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert len(data.get("active_reservations", {})) == 0
+    settled = data.get("settled_requests", [])
+    assert len(settled) == 1
+    assert settled[0]["success"] is False
+    assert settled[0]["error"] == "GeneratorExit"

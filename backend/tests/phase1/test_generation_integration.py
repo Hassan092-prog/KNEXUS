@@ -371,7 +371,7 @@ async def test_ledger_optionality_loophole_and_hassan_guard():
         def check_dispatch(self, provider: str, model: str) -> None:
             return None  # authorizes live call
 
-    with pytest.raises(GenerationConfigurationError, match="A configured QuotaLedger is required"):
+    with pytest.raises(GenerationConfigurationError, match="A configured QuotaLedger is strictly required"):
         get_generation_service(dispatch_policy=DummyLivePolicy(), quota_ledger=None)
 
 
@@ -549,7 +549,7 @@ def test_get_generation_service_calling_styles_direct_and_fastapi_override(monke
     # 1. Direct call with no arguments: resolves default BlockedLiveDispatchPolicy
     svc_default = get_generation_service()
     assert isinstance(svc_default.dispatch_policy, BlockedLiveDispatchPolicy)
-    assert svc_default.quota_ledger is None
+    assert svc_default.quota_ledger is get_generation_quota_ledger()
 
     # 2. Direct call with explicit keyword arguments
     custom_policy = MockDispatchPolicy("groq")
@@ -903,27 +903,85 @@ def test_query_missing_evidence_abstains_without_generation_call():
 # Task 3 & Task 4: Capability dispatch guard and Ollama refusal tests
 # ==============================================================================
 
-def test_dispatch_policy_guard_mock_subclass_with_real_transport_fails_closed():
-    """MockDispatchPolicy with no test transport and no ledger fails closed."""
+def test_dispatch_policy_guard_mock_subclass_with_real_async_transport_fails_closed():
+    """F1: A MockDispatchPolicy subclass with real AsyncHTTPTransport and no ledger fails closed before any socket opens."""
     class SubclassMockPolicy(MockDispatchPolicy):
         pass
 
     policy = SubclassMockPolicy("groq")
-    with pytest.raises(GenerationConfigurationError, match="A configured QuotaLedger is required"):
-        get_generation_service(dispatch_policy=policy, quota_ledger=None, transport=None)
+    real_transport = httpx.AsyncHTTPTransport()
+    with pytest.raises(GenerationConfigurationError, match="A configured QuotaLedger is strictly required"):
+        get_generation_service(dispatch_policy=policy, quota_ledger=None, transport=real_transport)
 
 
-def test_dispatch_policy_guard_mock_policy_with_test_transport_succeeds(monkeypatch):
-    """MockDispatchPolicy with an injected test transport succeeds without a ledger."""
+def test_dispatch_policy_guard_mock_policy_requires_ledger_even_with_test_transport(monkeypatch, tmp_path: Path):
+    """F1: No transport exemption exists: mock policy with test transport still requires an explicit ledger."""
     monkeypatch.setattr(settings, "GENERATION_PROVIDER", "groq")
     monkeypatch.setattr(settings, "GENERATION_MODEL", "llama-3.3-70b-versatile")
     monkeypatch.setattr(settings, "GENERATION_API_KEY", type("Secret", (), {"get_secret_value": lambda self: "gsk_test"})())
 
     policy = MockDispatchPolicy("groq")
     mock_transport = httpx.MockTransport(lambda req: httpx.Response(200, json={}))
-    svc = get_generation_service(dispatch_policy=policy, quota_ledger=None, transport=mock_transport)
+
+    # Omitting the ledger must fail closed even with an injected mock transport
+    with pytest.raises(GenerationConfigurationError, match="A configured QuotaLedger is strictly required"):
+        get_generation_service(dispatch_policy=policy, quota_ledger=None, transport=mock_transport)
+
+    # Supplying a ledger in a temporary path succeeds
+    test_ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "test_ledger.json"))
+    svc = get_generation_service(dispatch_policy=policy, quota_ledger=test_ledger, transport=mock_transport)
     assert svc.dispatch_policy is policy
-    assert svc.quota_ledger is None
+    assert svc.quota_ledger is test_ledger
+
+
+def test_all_three_dependencies_share_same_process_ledger(monkeypatch):
+    monkeypatch.setattr(settings, "EMBEDDING_PROVIDER", "google")
+    monkeypatch.setattr(settings, "EMBEDDING_API_KEY", type("Secret", (), {"get_secret_value": lambda self: "fake_key"})())
+    """F2: Generation, embedding, and token counter all resolve to the same shared QuotaLedger."""
+    from app.api.dependencies import get_embedder, get_token_counter, get_generation_quota_ledger
+
+    ledger_gen = get_generation_quota_ledger()
+    assert ledger_gen is not None
+    assert isinstance(ledger_gen, QuotaLedger)
+
+    # In Settings, QUOTA_STATE_PATH is the persistent gitignored storage path
+    assert ledger_gen.config.state_path == settings.QUOTA_STATE_PATH
+    assert str(settings.QUOTA_STATE_PATH).endswith(".knexus-private-storage/quota_state.json")
+
+    # Embedder and token counter dependencies resolve to this exact same ledger instance
+    embedder = get_embedder()
+    assert embedder.quota_ledger is ledger_gen
+
+    counter = get_token_counter()
+    assert counter is not None
+    assert counter.quota_ledger is ledger_gen
+
+
+def test_dependency_overrides_replace_shared_ledger_across_all_dependencies(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(settings, "EMBEDDING_PROVIDER", "google")
+    monkeypatch.setattr(settings, "EMBEDDING_API_KEY", type("Secret", (), {"get_secret_value": lambda self: "fake_key"})())
+    """F2: FastAPI dependency overrides cleanly replace the ledger across all dependencies."""
+    from app.api.dependencies import get_embedder, get_token_counter, get_generation_quota_ledger
+
+    custom_state = tmp_path / "custom_override_ledger.json"
+    custom_ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=custom_state))
+
+    app.dependency_overrides[get_generation_quota_ledger] = lambda: custom_ledger
+    try:
+        embedder = get_embedder(quota_ledger=custom_ledger)
+        assert embedder.quota_ledger is custom_ledger
+
+        counter = get_token_counter(quota_ledger=custom_ledger)
+        assert counter.quota_ledger is custom_ledger
+
+        monkeypatch.setattr(settings, "GENERATION_PROVIDER", "groq")
+        monkeypatch.setattr(settings, "GENERATION_MODEL", "llama-3.3-70b-versatile")
+        monkeypatch.setattr(settings, "GENERATION_API_KEY", type("Secret", (), {"get_secret_value": lambda self: "gsk_test"})())
+        policy = MockDispatchPolicy("groq")
+        svc = get_generation_service(dispatch_policy=policy, quota_ledger=custom_ledger)
+        assert svc.quota_ledger is custom_ledger
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_settings_validation_refuses_ollama_provider():

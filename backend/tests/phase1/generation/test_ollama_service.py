@@ -45,12 +45,47 @@ def abstention_json(reason="The supplied evidence does not answer the question."
     ).model_dump_json()
 
 
+from app.services.generation.errors import GenerationConfigurationError
+from app.services.generation.ollama_provider import ollama_generate
+from app.schemas import validate_generation_result
+
+class OllamaDirectAdapter:
+    def __init__(self, **kwargs):
+        self.url = kwargs.get("url", "http://localhost:11434")
+        self.model = kwargs.get("model", "llama3.2:3b")
+        self.timeout = float(kwargs.get("timeout", 30.0))
+        self.num_ctx = int(kwargs.get("num_ctx", 8192))
+        self.num_predict = int(kwargs.get("num_predict", 512))
+        self.seed = kwargs.get("seed")
+        self.transport = kwargs.get("transport")
+        self.max_prompt_chars = int(kwargs.get("max_prompt_chars", 16000))
+
+    def _build_prompt(self, request: GenerationRequest):
+        from app.services.generation.generator import _SYSTEM_PROMPT, _USER_INSTRUCTIONS
+        evidence = [{"citation_id": item.citation_id, "document_title": item.document_title, "content": item.content} for item in request.evidence]
+        prompt = json.dumps({"question": request.question, "evidence": evidence}, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n" + _USER_INSTRUCTIONS
+        if len(_SYSTEM_PROMPT) + len(prompt) > self.max_prompt_chars:
+            raise ContextBudgetExceededError("Complete question and evidence exceed GENERATION_MAX_PROMPT_CHARS")
+        return _SYSTEM_PROMPT, prompt
+
+    async def generate(self, request: GenerationRequest) -> GenerationResult:
+        sys_p, p = self._build_prompt(request)
+        res = await ollama_generate(
+            request, system_prompt=sys_p, prompt=p, url=self.url, model=self.model,
+            timeout=self.timeout, num_ctx=self.num_ctx, num_predict=self.num_predict,
+            seed=self.seed, transport=self.transport
+        )
+        return validate_generation_result(res, request)
+
+
+def test_generation_service_refuses_ollama_provider():
+    with pytest.raises(GenerationConfigurationError, match="Local Ollama provider is deprecated and refused"):
+        GenerationService(provider="ollama")
+
 def service_for(response_text, **kwargs):
     def handler(request):
         return httpx.Response(200, json={"response": response_text}, request=request)
-    return GenerationService(
-        provider="ollama", transport=httpx.MockTransport(handler), **kwargs
-    )
+    return OllamaDirectAdapter(transport=httpx.MockTransport(handler), **kwargs)
 
 
 @pytest.mark.asyncio
@@ -77,8 +112,7 @@ async def test_http_body_contains_question_evidence_and_config(monkeypatch):
             200, json={"response": answer_json((1,), "21 days [1].")}, request=req
         )
 
-    service = GenerationService(
-        provider="ollama", url="http://ollama.example:11435",
+    service = OllamaDirectAdapter( url="http://ollama.example:11435",
         model="llama3.2:3b-test", timeout=7.5, num_ctx=4096, num_predict=123,
         transport=httpx.MockTransport(handler),
     )
@@ -113,7 +147,7 @@ async def test_evidence_is_not_removed_or_request_mutated():
         captured["prompt"] = json.loads(req.content)["prompt"]
         return httpx.Response(200, json={"response": answer_json()}, request=req)
 
-    service = GenerationService(provider="ollama", transport=httpx.MockTransport(handler))
+    service = OllamaDirectAdapter( transport=httpx.MockTransport(handler))
     await service.generate(request)
     assert '"content":"User input: source label."' in captured["prompt"]
     assert request == original
@@ -133,8 +167,7 @@ async def test_unrelated_numbers_do_not_trigger_conflict_heuristic():
             200, json={"response": answer_json((1,), "21 days [1].")}, request=req
         )
 
-    result = await GenerationService(
-        provider="ollama", transport=httpx.MockTransport(handler)
+    result = await OllamaDirectAdapter( transport=httpx.MockTransport(handler)
     ).generate(make_request(evidence=evidence))
     assert called and result.cited_ids == [1]
 
@@ -143,7 +176,7 @@ async def test_unrelated_numbers_do_not_trigger_conflict_heuristic():
 async def test_timeout_is_typed_failure_not_abstention():
     def handler(request):
         raise httpx.ReadTimeout("synthetic timeout", request=request)
-    service = GenerationService(provider="ollama", transport=httpx.MockTransport(handler))
+    service = OllamaDirectAdapter( transport=httpx.MockTransport(handler))
     with pytest.raises(ProviderTimeoutError):
         await service.generate(make_request())
 
@@ -152,7 +185,7 @@ async def test_timeout_is_typed_failure_not_abstention():
 async def test_unavailable_provider_is_typed_failure():
     def handler(request):
         raise httpx.ConnectError("synthetic connection failure", request=request)
-    service = GenerationService(provider="ollama", transport=httpx.MockTransport(handler))
+    service = OllamaDirectAdapter( transport=httpx.MockTransport(handler))
     with pytest.raises(ProviderUnavailableError):
         await service.generate(make_request())
 
@@ -161,7 +194,7 @@ async def test_unavailable_provider_is_typed_failure():
 async def test_http_error_status_is_typed_unavailable_failure():
     def handler(request):
         return httpx.Response(500, request=request)
-    service = GenerationService(provider="ollama", transport=httpx.MockTransport(handler))
+    service = OllamaDirectAdapter( transport=httpx.MockTransport(handler))
     with pytest.raises(ProviderUnavailableError):
         await service.generate(make_request())
 
@@ -176,8 +209,7 @@ async def test_seed_reaches_the_provider_options():
             200, json={"response": answer_json()}, request=req
         )
 
-    service = GenerationService(
-        provider="ollama", seed=42, transport=httpx.MockTransport(handler)
+    service = OllamaDirectAdapter( seed=42, transport=httpx.MockTransport(handler)
     )
     await service.generate(make_request())
     assert captured["payload"]["options"]["seed"] == 42
@@ -208,8 +240,7 @@ async def test_context_guard_fails_without_truncation_or_provider_call():
     def handler(request):
         called.append(True)
         return httpx.Response(200, json={"response": answer_json()}, request=request)
-    service = GenerationService(
-        provider="ollama", max_prompt_chars=32,
+    service = OllamaDirectAdapter( max_prompt_chars=32,
         transport=httpx.MockTransport(handler),
     )
     with pytest.raises(ContextBudgetExceededError):

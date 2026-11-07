@@ -86,6 +86,10 @@ class GenerationService:
                 + ", ".join(sorted(_ALL_PROVIDERS))
             )
         self.provider = selected.strip().lower()
+        if self.provider == "ollama":
+            raise GenerationConfigurationError(
+                "Local Ollama provider is deprecated and refused. KNEXUS Phase 1 uses hosted providers only."
+            )
         if self.provider not in _ALL_PROVIDERS:
             raise GenerationConfigurationError(
                 "OLLAMA_PROVIDER must be one of: "
@@ -128,6 +132,13 @@ class GenerationService:
             # Composed shared ledger lifecycle (published QuotaLedger
             # interface); None keeps behavior ledger-free, e.g. in unit tests.
             self.quota_ledger: QuotaLedger | None = quota_ledger
+            can_dispatch = getattr(
+                self.dispatch_policy, "can_dispatch", not isinstance(self.dispatch_policy, BlockedLiveDispatchPolicy)
+            )
+            if can_dispatch and self.quota_ledger is None:
+                raise GenerationConfigurationError(
+                    "A configured QuotaLedger is strictly required whenever provider dispatch is authorized."
+                )
             if reasoning_effort is not None and reasoning_effort not in {
                 "low", "medium", "high",
             }:

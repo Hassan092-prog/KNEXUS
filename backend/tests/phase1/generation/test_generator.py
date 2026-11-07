@@ -1,3 +1,6 @@
+from pathlib import Path
+from app.core.dispatch_policy import MockDispatchPolicy
+from app.core.quota import QuotaConfig, QuotaLedger
 import asyncio
 
 import httpx
@@ -71,15 +74,18 @@ def test_timeout_configuration_must_be_finite_and_positive(timeout):
 
 
 @pytest.mark.asyncio
-async def test_overall_deadline_covers_provider_work():
+async def test_overall_deadline_covers_provider_work(tmp_path):
     started = asyncio.Event()
 
     async def handler(request):
         started.set()
         await asyncio.Event().wait()
 
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "q1.json", min_request_interval_seconds=0.0))
     service = GenerationService(
-        provider="ollama", timeout=0.02, transport=httpx.MockTransport(handler)
+        provider="groq", model="groq-test-model", api_key="mock-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+        timeout=0.02, transport=httpx.MockTransport(handler),
     )
     with pytest.raises(ProviderTimeoutError, match="overall timeout"):
         await service.generate(make_request())
@@ -87,15 +93,18 @@ async def test_overall_deadline_covers_provider_work():
 
 
 @pytest.mark.asyncio
-async def test_external_cancellation_is_not_converted_to_provider_timeout():
+async def test_external_cancellation_is_not_converted_to_provider_timeout(tmp_path):
     started = asyncio.Event()
 
     async def handler(request):
         started.set()
         await asyncio.Event().wait()
 
+    ledger = QuotaLedger(QuotaConfig(enabled=True, state_path=tmp_path / "q2.json", min_request_interval_seconds=0.0))
     service = GenerationService(
-        provider="ollama", timeout=5.0, transport=httpx.MockTransport(handler)
+        provider="groq", model="groq-test-model", api_key="mock-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+        timeout=5.0, transport=httpx.MockTransport(handler),
     )
     task = asyncio.create_task(service.generate(make_request()))
     await started.wait()
@@ -120,7 +129,7 @@ async def test_seed_is_optional_and_accepted_when_integer():
 @pytest.mark.asyncio
 async def test_prompt_assembly_is_deterministic():
     request = make_request()
-    service = GenerationService(provider="ollama")
+    service = GenerationService(provider="fake")
     assert service._build_prompt(request) == service._build_prompt(request)
     system_prompt, prompt = service._build_prompt(request)
     assert '"question":"How many annual leave days are allowed?"' in prompt
@@ -133,3 +142,7 @@ def test_prompt_requires_inline_citation_markers():
     assert '"cited_ids": [1]' in _SYSTEM_PROMPT
     assert '"abstained": false' in _SYSTEM_PROMPT and '"abstained": true' in _SYSTEM_PROMPT
     assert _GENERATION_PROMPT_VERSION.startswith("v")
+
+def test_ollama_provider_is_deprecated_and_refused():
+    with pytest.raises(GenerationConfigurationError, match="Local Ollama provider is deprecated and refused"):
+        GenerationService(provider="ollama")

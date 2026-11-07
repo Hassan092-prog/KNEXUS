@@ -8,7 +8,7 @@ Employees ask questions over accessible documents; managers later review action 
 
 Phase 1 delivers a local synthetic PDF/DOCX upload-to-answer flow with a server-owned demo actor. It is not authenticated multi-tenant deployment. Phase 2 adds real identity, governance and audit before sensitive/shared data is accepted.
 
-The target remains hosted generation and embeddings. PR #13 has merged the hosted generation transport; draft PR #15 supplies the unmerged evaluation harness. PR #16 merged the offline hosted embedding dispatch foundation, and PR #19 merged hosted input token validation and candidate splitting. API wiring and live acceptance remain pending, and historical database vectors still use local MiniLM. No provider account access, paid expenditure or hosted embedding dimension is established by these docs. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior.
+For the Phase 1 demo, the architecture uses local MiniLM embeddings (sentence-transformers/all-MiniLM-L6-v2, 384 dimensions) paired with Groq hosted generation (llama-3.3-70b-versatile). The Google hosted embedder is implemented and verified offline in the codebase but kept disabled (EMBEDDING_PROVIDER="local") for the demo to preserve existing 384-d vectors and zero-cost operation. PR #13 merged hosted transport; PR #15 supplies the generation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged hosted input validation; PR #21 wires generation into backend dependencies. No local LLM hosting, downloads or model reverse tunnels are required.
 
 ## Functional requirements
 

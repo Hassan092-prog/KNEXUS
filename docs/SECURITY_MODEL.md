@@ -10,7 +10,7 @@ Provider schemas do not replace canonical local validation or permission checks.
 
 ## Hosted API boundary
 
-Hosted embedding sends document text off-host; hosted generation sends already-authorized evidence. Review provider retention/training, region, acceptable data and cost before live calls; start with synthetic material. See [TRD](TRD.md).
+For the Phase 1 demo, embeddings are computed locally using MiniLM (no document text is sent off-host for embedding; the Google hosted embedder is present in the codebase but kept off). Hosted generation sends only retrieved, authorized evidence to the Groq API. Review provider retention/training, region, acceptable data and cost before live calls; start with synthetic material. See [TRD](TRD.md).
 
 Credentials stay on the backend, never in browser bundles, fixtures, Git, chat, logs or public errors. Do not copy secrets/data stores from the reference project. Preserve permission filtering, bounded deadlines/cancellation and typed failures; never silently fall back to local inference or another model.
 

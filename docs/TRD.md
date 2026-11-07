@@ -2,11 +2,11 @@
 
 Use [project status](PROJECT_STATUS.md) for delivered behavior. This document records implementation decisions and standards; it does not duplicate setup commands, schemas or API payloads.
 
-## Current integration decision record (6 November 2026)
+## Current integration decision record (7 November 2026)
 
-The hosted transport is merged through PR #13; offline hosted embedding dispatch protection is merged through PR #16; hosted input token validation is merged through PR #19. The evaluation harness remains draft PR #15 at e2658b6. Backend API construction still uses legacy OLLAMA_* Settings and needs coordinated hosted wiring. Embeddings remain local MiniLM with vector(384) in the database; no hosted vector migration has been applied.
+The Phase 1 demo architecture pairs local MiniLM embeddings (sentence-transformers/all-MiniLM-L6-v2, 384 dimensions) with Groq hosted generation (llama-3.3-70b-versatile). The Google hosted embedder (gemini-embedding-001, 	ext-embedding-004) is implemented and verified offline in ackend/app/services/ingestion/google_embedder.py but kept disabled (EMBEDDING_PROVIDER="local") for the demo to preserve existing 384-d vectors and zero-cost operation.
 
-The latest user direction is free-first: no paid expenditure or billing activation is authorized. Groq openai/gpt-oss-120b is the proposed generation model. OpenAI text-embedding-3-small at 1536 dimensions and a shared $5 campaign were earlier proposals, not a live grant. Google's free hosted embeddings were subsequently suggested as a candidate, not selected. Final provider/model/dimension, account eligibility, privacy and quotas remain decisions. No automatic retries or model/provider fallback.
+Project direction remains free-first:  expenditure, no billing upgrades, and no automatic model/provider fallback. Groq llama-3.3-70b-versatile is the confirmed generation model. PR #13 merged hosted transport; PR #15 supplies the generation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged input token validation and candidate splitting; PR #21 wires generation into backend dependencies. Local Ollama LLM hosting is deprecated and refused.
 
 Hassan's CLI proposal described a parallel hosted index, immutable configuration profile and explicit resumable re-embedding while preserving legacy vectors. That is an unimplemented preservation design, not approval to alter data. No plain ALTER converts 384-dimensional vectors into another model's space. No API calls belong in migrations; any destructive downgrade or data removal requires explicit approval.
 
@@ -20,7 +20,7 @@ Any provider schema projection must be deliberate and provider-aware: retain nam
 
 ## Approved hosted-API and reuse decision (2 November 2026)
 
-This decision supersedes laptop Ollama and local MiniLM hosting. Both generation and embedding inference must use hosted APIs. Offline fakes remain explicit test tools, never silent fallbacks.
+For the Phase 1 demo, generation uses Groq hosted API (llama-3.3-70b-versatile) while embeddings use local MiniLM (sentence-transformers/all-MiniLM-L6-v2, 384 dimensions). The Google hosted embedder is implemented and verified offline in ackend/app/services/ingestion/google_embedder.py but kept disabled (EMBEDDING_PROVIDER="local") for the Phase 1 demo to preserve existing 384-d vectors and zero-cost operation. Laptop Ollama LLM hosting is deprecated and refused.
 
 Selectively adapt relevant code/features from [enterprise-knowledge-bot](https://github.com/Hassan092-prog/enterprise-knowledge-bot/tree/e67771a15f49a79443a365fbce85b8559ef43fb7), pinned to `e67771a15f49a79443a365fbce85b8559ef43fb7`. Inspect that revision before reuse; do not silently substitute newer source. Preserve applicable copyright/licence notices and accurate authorship. Verify actual adaptation through code review; this decision is not proof that migration is complete.
 
@@ -42,13 +42,13 @@ Preserve canonical GenerationRequest, EvidenceChunk, GenerationResult, H01 run_g
 |---|---|
 | Backend | Python 3.12, FastAPI, Pydantic v2, async SQLAlchemy 2, asyncpg |
 | Persistence | PostgreSQL 16, pgvector, Alembic; one database engine |
-| Embeddings | Offline dispatch foundation (PR #16) and input validation (PR #19) merged; live token correspondence, account eligibility, and corpus migration remain pending |
+| Embeddings | Local MiniLM (sentence-transformers/all-MiniLM-L6-v2, 384-d) for demo; Google embedder present in codebase but off |
 | Chunking | Source-preserving candidate proposal with bounded exact token validation and splitting merged (PR #19) |
-| Generation | Hosted transport merged (PR #13), H01 preserved; API wiring/accounting and draft harness integration pending |
-| Model host | Hosted APIs; no laptop/server inference or model tunnel |
-| Frontend | React + TypeScript; Zaid must confirm Vite/Next.js before scaffolding |
+| Generation | Groq hosted provider (llama-3.3-70b-versatile), offline fake provider; PR #13 transport, PR #21 wiring |
+| Model host | Hosted Groq generation; local MiniLM embeddings for demo; no laptop LLM inference or model tunnel |
+| Frontend | Vite + React 19 UI in rontend/app merged on origin/main (PR #23) |
 | Ingestion | Persisted jobs with explicit interruption/retry behavior; no durable worker implemented |
-| CI | No committed workflow or attached PR checks; do not claim automation |
+| CI | GitHub Actions workflow committed (.github/workflows/ci.yml) running backend and frontend checks |
 
 [backend/requirements.txt](../backend/requirements.txt) is the dependency source of truth. Its minimum bounds are not a lockfile. Installed auth/parsing/ML packages do not implement features. Do not add unused provider SDKs, ChromaDB, Redis/Celery or a second storage engine by default.
 

@@ -1059,31 +1059,148 @@ def test_hosted_harness_entrypoint_refuses_without_quota_campaign_id(tmp_path: P
 
     # 2. Configure environment with Groq settings and authorized dispatch
     monkeypatch.setenv("GENERATION_API_KEY", "gsk_test_mock_key")
-    monkeypatch.setenv("GENERATION_MODEL", "llama-3.3-70b-versatile")
+    monkeypatch.setenv("GENERATION_MODEL", "openai/gpt-oss-120b")
     monkeypatch.setattr(settings, "GENERATION_PROVIDER", "groq")
-    monkeypatch.setattr(settings, "GENERATION_MODEL", "llama-3.3-70b-versatile")
-    monkeypatch.setattr(settings, "GENERATION_API_KEY", type("Secret", (), {"get_secret_value": lambda self: "gsk_test_mock_key"})())
+    monkeypatch.setattr(settings, "GENERATION_MODEL", "openai/gpt-oss-120b")
+    monkeypatch.setattr(
+        settings,
+        "GENERATION_API_KEY",
+        type("Secret", (), {"get_secret_value": lambda self: "gsk_test_mock_key"})(),
+    )
+    quota_state_path = tmp_path / "q_harness_refuse.json"
+    monkeypatch.setenv("QUOTA_STATE_PATH", str(quota_state_path))
+    monkeypatch.setattr(settings, "QUOTA_STATE_PATH", quota_state_path)
+
     # Crucially: QUOTA_CAMPAIGN_ID is missing / empty
     monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", "")
     monkeypatch.delenv("QUOTA_CAMPAIGN_ID", raising=False)
 
     policy = MockDispatchPolicy("groq")
-    ledger_without_campaign = QuotaLedger(QuotaConfig(enabled=True, campaign_id="", state_path=tmp_path / "q_harness_refuse.json"))
+    ledger_without_campaign = QuotaLedger(
+        QuotaConfig(enabled=True, campaign_id="", state_path=quota_state_path)
+    )
 
     def authorized_build(*args, **kwargs):
-        return get_generation_service(dispatch_policy=policy, quota_ledger=ledger_without_campaign)
+        return get_generation_service(
+            dispatch_policy=policy,
+            quota_ledger=ledger_without_campaign,
+        )
 
     monkeypatch.setattr(harness_module, "build_service", authorized_build)
 
     output_path = tmp_path / "never_created.jsonl"
+    argv = [
+        "--run-live",
+        "--provider", "groq",
+        "--model", "openai/gpt-oss-120b",
+        "--output", str(output_path),
+    ]
+
     with pytest.raises((SystemExit, QuotaCampaignError, GenerationConfigurationError)) as exc_info:
-        harness_module.main(["--run-live", "--output", str(output_path)])
+        harness_module.main(argv)
 
     if isinstance(exc_info.value, SystemExit):
-        assert exc_info.value.code != 0
+        assert exc_info.value.code != 2, "Exit code must not be argparse code 2 (syntax/argument failure)"
+        assert "QUOTA_CAMPAIGN_ID" in str(exc_info.value)
     else:
-        assert "QUOTA_CAMPAIGN_ID is required and must be non-empty" in str(exc_info.value)
+        assert "QUOTA_CAMPAIGN_ID" in str(exc_info.value)
 
     assert not client_constructed, "httpx.AsyncClient must not be constructed"
     assert not socket_constructed, "socket.socket must not be constructed"
     assert not output_path.exists(), "Output file must not be created"
+
+
+def test_hosted_harness_entrypoint_control_case_with_valid_campaign_reaches_mock_transport(tmp_path: Path, monkeypatch):
+    """Control case: with a valid campaign ID, the identical harness setup reaches the mock transport.
+
+    This proves the refusal test can fail and validates the end-to-end entrypoint dispatch path.
+    """
+    import tests.phase1.generation.hosted_harness as harness_module
+
+    campaign_id = "test-control-campaign-20261107"
+    quota_state_path = tmp_path / "q_harness_control.json"
+
+    monkeypatch.setenv("GENERATION_API_KEY", "gsk_test_control_key")
+    monkeypatch.setenv("GENERATION_MODEL", "openai/gpt-oss-120b")
+    monkeypatch.setattr(settings, "GENERATION_PROVIDER", "groq")
+    monkeypatch.setattr(settings, "GENERATION_MODEL", "openai/gpt-oss-120b")
+    monkeypatch.setattr(
+        settings,
+        "GENERATION_API_KEY",
+        type("Secret", (), {"get_secret_value": lambda self: "gsk_test_control_key"})(),
+    )
+    monkeypatch.setenv("QUOTA_STATE_PATH", str(quota_state_path))
+    monkeypatch.setattr(settings, "QUOTA_STATE_PATH", quota_state_path)
+    monkeypatch.setenv("QUOTA_CAMPAIGN_ID", campaign_id)
+    monkeypatch.setattr(settings, "QUOTA_CAMPAIGN_ID", campaign_id)
+
+    policy = MockDispatchPolicy("groq")
+    ledger_with_campaign = QuotaLedger(
+        QuotaConfig(enabled=True, campaign_id=campaign_id, state_path=quota_state_path)
+    )
+
+    transport_calls = []
+
+    def mock_handler(req: httpx.Request) -> httpx.Response:
+        transport_calls.append(req)
+        req_data = json.loads(req.content.decode("utf-8"))
+        messages = req_data.get("messages", [])
+        user_content = messages[-1].get("content", "") if messages else ""
+
+        if "leave" in user_content.lower():
+            answer_obj = {
+                "answer": "Employees receive 21 annual leave days [1].",
+                "cited_ids": [1],
+                "abstained": False,
+                "abstention_reason": None,
+            }
+        elif "log" in user_content.lower():
+            answer_obj = {
+                "answer": "Company policy says employees must log their work hours [6].",
+                "cited_ids": [6],
+                "abstained": False,
+                "abstention_reason": None,
+            }
+        else:
+            answer_obj = {
+                "answer": None,
+                "cited_ids": [],
+                "abstained": True,
+                "abstention_reason": "Unsupported question or conflicting evidence.",
+            }
+
+        body = {
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps(answer_obj),
+                }
+            }],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 18, "total_tokens": 30},
+        }
+        return httpx.Response(200, json=body, request=req)
+
+    mock_transport = httpx.MockTransport(mock_handler)
+
+    def control_authorized_build(*args, **kwargs):
+        return get_generation_service(
+            dispatch_policy=policy,
+            quota_ledger=ledger_with_campaign,
+            transport=mock_transport,
+        )
+
+    monkeypatch.setattr(harness_module, "build_service", control_authorized_build)
+
+    output_path = tmp_path / "control_harness_results.jsonl"
+    argv = [
+        "--run-live",
+        "--provider", "groq",
+        "--model", "openai/gpt-oss-120b",
+        "--output", str(output_path),
+        "--cases", "development",
+    ]
+
+    exit_code = harness_module.main(argv)
+    assert exit_code == 0
+    assert len(transport_calls) > 0, "Mock transport must be reached when valid QUOTA_CAMPAIGN_ID is provided"
+    assert output_path.exists(), "Output results file must be written"

@@ -31,6 +31,7 @@ dispatch/quota foundation (`app.core.dispatch_policy`,
   Settlement failures are never swallowed.
 """
 import asyncio
+import time
 from typing import Any
 
 import httpx
@@ -131,6 +132,41 @@ def strict_generation_schema() -> dict[str, object]:
         }
     return _STRICT_SCHEMA_CACHE
 
+
+
+_last_generation_dispatch_time: float = 0.0
+_generation_pacing_lock = asyncio.Lock()
+
+
+async def _enforce_generation_min_interval(
+    min_interval: float | None = None,
+    time_func: Any | None = None,
+    sleep_func: Any | None = None,
+) -> None:
+    """Wait cooperatively until GENERATION_MIN_INTERVAL_SECONDS has passed since last generation call."""
+    global _last_generation_dispatch_time
+    if min_interval is None:
+        from app.core.config import settings
+        interval = float(getattr(settings, "GENERATION_MIN_INTERVAL_SECONDS", 0.0) or 0.0)
+    else:
+        interval = float(min_interval or 0.0)
+    if interval <= 0:
+        return
+    _time = time_func or time.monotonic
+    _sleep = sleep_func or asyncio.sleep
+    async with _generation_pacing_lock:
+        now = _time()
+        elapsed = now - _last_generation_dispatch_time
+        if _last_generation_dispatch_time > 0 and elapsed < interval:
+            wait_time = interval - elapsed
+            await _sleep(wait_time)
+            now = _time()
+        _last_generation_dispatch_time = now
+
+
+def reset_generation_pacing() -> None:
+    global _last_generation_dispatch_time
+    _last_generation_dispatch_time = 0.0
 
 def _rate_limit_diagnostics(response: httpx.Response) -> str:
     """Sanitized, bounded HTTP header summary for typed error messages.
@@ -266,6 +302,7 @@ async def hosted_generate(
         error: str | None = None,
         status_code: int | None = None,
         usage: Any = None,
+        retry_after: float | None = None,
     ) -> None:
         nonlocal settled
         if quota_ledger is None or attempt_id is None or settled:
@@ -278,6 +315,7 @@ async def hosted_generate(
                 success=success,
                 error=error,
                 status_code=status_code,
+                retry_after=retry_after,
             )
         except Exception as exc:
             # Never swallowed: mirror the published TokenCountingSettlementError
@@ -331,6 +369,7 @@ async def hosted_generate(
     if include_reasoning is not None:
         payload["include_reasoning"] = include_reasoning
     headers = {"Authorization": f"Bearer {api_key}"}
+    await _enforce_generation_min_interval()
     try:
         async with httpx.AsyncClient(
             base_url=url, timeout=httpx.Timeout(timeout), transport=transport
@@ -367,12 +406,29 @@ async def hosted_generate(
         raise ProviderTimeoutError("Hosted provider request timed out") from exc
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
+        retry_after_val: float | None = None
+        if status == 429:
+            limit_headers = {
+                k.lower(): v.strip()[:60]
+                for k, v in exc.response.headers.items()
+                if (k.lower().startswith("x-ratelimit-") or k.lower() == "retry-after")
+                and "auth" not in k.lower()
+                and "key" not in k.lower()
+                and "cookie" not in k.lower()
+            }
+            logger.warning("Provider rate limit (429) limit headers: %s", limit_headers)
+            raw_retry = exc.response.headers.get("retry-after")
+            if raw_retry:
+                try:
+                    retry_after_val = float(raw_retry)
+                except (ValueError, TypeError):
+                    pass
         diagnostic = (
             _rate_limit_diagnostics(exc.response)
             if status == 429
             else ""
         )
-        await settle(success=False, error=f"http_{status}", status_code=status)
+        await settle(success=False, error=f"http_{status}", status_code=status, retry_after=retry_after_val)
         message_tail = "; no retries or fallback permitted" if status == 429 else ""
         raise ProviderUnavailableError(
             f"Hosted provider returned HTTP {status}{message_tail}{diagnostic}"

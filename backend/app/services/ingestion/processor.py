@@ -168,6 +168,7 @@ async def process_document(
                     getattr(active_embedder, "model_name", None),
                     dispatch_policy=getattr(active_embedder, "dispatch_policy", None),
                     quota_ledger=getattr(active_embedder, "quota_ledger", None),
+                    transport=getattr(active_embedder, "transport", None),
                 )
                 chunks: list[ChunkDraft] = await asyncio.to_thread(
                     chunk_document,

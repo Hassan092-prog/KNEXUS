@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
     DEMO_ACTOR_ROLE: Literal["employee", "manager", "orgadmin", "superadmin"] = "orgadmin"
+    LIVE_DISPATCH_ENABLED: bool = False
 
     # PostgreSQL & pgvector
     POSTGRES_DB: str = "knexus"

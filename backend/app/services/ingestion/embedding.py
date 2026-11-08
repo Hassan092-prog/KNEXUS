@@ -418,8 +418,12 @@ def get_default_embedder(
     quota_ledger: QuotaLedger | None = None,
 ) -> Embedder:
     from app.core.quota import get_process_quota_ledger
+    from app.api.dependencies import get_dispatch_policy, get_embedding_transport
 
+    active_policy = dispatch_policy if dispatch_policy is not None else get_dispatch_policy()
     active_ledger = quota_ledger if quota_ledger is not None else get_process_quota_ledger()
+    active_transport = transport if transport is not None else get_embedding_transport()
+
     raw_provider = provider or settings.EMBEDDING_PROVIDER
     if not raw_provider or not raw_provider.strip():
         raise ValueError("Embedding provider must be explicitly configured")
@@ -436,7 +440,7 @@ def get_default_embedder(
 
     if selected_provider == "google":
         try:
-            validate_dispatch_campaign(dispatch_policy, active_ledger)
+            validate_dispatch_campaign(active_policy, active_ledger)
         except QuotaCampaignError as exc:
             raise EmbeddingUnavailableError(str(exc)) from exc
         return GoogleGenAIEmbedder(
@@ -447,8 +451,8 @@ def get_default_embedder(
             base_url=base_url,
             timeout=settings.EMBEDDING_TIMEOUT,
             task_type=settings.EMBEDDING_TASK_TYPE,
-            transport=transport,
-            dispatch_policy=dispatch_policy,
+            transport=active_transport,
+            dispatch_policy=active_policy,
             quota_ledger=active_ledger,
         )
     if selected_provider == "fake":

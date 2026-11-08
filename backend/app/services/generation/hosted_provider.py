@@ -183,7 +183,11 @@ async def hosted_generate(
     """
     # 1. Authorization boundary: fail before any client/socket creation.
     #    API keys, provider selection, and --run-live flags never authorize.
-    policy = dispatch_policy if dispatch_policy is not None else BlockedLiveDispatchPolicy()
+    if dispatch_policy is not None:
+        policy = dispatch_policy
+    else:
+        from app.api.dependencies import get_dispatch_policy
+        policy = get_dispatch_policy()
     policy.check_dispatch(provider, model)
 
     # 2. Durable reserve-before-dispatch using the published ledger methods.

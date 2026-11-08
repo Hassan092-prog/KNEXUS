@@ -412,17 +412,22 @@ def get_default_token_counter(
     *,
     dispatch_policy: DispatchPolicy | None = None,
     quota_ledger: QuotaLedger | None = None,
+    transport: httpx.BaseTransport | None = None,
 ) -> TokenCounter:
     from app.core.quota import get_process_quota_ledger
+    from app.api.dependencies import get_dispatch_policy, get_embedding_transport
 
+    active_policy = dispatch_policy if dispatch_policy is not None else get_dispatch_policy()
     active_ledger = quota_ledger if quota_ledger is not None else get_process_quota_ledger()
+    active_transport = transport if transport is not None else get_embedding_transport()
+
     resolved_model = model_name or (
         settings.EMBEDDING_MODEL_NAME
         if settings.EMBEDDING_PROVIDER == "google"
         else "gemini-embedding-001"
     )
     try:
-        validate_dispatch_campaign(dispatch_policy, active_ledger)
+        validate_dispatch_campaign(active_policy, active_ledger)
     except QuotaCampaignError as exc:
         raise TokenCountingError(str(exc)) from exc
     return GoogleGenAITokenCounter(
@@ -430,6 +435,7 @@ def get_default_token_counter(
         overhead_tokens=settings.EMBEDDING_COUNTING_OVERHEAD_TOKENS,
         max_allowed_tokens=settings.EMBEDDING_MAX_INPUT_TOKENS,
         timeout=settings.EMBEDDING_TIMEOUT,
-        dispatch_policy=dispatch_policy,
+        transport=active_transport,
+        dispatch_policy=active_policy,
         quota_ledger=active_ledger,
     )

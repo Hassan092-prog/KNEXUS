@@ -12,7 +12,7 @@ from app.api.errors import APIProblem
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.demo_identity import build_demo_actor
-from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, MockDispatchPolicy
+from app.core.dispatch_policy import BlockedLiveDispatchPolicy, DispatchPolicy, MockDispatchPolicy, ServerApprovedLiveDispatchPolicy
 from app.core.generation import GenerationService
 from app.core.quota import QuotaCampaignError, QuotaError, QuotaLedger, get_process_quota_ledger, validate_dispatch_campaign
 from app.core.token_counter import TokenCounter, get_default_token_counter
@@ -45,6 +45,8 @@ def get_current_actor(request: Request) -> ActorContext:
 
 def get_dispatch_policy() -> DispatchPolicy:
     """Return the server-owned dispatch authorization policy (fail-closed by default)."""
+    if settings.LIVE_DISPATCH_ENABLED and bool((settings.QUOTA_CAMPAIGN_ID or "").strip()):
+        return ServerApprovedLiveDispatchPolicy()
     return BlockedLiveDispatchPolicy()
 
 
@@ -58,33 +60,66 @@ def get_generation_transport() -> httpx.AsyncBaseTransport | None:
     return None
 
 
+def get_embedding_transport() -> httpx.BaseTransport | None:
+    """Return runtime HTTP transport for embeddings; None uses default network client."""
+    return None
+
+
 def get_embedder(
+    dispatch_policy: DispatchPolicy = Depends(get_dispatch_policy),
     quota_ledger: QuotaLedger | None = Depends(get_generation_quota_ledger),
+    transport: httpx.BaseTransport | None = Depends(get_embedding_transport),
 ) -> Embedder:
+    resolved_policy: DispatchPolicy = (
+        get_dispatch_policy()
+        if isinstance(dispatch_policy, DependsSentinel)
+        else dispatch_policy
+    )
     resolved_ledger: QuotaLedger | None = (
         get_generation_quota_ledger()
         if isinstance(quota_ledger, DependsSentinel)
         else quota_ledger
+    )
+    resolved_transport: httpx.BaseTransport | None = (
+        get_embedding_transport()
+        if isinstance(transport, DependsSentinel)
+        else transport
     )
     return get_default_embedder(
         provider=settings.EMBEDDING_PROVIDER,
         model_name=settings.EMBEDDING_MODEL_NAME,
         revision=settings.EMBEDDING_MODEL_REVISION,
+        transport=resolved_transport,
+        dispatch_policy=resolved_policy,
         quota_ledger=resolved_ledger,
     )
 
 
 def get_token_counter(
+    dispatch_policy: DispatchPolicy = Depends(get_dispatch_policy),
     quota_ledger: QuotaLedger | None = Depends(get_generation_quota_ledger),
+    transport: httpx.BaseTransport | None = Depends(get_embedding_transport),
 ) -> TokenCounter | None:
+    resolved_policy: DispatchPolicy = (
+        get_dispatch_policy()
+        if isinstance(dispatch_policy, DependsSentinel)
+        else dispatch_policy
+    )
     resolved_ledger: QuotaLedger | None = (
         get_generation_quota_ledger()
         if isinstance(quota_ledger, DependsSentinel)
         else quota_ledger
     )
+    resolved_transport: httpx.BaseTransport | None = (
+        get_embedding_transport()
+        if isinstance(transport, DependsSentinel)
+        else transport
+    )
     if settings.EMBEDDING_PROVIDER == "google":
         return get_default_token_counter(
             model_name=settings.EMBEDDING_MODEL_NAME,
+            transport=resolved_transport,
+            dispatch_policy=resolved_policy,
             quota_ledger=resolved_ledger,
         )
     return None

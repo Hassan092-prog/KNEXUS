@@ -51,3 +51,22 @@ class MockDispatchPolicy:
             )
         # Mock authorized
         return None
+
+
+class ServerApprovedLiveDispatchPolicy:
+    """Explicit server-approved live dispatch policy for controlled live demo runs."""
+
+    can_dispatch: bool = True
+
+    def check_dispatch(self, provider: str, model: str) -> None:
+        from app.core.config import settings
+
+        allowed = {
+            ("google", settings.EMBEDDING_MODEL_NAME),
+            ("groq", settings.GENERATION_MODEL),
+        }
+        if (provider, model) not in allowed:
+            raise LiveInferenceBlockedError(
+                f"Live dispatch to provider '{provider}' (model '{model}') is not authorized. "
+                f"ServerApprovedLiveDispatchPolicy only permits approved pairs: {sorted(allowed)}."
+            )

@@ -124,11 +124,11 @@ class GenerationService:
             # never authorize live dispatch. Fake/mock tests inject
             # MockDispatchPolicy explicitly; ollama/fake legacy paths are
             # unchanged and carry no dispatch policy.
-            self.dispatch_policy: DispatchPolicy = (
-                dispatch_policy
-                if dispatch_policy is not None
-                else BlockedLiveDispatchPolicy()
-            )
+            if dispatch_policy is not None:
+                self.dispatch_policy = dispatch_policy
+            else:
+                from app.api.dependencies import get_dispatch_policy
+                self.dispatch_policy = get_dispatch_policy()
             # Composed shared ledger lifecycle (published QuotaLedger
             # interface); None keeps behavior ledger-free, e.g. in unit tests.
             self.quota_ledger: QuotaLedger | None = quota_ledger

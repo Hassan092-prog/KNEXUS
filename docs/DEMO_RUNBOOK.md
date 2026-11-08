@@ -167,8 +167,10 @@ export GENERATION_BASE_URL="https://api.groq.com/openai/v1"
 export LIVE_DISPATCH_ENABLED=true
 
 # Generation pacing, budget and rate-limit cooldown (recommended free-tier values)
-export GENERATION_MIN_INTERVAL_SECONDS=5.0
-export GENERATION_MAX_PROMPT_CHARS=6000
+# Groq free tier enforces 8000 TPM; queries average ~2910 tokens (~2699 prompt + 211 completion).
+# 60 / floor(8000 / avg_total_tokens) = 60 / 2 = 30s minimum interval to avoid 429 rate limit errors.
+export GENERATION_MIN_INTERVAL_SECONDS=30.0
+export GENERATION_MAX_PROMPT_CHARS=12000
 export GENERATION_MAX_TOKENS=400
 export QUOTA_RATE_LIMIT_COOLDOWN_SECONDS=60.0
 

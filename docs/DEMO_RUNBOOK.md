@@ -141,7 +141,7 @@ python backend/scripts/run_demo.py --base-url http://localhost:8002 --actor-role
 
 ### 1. Environment Configuration (from config.py)
 > [!IMPORTANT]
-> API keys must be set only in the server environment or private `.env`. Never commit API keys to version control.
+> API keys must be set only in the server environment or private `.env`. Keys come from a private env file (`chmod 600`) that is never committed or printed. Never commit API keys to version control.
 ```bash
 # Database settings (from docker-compose.yml)
 export POSTGRES_HOST="localhost"
@@ -162,6 +162,9 @@ export GENERATION_PROVIDER="groq"
 export GENERATION_MODEL="openai/gpt-oss-120b"
 export GENERATION_API_KEY="gsk_..."
 export GENERATION_BASE_URL="https://api.groq.com/openai/v1"
+
+# Live Provider Dispatch Opt-In
+export LIVE_DISPATCH_ENABLED=true
 
 # Demo Actor Role, Quota, Campaign and Module Resolution
 export DEMO_ACTOR_ROLE="orgadmin"

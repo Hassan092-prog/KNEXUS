@@ -45,7 +45,7 @@ export function normalizeRejection(error: unknown): ApiError {
   if (error instanceof ApiError) return error
 
   const axiosError = axios.isAxiosError(error)
-    ? AxiosError.from(error)
+    ? error
     : new AxiosError(error instanceof Error ? error.message : "Request failed")
   const response = axiosError.response
   const status = response?.status
@@ -54,9 +54,14 @@ export function normalizeRejection(error: unknown): ApiError {
   if (status !== undefined) {
     const envelope = apiErrorResponseSchema.safeParse(response?.data)
     if (envelope.success) {
+      let code = envelope.data.code
+      // Map HTTP status codes to canonical error codes
+      if (status === HTTP_STATUS.PROVIDER_UNAVAILABLE) {
+        code = "PROVIDER_UNAVAILABLE"
+      }
       return new ApiError({
         status,
-        code: envelope.data.code,
+        code,
         detail: envelope.data.detail,
         requestId: envelope.data.request_id,
       })

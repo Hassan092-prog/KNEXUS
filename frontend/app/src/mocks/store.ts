@@ -58,7 +58,8 @@ export function questionTriggersAbstention(question: string): boolean {
 }
 
 export function questionTriggersProviderError(question: string): boolean {
-  return question.toLowerCase().includes(PROVIDER_TRIGGER)
+  const lower = question.toLowerCase()
+  return lower.includes('provider') && lower.includes('unavailable')
 }
 
 export function questionTriggersNetworkFailure(question: string): boolean {

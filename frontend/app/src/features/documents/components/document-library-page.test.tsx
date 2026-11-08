@@ -67,7 +67,7 @@ describe("document library", () => {
     expect(next).toBeEnabled()
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument()
 
-    await userEvent.click(next)
+    await waitFor(() => userEvent.click(next))
     expect(await screen.findByText("Synthetic document 20")).toBeInTheDocument()
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument()
   })

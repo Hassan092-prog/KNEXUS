@@ -27,7 +27,10 @@ describe("assistant workflow", () => {
     expect(await screen.findByText("Ask")).toBeInTheDocument()
     await ask("How many days of annual leave are allowed?")
 
-    expect(await screen.findByText(/21 days of annual leave/)).toBeInTheDocument()
+    // Use a more specific regex that matches the answer text "The synthetic
+    // handbook allows 21 days of annual leave per year" but not the citation
+    // card excerpt "Employees receive 21 days of annual leave per year."
+    expect(screen.getByText(/The synthetic handbook allows 21 days/)).toBeInTheDocument()
     expect(screen.getByText("Citations (1)")).toBeInTheDocument()
     expect(screen.getByLabelText("Citation 1")).toBeInTheDocument()
     expect(screen.getByText(/similarity/)).toBeInTheDocument()
@@ -39,7 +42,9 @@ describe("assistant workflow", () => {
     renderWithProviders(<AssistantPage />)
     await ask("annual leave?")
 
-    await screen.findByText(/21 days of annual leave/)
+    // Use a more specific regex that matches only the answer text, not the
+    // citation card excerpt.
+    expect(screen.getByText(/The synthetic handbook allows 21 days/)).toBeInTheDocument()
     const citations = screen.getAllByText("[1]")
     expect(citations.length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText("Synthetic Employee Handbook", { selector: "p" })).toBeInTheDocument()
@@ -77,7 +82,9 @@ describe("assistant workflow", () => {
     renderWithProviders(<AssistantPage />)
     await ask("first question about leave")
 
-    await screen.findByText(/21 days of annual leave/)
+    // Use a more specific regex that matches only the answer text, not the
+    // citation card excerpt.
+    expect(screen.getByText(/The synthetic handbook allows 21 days/)).toBeInTheDocument()
     expect(screen.getByLabelText(COMPOSER_LABEL)).toBeEnabled()
     expect(screen.getByText(/Retrieval covers the assistant/)).toBeInTheDocument()
   })

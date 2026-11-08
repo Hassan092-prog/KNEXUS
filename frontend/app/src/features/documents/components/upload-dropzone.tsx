@@ -93,7 +93,7 @@ export function UploadDropzone({
           event.target.value = ""
         }}
       />
-      <span id={`${inputId}-error`} className="sr-only" role="alert" aria-live="polite">
+      <span id={`${inputId}-error`} className="sr-only" aria-live="polite">
         {error?.detail}
       </span>
     </div>

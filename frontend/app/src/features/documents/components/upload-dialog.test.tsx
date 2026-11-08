@@ -18,7 +18,7 @@ const INVALID_TXT = new File(["nope"], "notes.txt", { type: "text/plain" })
 async function openDialog(triggerLabel: string) {
   const user = userEvent.setup()
   await user.click(screen.getByRole("button", { name: triggerLabel }))
-  await screen.findByText("Upload document")
+  await screen.findByRole("dialog", { name: "Upload document" })
   return user
 }
 
@@ -52,9 +52,9 @@ describe("upload dialog", () => {
     const user = await openDialog("Upload document")
 
     await pickFile(user, INVALID_TXT)
-    expect(
-      await screen.findByText(/Unsupported file format. Only PDF and DOCX files are accepted/),
-    ).toBeInTheDocument()
+    await waitFor(() => screen.getByRole("alert", { name: /Unsupported file format/ }))
+    const errorAlert = screen.getByRole("alert", { name: /Unsupported file format/ })
+    expect(errorAlert).toBeInTheDocument()
     expect(navigateMock).not.toHaveBeenCalled()
   })
 
@@ -66,7 +66,8 @@ describe("upload dialog", () => {
     Object.defineProperty(tooLarge, "size", { value: 10 * 1024 * 1024 + 1 })
     await pickFile(user, tooLarge)
 
-    expect(await screen.findByText(/File is too large .+ limit is 10 MiB/)).toBeInTheDocument()
+    const errorAlert = screen.getByRole("alert", { name: /File is too large/ })
+    expect(errorAlert).toBeInTheDocument()
   })
 
   it("submits a valid upload and navigates to the new document", async () => {

@@ -67,6 +67,7 @@ class QuotaConfig:
     min_request_interval_seconds: float = 2.0
     in_flight_timeout_seconds: float = 60.0
     lock_timeout_seconds: float = 10.0
+    rate_limit_cooldown_seconds: float = 60.0
     state_path: Path | None = None
 
     def __post_init__(self):
@@ -88,6 +89,8 @@ class QuotaConfig:
             raise ValueError("in_flight_timeout_seconds must be a positive finite number")
         if not _is_finite_number(self.lock_timeout_seconds) or self.lock_timeout_seconds <= 0:
             raise ValueError("lock_timeout_seconds must be a positive finite number")
+        if not _is_finite_number(self.rate_limit_cooldown_seconds) or self.rate_limit_cooldown_seconds < 0:
+            raise ValueError("rate_limit_cooldown_seconds must be a non-negative finite number")
 
     def validate_against_deadlines(self, max_deadline: float, safety_margin: float = 5.0) -> None:
         min_required = float(max_deadline) + float(safety_margin)
@@ -227,6 +230,14 @@ class QuotaLedger:
                 raise QuotaStateCorruptError(f"rate_limited in scope '{scope_key}' must be a boolean")
             if s_data.get("rate_limit_reason") is not None and not isinstance(s_data.get("rate_limit_reason"), str):
                 raise QuotaStateCorruptError(f"rate_limit_reason in scope '{scope_key}' must be string or None")
+            if s_data.get("rate_limited_at") is not None and (
+                not _is_finite_number(s_data.get("rate_limited_at")) or s_data["rate_limited_at"] < 0
+            ):
+                raise QuotaStateCorruptError(f"rate_limited_at in scope '{scope_key}' must be non-negative finite number or None")
+            if s_data.get("cooldown_seconds") is not None and (
+                not _is_finite_number(s_data.get("cooldown_seconds")) or s_data["cooldown_seconds"] < 0
+            ):
+                raise QuotaStateCorruptError(f"cooldown_seconds in scope '{scope_key}' must be non-negative finite number or None")
             if not _is_finite_number(s_data.get("last_dispatch_time")) or s_data["last_dispatch_time"] < 0:
                 raise QuotaStateCorruptError(f"last_dispatch_time in scope '{scope_key}' must be non-negative finite number")
 
@@ -380,10 +391,19 @@ class QuotaLedger:
                 })
 
                 if scope_info.get("rate_limited"):
-                    reason = scope_info.get("rate_limit_reason") or "HTTP 429 received previously"
-                    raise RateLimitExceededError(
-                        f"Scope '{scope_key}' rate limit active: {reason}. No silent retries permitted."
-                    )
+                    rate_limited_at = scope_info.get("rate_limited_at") or 0.0
+                    cooldown = scope_info.get("cooldown_seconds") or self.config.rate_limit_cooldown_seconds
+                    if now - rate_limited_at >= cooldown:
+                        scope_info["rate_limited"] = False
+                        scope_info["rate_limit_reason"] = None
+                        scope_info["rate_limited_at"] = None
+                        scope_info["cooldown_seconds"] = None
+                    else:
+                        reason = scope_info.get("rate_limit_reason") or "HTTP 429 received previously"
+                        remaining = max(0.0, cooldown - (now - rate_limited_at))
+                        raise RateLimitExceededError(
+                            f"Scope '{scope_key}' rate limit active: {reason} (cooldown remaining: {remaining:.1f}s). No silent retries permitted."
+                        )
 
                 active: dict[str, Any] = state.setdefault("active_reservations", {})
                 settled: list[dict[str, Any]] = state.setdefault("settled_requests", [])
@@ -515,6 +535,7 @@ class QuotaLedger:
         success: bool = True,
         error: str | None = None,
         status_code: int | None = None,
+        retry_after: float | None = None,
     ) -> None:
         """Settle a reservation.
 
@@ -524,6 +545,7 @@ class QuotaLedger:
         fd = self._acquire_file_lock(self.config.lock_timeout_seconds)
         try:
             state = self._load_state()
+            now = self._time()
             active: dict[str, Any] = state.setdefault("active_reservations", {})
             settled: list[dict[str, Any]] = state.setdefault("settled_requests", [])
 
@@ -555,6 +577,12 @@ class QuotaLedger:
                             scope_info = scopes.setdefault(scope_k, {})
                             scope_info["rate_limited"] = True
                             scope_info["rate_limit_reason"] = error or "HTTP 429 Too Many Requests (late settlement)"
+                            scope_info["rate_limited_at"] = now
+                            effective_cooldown = max(
+                                float(self.config.rate_limit_cooldown_seconds),
+                                float(retry_after or 0.0),
+                            )
+                            scope_info["cooldown_seconds"] = effective_cooldown
                         self._save_state(state)
                         return
                     raise ValueError(f"Duplicate settlement: attempt '{attempt_id}' is already settled.")
@@ -618,6 +646,12 @@ class QuotaLedger:
                 scope_info = scopes.setdefault(scope_key, {})
                 scope_info["rate_limited"] = True
                 scope_info["rate_limit_reason"] = error or "HTTP 429 Too Many Requests"
+                scope_info["rate_limited_at"] = now
+                effective_cooldown = max(
+                    float(self.config.rate_limit_cooldown_seconds),
+                    float(retry_after or 0.0),
+                )
+                scope_info["cooldown_seconds"] = effective_cooldown
 
             self._save_state(state)
         finally:
@@ -635,6 +669,7 @@ class QuotaLedger:
         success: bool = True,
         error: str | None = None,
         status_code: int | None = None,
+        retry_after: float | None = None,
     ) -> None:
         """Async wrapper keeping blocking file locks off the event loop."""
         await asyncio.to_thread(
@@ -644,6 +679,7 @@ class QuotaLedger:
             success=success,
             error=error,
             status_code=status_code,
+            retry_after=retry_after,
         )
 def validate_dispatch_campaign(
     dispatch_policy: Any,
@@ -715,6 +751,7 @@ def get_process_quota_ledger() -> QuotaLedger:
                     min_request_interval_seconds=settings.QUOTA_MIN_REQUEST_INTERVAL_SECONDS,
                     in_flight_timeout_seconds=settings.QUOTA_IN_FLIGHT_TIMEOUT_SECONDS,
                     lock_timeout_seconds=settings.QUOTA_LOCK_TIMEOUT_SECONDS,
+                    rate_limit_cooldown_seconds=settings.QUOTA_RATE_LIMIT_COOLDOWN_SECONDS,
                     state_path=state_path,
                 )
                 _process_ledger = QuotaLedger(config)

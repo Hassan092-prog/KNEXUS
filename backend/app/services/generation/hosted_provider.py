@@ -31,6 +31,7 @@ dispatch/quota foundation (`app.core.dispatch_policy`,
   Settlement failures are never swallowed.
 """
 import asyncio
+import time
 from typing import Any
 
 import httpx

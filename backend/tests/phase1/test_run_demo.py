@@ -72,6 +72,100 @@ def test_scoring_answer_pass_fail() -> None:
     assert score(payload_wrong_citation)[0] == "fail"
 
 
+# ---------------------------------------------------------------------------
+# Tolerant normalization
+# ---------------------------------------------------------------------------
+
+NORMALIZE = run_demo_module.normalize_text
+
+
+def test_normalize_currency_millions_commas_and_units() -> None:
+    # The q03 money trio must all be interchangeable.
+    assert (
+        NORMALIZE("$48,500,000 USD")
+        == NORMALIZE("48,500,000")
+        == NORMALIZE("48.5 million")
+        == NORMALIZE("$48.5 million USD")
+        == NORMALIZE("48.5 million dollars")
+        == NORMALIZE("48.5M")
+    )
+    # Currency symbols and tokens drop out entirely; commas inside digit groups vanish.
+    assert NORMALIZE("$11,200,000 USD in Q4") == NORMALIZE("11.2 million in q4")
+    assert NORMALIZE("11,200,000 USD") == NORMALIZE("11.2M")
+    # Units: liters/litres/L collapse; minutes/min collapse.
+    assert NORMALIZE("3.5 liters") == NORMALIZE("3.5 L") == NORMALIZE("3.5 litres")
+    assert NORMALIZE("47 minutes") == NORMALIZE("47 min")
+    assert NORMALIZE("2 kilograms") == NORMALIZE("2 kg")
+    # Case and whitespace differences vanish.
+    assert NORMALIZE("ACME-HALT-999") == NORMALIZE("acme halt 999")
+    assert NORMALIZE("Review  Cycle:   Annual") == NORMALIZE("review cycle annual")
+    # Decimal numbers survive normalization ("3.5" stays "3.5").
+    assert NORMALIZE("exactly 3.5 liters") == "exactly 3.5 l"
+    # Word-number compounds: forty-seven minutes.
+    assert NORMALIZE("forty-seven minutes") == NORMALIZE("47 min")
+
+
+def test_accepted_facts_includes_expected_and_any_variants() -> None:
+    question = {
+        "expected_fact": "$48,500,000 USD",
+        "expected_fact_any": ["$48,500,000 USD", "48.5 million", "48.5M"],
+    }
+    assert run_demo_module.accepted_facts(question) == ["$48,500,000 USD", "48.5 million", "48.5M"]
+    # Expected-fact-only questions keep a single accepted phrasing; abstain questions accept none.
+    assert run_demo_module.accepted_facts({"expected_fact": "42 widgets", "expected_fact_any": None}) == [
+        "42 widgets"
+    ]
+    assert run_demo_module.accepted_facts({"expected_fact": None, "expected_fact_any": []}) == []
+
+
+def test_match_accepted_facts_any_variant_matches_reworded_answer() -> None:
+    question = {
+        "expected_fact": "$48,500,000 USD",
+        "expected_fact_any": ["$48,500,000 USD", "48,500,000", "48.5 million", "$48.5 million USD", "48.5M"],
+    }
+    # Exact phrasing: normal match, exact substring hit recorded.
+    matched, matched_fact, exact = run_demo_module.match_accepted_facts(
+        question, "Revenue was $48,500,000 USD in Q3."
+    )
+    assert matched and matched_fact == "$48,500,000 USD" and exact
+    # Reworded (normalized-only) phrasing: matches, exact_hit stays False for reviewers.
+    matched, matched_fact, exact = run_demo_module.match_accepted_facts(
+        question, "Consolidated revenue was about 48.5 million dollars."
+    )
+    assert matched and matched_fact == "$48,500,000 USD" and not exact
+    # A variant rewording still matches the same normalized fact.
+    hybrid = {"expected_fact": "42 widgets", "expected_fact_any": ["42 widgets", "forty-two widgets"]}
+    matched, matched_fact, exact = run_demo_module.match_accepted_facts(
+        hybrid, "We shipped forty-two widgets."
+    )
+    assert matched and matched_fact == "42 widgets" and not exact
+    # Wrong number never matches any accepted phrasing.
+    matched, _, _ = run_demo_module.match_accepted_facts(question, "Revenue was $41,020,000 USD.")
+    assert not matched
+
+
+def test_scoring_accepts_reworded_but_correct_answer_and_flags_wrong_number() -> None:
+    question = answer_case()
+    question["expected_fact"] = "3.5 liters"
+    question["expected_fact_any"] = ["3.5 liters", "3.5 L", "exactly 3.5 liters"]
+    # Reworded-but-correct answer passes with normalized-only matching
+    # (exact_fact_match stays False for reviewers).
+    payload = {
+        "abstained": False,
+        "answer": "You must add exactly 3.5 L of water.",
+        "citations": [citation(DOC_ID)],
+    }
+    status, reason = score(payload, question=question)
+    assert status == "pass" and "normalized match only" in reason
+    # A wrong number fails even though a citation points at the right source.
+    wrong = {
+        "abstained": False,
+        "answer": "You must add 5.0 L of water.",
+        "citations": [citation(DOC_ID)],
+    }
+    assert score(wrong, question=question)[0] == "fail"
+
+
 def test_scoring_abstain_pass_and_fail() -> None:
     abstain_case = {
         "id": "case_abstain",
@@ -235,6 +329,108 @@ def _demo_payload(question_fact: str, doc_id: uuid_module.UUID, abstained: bool 
         "abstention_reason": None, "session_id": str(uuid_module.uuid4()),
         "meta": {"retrieval_time_ms": 1.0, "generation_time_ms": 1.0, "model": "fake"},
     })
+
+
+def test_run_query_case_records_fact_flag_similarity_and_meta_fields(httpx_assert_no_network) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "answer": "About 48.5 million dollars.",
+            "citations": [
+                citation(DOC_ID),
+                {**citation(DOC_ID), "id": 2, "chunk_index": 1, "similarity_score": 0.42},
+            ],
+            "abstained": False, "abstention_reason": None,
+            "session_id": str(uuid_module.uuid4()),
+            "meta": {"model": "openai/test-model", "retrieval_time_ms": 8.0,
+                     "generation_time_ms": 120.0},
+        })
+
+    question = answer_case()
+    question["expected_fact"] = "$48,500,000 USD"
+    question["expected_fact_any"] = ["$48,500,000 USD", "48.5 million"]
+    with httpx.Client(transport=httpx.MockTransport(handler), base_url="http://test") as client:
+        row = run_demo_module.run_query_case(
+            client, question, {"demo.docx": str(DOC_ID)}, {"demo.docx": "Demo Title"}
+        )
+    assert row["status"] == "pass"
+    assert row["fact_matched"] is True
+    assert row["matched_fact"] == "$48,500,000 USD"  # first accepted candidate matches
+    assert row["exact_fact_match"] is False  # normalized-only, kept separately for reviewers
+    # Contract field similarity_score, recorded per citation: descending with max.
+    assert row["similarities"] == [0.9, 0.42]
+    assert row["max_similarity"] == 0.9
+    assert row["abstained"] is False and row["abstention_reason"] is None
+    assert row["meta"]["model"] == "openai/test-model"
+    assert row["meta"]["retrieval_time_ms"] == 8.0 and row["meta"]["generation_time_ms"] == 120.0
+    # An abstained row records the reason; no fact fields are claimed.
+    def abstain_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "answer": None, "citations": [], "abstained": True,
+            "abstention_reason": "No sufficiently relevant accessible evidence was found.",
+            "session_id": str(uuid_module.uuid4()),
+            "meta": {"model": "openai/test-model"},
+        })
+
+    question_abstain = answer_case()
+    with httpx.Client(transport=httpx.MockTransport(abstain_handler), base_url="http://test") as client:
+        row2 = run_demo_module.run_query_case(
+            client, question_abstain, {"demo.docx": str(DOC_ID)}, {}
+        )
+    assert row2["status"] == "fail"  # expected answer, got abstention
+    assert row2["abstained"] is True
+    assert row2["abstention_reason"] == "No sufficiently relevant accessible evidence was found."
+    assert row2["similarities"] == [] and row2["max_similarity"] is None
+    assert row2["fact_matched"] is False and row2["matched_fact"] is None
+
+
+def test_run_demo_prints_threshold_calibration_table(httpx_assert_no_network, tmp_path, capsys) -> None:
+    questions = json.loads((DEMO_DIR / "questions.json").read_text(encoding="utf-8"))["questions"]
+    asked = [q for q in questions if q["actor_role"] == "employee"]
+    answers = iter(asked)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        case = next(answers)
+        if case["expected"] == "abstain":
+            return httpx.Response(200, json={
+                "answer": None, "citations": [], "abstained": True,
+                "abstention_reason": "no evidence", "session_id": str(uuid_module.uuid4()),
+                "meta": {},
+            })
+        return httpx.Response(200, json={
+            "answer": f"fact: {case['expected_fact']}",
+            "citations": [{**citation(DOC_ID), "similarity_score": 0.73}],
+            "abstained": False, "abstention_reason": None,
+            "session_id": str(uuid_module.uuid4()), "meta": {},
+        })
+
+    output = tmp_path / "results.jsonl"
+    with httpx.Client(transport=httpx.MockTransport(handler), base_url="http://test") as client:
+        run_demo_module.run_demo(client, "employee", upload=False, output_path=output,
+                                 poll_interval=0.0, status_timeout=30.0)
+    printed = capsys.readouterr().out
+    assert "threshold calibration" in printed and "max_similarity" in printed
+    calibration_section = printed.split("threshold calibration", 1)[1]
+    row_lines = [line for line in calibration_section.splitlines() if line.strip().startswith("demo_q")]
+    assert len(row_lines) == 8  # 8 employee questions: id | expected | abstained | max_similarity
+    for question in questions:
+        if question["actor_role"] != "employee":
+            continue
+        matching = [line for line in row_lines if question["id"] in line]
+        assert len(matching) == 1
+        columns = matching[0].split()
+        # id expected abstained max_similarity: 0.73 when answered, n/a on abstention.
+        expected_value = "0.7300" if question["expected"] == "answer" else "n/a"
+        assert columns[-1] == expected_value
+        assert (columns[-2] == "True") if question["expected"] == "abstain" else (columns[-2] == "False")
+    # JSONL rows carry the calibration data Hassan needs: answered rows have
+    # similarity values; abstained rows abstention fields and no similarity.
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").strip().splitlines()]
+    answered_rows = [row for row in rows if not row["abstained"]]
+    assert answered_rows and all(row["max_similarity"] == 0.73 for row in answered_rows)
+    abstained_rows = [row for row in rows if row["abstained"]]
+    assert abstained_rows and all(
+        row["max_similarity"] is None and row["abstention_reason"] for row in abstained_rows
+    )
 
 
 def test_run_demo_end_to_end_offline(httpx_assert_no_network, tmp_path: Path) -> None:

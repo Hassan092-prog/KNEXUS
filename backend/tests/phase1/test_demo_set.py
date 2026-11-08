@@ -121,6 +121,56 @@ def test_every_expected_fact_appears_in_a_chunk_of_expected_source(manifest, que
         assert hits, f"{fact!r} missing from every chunk of {source} (question {question['id']})"
 
 
+def _runner_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "run_demo_for_corpus", Path(__file__).resolve().parents[2] / "scripts" / "run_demo.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_every_expected_fact_any_variant_is_grounded_in_source_chunks(manifest, questions):
+    """No invented alternatives: every expected_fact_any phrasing must normalize
+    into the text of some chunk of the question's expected source document."""
+    runner = _runner_module()
+    cache = _parsed_and_chunked()
+    answerable = [question for question in questions if question["expected"] == "answer"]
+    assert answerable, "demo set must contain answerable cases"
+    checked_variants = 0
+    for question in answerable:
+        variants = question.get("expected_fact_any") or []
+        assert variants, f"{question['id']} must list accepted phrasings"
+        source = question["expected_source"]
+        _, _, chunks = cache[source]
+        chunk_texts = [chunk.content for chunk in chunks]
+        # The exact fact is always part of the accepted set.
+        assert question["expected_fact"] in variants, question["id"]
+        for variant in variants:
+            normalized_variant = runner.normalize_text(variant)
+            assert normalized_variant, f"{question['id']}: empty normalization for {variant!r}"
+            grounded = any(normalized_variant in runner.normalize_text(text) for text in chunk_texts)
+            assert grounded, (
+                f"{question['id']}: expected_fact_any entry {variant!r} is not grounded "
+                f"in any chunk of {source}"
+            )
+            checked_variants += 1
+    assert checked_variants >= len(answerable)
+
+
+def test_expected_fact_any_consistency_fields(questions):
+    for question in questions:
+        if question["expected"] == "abstain":
+            assert question.get("expected_fact_any") in (None, []), question["id"]
+            continue
+        assert question.get("expected_fact_any"), question["id"]
+        variants = question["expected_fact_any"]
+        assert len(variants) == len(set(variants)), question["id"]
+        assert all(isinstance(variant, str) and variant.strip() for variant in variants)
+
+
 def test_demo_questions_are_consistent(questions):
     ids = [question["id"] for question in questions]
     assert len(questions) == 12 and len(ids) == len(set(ids))

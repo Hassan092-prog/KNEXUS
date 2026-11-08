@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     # Fail-closed prompt character boundary (~4,000-5,300 tokens); not a guaranteed token count.
     GENERATION_MAX_PROMPT_CHARS: int = Field(default=16000, gt=0)
     GENERATION_SEED: int | None = None
+    GENERATION_MIN_INTERVAL_SECONDS: float = Field(default=0.0, ge=0.0)
 
     # Deprecated: Local Ollama provider is refused in Phase 1 (hosted providers only).
     # Preserved for backward compatibility in environment definitions; refused at query execution.
@@ -89,6 +90,7 @@ class Settings(BaseSettings):
     QUOTA_MIN_REQUEST_INTERVAL_SECONDS: float = Field(default=2.0, ge=0.0)
     QUOTA_IN_FLIGHT_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0)
     QUOTA_LOCK_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0)
+    QUOTA_RATE_LIMIT_COOLDOWN_SECONDS: float = Field(default=60.0, ge=0.0)
     QUOTA_STATE_PATH: Path = Field(default_factory=lambda: (DEFAULT_STORAGE_ROOT / "quota_state.json").resolve())
 
     # Embedding and ingestion configuration

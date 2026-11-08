@@ -102,6 +102,20 @@ def _embed_document_chunk_with_task_adaptation(
     return _embed_document_chunks_with_task_adaptation(embedder, [content])
 
 
+
+_process_document_lock: asyncio.Lock | None = None
+
+
+def get_process_document_lock() -> asyncio.Lock:
+    global _process_document_lock
+    if _process_document_lock is None:
+        _process_document_lock = asyncio.Lock()
+    return _process_document_lock
+
+
+def reset_process_document_lock() -> None:
+    global _process_document_lock
+    _process_document_lock = None
 async def process_document(
     document_id: UUID,
     *,
@@ -112,149 +126,150 @@ async def process_document(
     token_counter: TokenCounter | None = None,
 ) -> bool:
     """Process one persisted queued attempt. Errors become safe failed status."""
-    sessions = session_factory or AsyncSessionLocal
-    active_embedder = embedder or get_default_embedder()
-    try:
-        async with sessions() as session:
-            document = await session.get(Document, document_id)
-            if document is None or document.is_deleted:
-                return False
-            job = await _latest_job(session, document.org_id, document.id)
-            if job is None or job.status != "queued" or document.status != "queued":
-                return False
-            now = datetime.now(timezone.utc)
-            document.status = "processing"
-            job.status = "processing"
-            job.started_at = now
-            await session.commit()
+    async with get_process_document_lock():
+        sessions = session_factory or AsyncSessionLocal
+        active_embedder = embedder or get_default_embedder()
+        try:
+            async with sessions() as session:
+                document = await session.get(Document, document_id)
+                if document is None or document.is_deleted:
+                    return False
+                job = await _latest_job(session, document.org_id, document.id)
+                if job is None or job.status != "queued" or document.status != "queued":
+                    return False
+                now = datetime.now(timezone.utc)
+                document.status = "processing"
+                job.status = "processing"
+                job.started_at = now
+                await session.commit()
 
-            # Enforce campaign budget validation fail-closed before parsing or chunking
-            validate_dispatch_campaign(
-                getattr(active_embedder, "dispatch_policy", None),
-                getattr(active_embedder, "quota_ledger", None),
-            )
+                # Enforce campaign budget validation fail-closed before parsing or chunking
+                validate_dispatch_campaign(
+                    getattr(active_embedder, "dispatch_policy", None),
+                    getattr(active_embedder, "quota_ledger", None),
+                )
 
-            if parsed_sections is None:
-                raw = await asyncio.to_thread(read_upload, document.storage_key or "")
-                sections = await asyncio.to_thread(
-                    parse_document_bytes, raw, document.source_type
-                )
-            else:
-                sections = parsed_sections
-            model_limit_loader = getattr(active_embedder, "get_max_input_tokens", None)
-            model_max_input_tokens = None
-            if callable(model_limit_loader):
-                model_max_input_tokens = await asyncio.to_thread(model_limit_loader)
-            if token_counter is not None:
-                chunks: list[ChunkDraft] = await asyncio.to_thread(
-                    chunk_document,
-                    document.id,
-                    sections,
-                    token_counter=token_counter,
-                )
-            elif tokenizer is not None:
-                chunks: list[ChunkDraft] = await asyncio.to_thread(
-                    chunk_document,
-                    document.id,
-                    sections,
-                    tokenizer,
-                    model_max_input_tokens=model_max_input_tokens,
-                )
-            elif (
-                settings.EMBEDDING_PROVIDER == "google"
-                or getattr(active_embedder, "model_name", "") in {"gemini-embedding-001", "text-embedding-004"}
-            ):
-                active_counter = get_default_token_counter(
-                    getattr(active_embedder, "model_name", None),
-                    dispatch_policy=getattr(active_embedder, "dispatch_policy", None),
-                    quota_ledger=getattr(active_embedder, "quota_ledger", None),
-                    transport=getattr(active_embedder, "transport", None),
-                )
-                chunks: list[ChunkDraft] = await asyncio.to_thread(
-                    chunk_document,
-                    document.id,
-                    sections,
-                    token_counter=active_counter,
-                )
-            else:
-                active_tokenizer = await asyncio.to_thread(
-                    load_embedding_tokenizer,
-                    active_embedder.model_name,
-                    active_embedder.model_revision,
-                )
-                chunks: list[ChunkDraft] = await asyncio.to_thread(
-                    chunk_document,
-                    document.id,
-                    sections,
-                    active_tokenizer,
-                    model_max_input_tokens=model_max_input_tokens,
-                )
-            if not chunks:
-                raise IngestionProcessingError("The document produced no searchable chunks.")
-
-            job.total_chunks = len(chunks)
-            job.chunks_processed = 0
-            document.chunk_count = 0
-            await session.commit()
-
-            # Embed accepted chunks in batches of at most GOOGLE_EMBEDDING_MAX_BATCH_SIZE (100)
-            for i in range(0, len(chunks), GOOGLE_EMBEDDING_MAX_BATCH_SIZE):
-                chunk_batch = chunks[i : i + GOOGLE_EMBEDDING_MAX_BATCH_SIZE]
-                contents = [c.content for c in chunk_batch]
-                vector_batch = await asyncio.to_thread(
-                    _embed_document_chunks_with_task_adaptation, active_embedder, contents
-                )
-                vectors = validate_embeddings(vector_batch, len(chunk_batch))
-                for chunk, vector in zip(chunk_batch, vectors):
-                    row = DocumentChunk(
-                        id=chunk.id,
-                        org_id=document.org_id,
-                        document_id=document.id,
-                        chunk_index=chunk.chunk_index,
-                        content=chunk.content,
-                        page=chunk.page,
-                        token_count=chunk.token_count,
-                        source_metadata=chunk.source_metadata,
+                if parsed_sections is None:
+                    raw = await asyncio.to_thread(read_upload, document.storage_key or "")
+                    sections = await asyncio.to_thread(
+                        parse_document_bytes, raw, document.source_type
                     )
-                    session.add(row)
-                    await session.flush()
-                    session.add(
-                        Embedding(
+                else:
+                    sections = parsed_sections
+                model_limit_loader = getattr(active_embedder, "get_max_input_tokens", None)
+                model_max_input_tokens = None
+                if callable(model_limit_loader):
+                    model_max_input_tokens = await asyncio.to_thread(model_limit_loader)
+                if token_counter is not None:
+                    chunks: list[ChunkDraft] = await asyncio.to_thread(
+                        chunk_document,
+                        document.id,
+                        sections,
+                        token_counter=token_counter,
+                    )
+                elif tokenizer is not None:
+                    chunks: list[ChunkDraft] = await asyncio.to_thread(
+                        chunk_document,
+                        document.id,
+                        sections,
+                        tokenizer,
+                        model_max_input_tokens=model_max_input_tokens,
+                    )
+                elif (
+                    settings.EMBEDDING_PROVIDER == "google"
+                    or getattr(active_embedder, "model_name", "") in {"gemini-embedding-001", "text-embedding-004"}
+                ):
+                    active_counter = get_default_token_counter(
+                        getattr(active_embedder, "model_name", None),
+                        dispatch_policy=getattr(active_embedder, "dispatch_policy", None),
+                        quota_ledger=getattr(active_embedder, "quota_ledger", None),
+                        transport=getattr(active_embedder, "transport", None),
+                    )
+                    chunks: list[ChunkDraft] = await asyncio.to_thread(
+                        chunk_document,
+                        document.id,
+                        sections,
+                        token_counter=active_counter,
+                    )
+                else:
+                    active_tokenizer = await asyncio.to_thread(
+                        load_embedding_tokenizer,
+                        active_embedder.model_name,
+                        active_embedder.model_revision,
+                    )
+                    chunks: list[ChunkDraft] = await asyncio.to_thread(
+                        chunk_document,
+                        document.id,
+                        sections,
+                        active_tokenizer,
+                        model_max_input_tokens=model_max_input_tokens,
+                    )
+                if not chunks:
+                    raise IngestionProcessingError("The document produced no searchable chunks.")
+
+                job.total_chunks = len(chunks)
+                job.chunks_processed = 0
+                document.chunk_count = 0
+                await session.commit()
+
+                # Embed accepted chunks in batches of at most GOOGLE_EMBEDDING_MAX_BATCH_SIZE (100)
+                for i in range(0, len(chunks), GOOGLE_EMBEDDING_MAX_BATCH_SIZE):
+                    chunk_batch = chunks[i : i + GOOGLE_EMBEDDING_MAX_BATCH_SIZE]
+                    contents = [c.content for c in chunk_batch]
+                    vector_batch = await asyncio.to_thread(
+                        _embed_document_chunks_with_task_adaptation, active_embedder, contents
+                    )
+                    vectors = validate_embeddings(vector_batch, len(chunk_batch))
+                    for chunk, vector in zip(chunk_batch, vectors):
+                        row = DocumentChunk(
+                            id=chunk.id,
                             org_id=document.org_id,
                             document_id=document.id,
-                            chunk_id=chunk.id,
-                            embedding=vector,
-                            model_name=active_embedder.model_name,
-                            model_revision=active_embedder.model_revision,
-                            is_active=True,
+                            chunk_index=chunk.chunk_index,
+                            content=chunk.content,
+                            page=chunk.page,
+                            token_count=chunk.token_count,
+                            source_metadata=chunk.source_metadata,
                         )
-                    )
-                    await session.flush()
-                    job.chunks_processed = chunk.chunk_index + 1
-                    document.chunk_count = job.chunks_processed
-                    await session.commit()
+                        session.add(row)
+                        await session.flush()
+                        session.add(
+                            Embedding(
+                                org_id=document.org_id,
+                                document_id=document.id,
+                                chunk_id=chunk.id,
+                                embedding=vector,
+                                model_name=active_embedder.model_name,
+                                model_revision=active_embedder.model_revision,
+                                is_active=True,
+                            )
+                        )
+                        await session.flush()
+                        job.chunks_processed = chunk.chunk_index + 1
+                        document.chunk_count = job.chunks_processed
+                        await session.commit()
 
-            now = datetime.now(timezone.utc)
-            document.status = "complete"
-            job.status = "complete"
-            job.finished_at = now
-            job.failure_code = None
-            job.failure_message = None
-            await session.commit()
-            return True
-    except asyncio.CancelledError:
-        await _mark_failed(
-            sessions, document_id, code="INTERRUPTED", message=_INTERRUPTED_FAILURE
-        )
-        raise
-    except Exception as exc:
-        await _mark_failed(
-            sessions, document_id, code="PROCESSING_FAILED", message=_PROCESSING_FAILURE
-        )
-        logger.warning(
-            "Document ingestion failed for %s (%s)", document_id, type(exc).__name__
-        )
-        return False
+                now = datetime.now(timezone.utc)
+                document.status = "complete"
+                job.status = "complete"
+                job.finished_at = now
+                job.failure_code = None
+                job.failure_message = None
+                await session.commit()
+                return True
+        except asyncio.CancelledError:
+            await _mark_failed(
+                sessions, document_id, code="INTERRUPTED", message=_INTERRUPTED_FAILURE
+            )
+            raise
+        except Exception as exc:
+            await _mark_failed(
+                sessions, document_id, code="PROCESSING_FAILED", message=_PROCESSING_FAILURE
+            )
+            logger.warning(
+                "Document ingestion failed for %s (%s)", document_id, type(exc).__name__
+            )
+            return False
 
 
 async def recover_interrupted_jobs(

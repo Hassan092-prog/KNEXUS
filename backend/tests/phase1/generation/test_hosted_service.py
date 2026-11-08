@@ -1,24 +1,62 @@
+from app.services.generation.hosted_provider import drain_cleanup_tasks
+from uuid import uuid4
 """Mocked chat-completions tests for the hosted generation adapter.
 
 Selection, configuration, payload composition, typed failures and boundary
 behavior mirror the Ollama adapter tests; no live API call is made here.
+
+Hosted dispatch is fail-closed by default: every mocked hosted call in this
+module explicitly injects `MockDispatchPolicy` (published interface) — the
+injection itself documents that keys, provider selection and flags never
+authorize dispatch. Ledger composition tests use the published QuotaLedger
+with per-test state paths.
 """
 import asyncio
 import json
+from pathlib import Path
 
 import httpx
 import pytest
 
+from app.core.dispatch_policy import (
+    BlockedLiveDispatchPolicy,
+    LiveInferenceBlockedError,
+    MockDispatchPolicy,
+)
 from app.core.generation import run_generation
+from app.core.quota import (
+    QuotaConfig,
+    QuotaLedger,
+    RateLimitExceededError,
+    QuotaExceededError,
+)
 from app.schemas import EvidenceChunk, GenerationRequest, GenerationResult
 from app.services.generation.errors import (
     ContextBudgetExceededError,
     GenerationConfigurationError,
+    GenerationSettlementError,
     MalformedOutputError,
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
-from app.services.generation.generator import GenerationService
+from app.services.generation.generator import GenerationService as _OriginalGenerationService
+
+def GenerationService(*args, **kwargs):
+    dp = kwargs.get("dispatch_policy")
+    if dp is not None and not isinstance(dp, BlockedLiveDispatchPolicy):
+        if "quota_ledger" not in kwargs:
+            kwargs["quota_ledger"] = QuotaLedger(
+                QuotaConfig(
+                    enabled=True,
+                    max_requests_per_minute=1000,
+                    max_requests_per_day=10000,
+                    max_total_attempts=1000,
+                    min_request_interval_seconds=0.0,
+                    state_path=Path(f"/tmp/test_h_{uuid4().hex}.json"),
+                )
+            )
+    return _OriginalGenerationService(*args, **kwargs)
+
 
 
 def make_evidence(citation_id: int, content: str) -> EvidenceChunk:
@@ -52,19 +90,46 @@ def abstention_json(reason="The supplied evidence does not answer the question."
     ).model_dump_json()
 
 
-def completion_body(content):
-    return {"choices": [{"message": {"role": "assistant", "content": content}}]}
+def usage_json(prompt_tokens=10, completion_tokens=5, total_tokens=15):
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+    }
 
 
-def completion_handler(content):
+def completion_body(content, usage=None, finish_reason="stop"):
+    message = {"role": "assistant", "content": content}
+    body = {"choices": [{"message": message, "finish_reason": finish_reason}]}
+    if usage is not None:
+        body["usage"] = usage
+    return body
+
+
+def completion_handler(content, **kwargs):
     def handler(request):
-        return httpx.Response(
-            200, json=completion_body(content), headers={"x-request-id": "t"}, request=request
-        )
+        return httpx.Response(200, json=completion_body(content, **kwargs), request=request)
     return handler
 
 
 def hosted_service(handler, **kwargs):
+    """Hosted test service with an explicitly injected mock dispatch policy.
+
+    Hosted providers are blocked by default; mocked tests inject the
+    MockDispatchPolicy explicitly to authorize mocked transport calls.
+    """
+    kwargs.setdefault("dispatch_policy", MockDispatchPolicy("openai"))
+    if "quota_ledger" not in kwargs:
+        kwargs["quota_ledger"] = QuotaLedger(
+            QuotaConfig(
+                enabled=True,
+                max_requests_per_minute=1000,
+                max_requests_per_day=10000,
+                max_total_attempts=1000,
+                min_request_interval_seconds=0.0,
+                state_path=Path(f"/tmp/test_h_{uuid4().hex}.json"),
+            )
+        )
     return GenerationService(
         provider="openai",
         model="gpt-test-mini",
@@ -86,6 +151,40 @@ def recording_handler(store):  # captures request details and answers normally
     return handler
 
 
+def make_ledger(tmp_path, **overrides) -> QuotaLedger:
+    """Published QuotaLedger with fast, enabled test-scoped state."""
+    defaults = dict(
+        enabled=True,
+        max_requests_per_minute=100,
+        max_requests_per_day=1000,
+        max_total_attempts=100,
+        min_request_interval_seconds=0.0,
+        state_path=tmp_path / "generation-ledger.json",
+    )
+    return QuotaLedger(QuotaConfig(**{**defaults, **overrides}))
+
+
+def settled_records(ledger) -> list[dict]:
+    state = json.loads(ledger.state_path.read_text())
+    return state["settled_requests"]
+
+
+class FailingSettleLedger:
+    """Reserves normally; always fails settlement (published-method shape)."""
+
+    def __init__(self):
+        self.reserved = 0
+
+    async def areserve_attempt(self, provider: str, model: str) -> str:
+        self.reserved += 1
+        return f"attempt-{self.reserved}"
+
+    async def asettle_attempt(
+        self, attempt_id, *, usage=None, success=True, error=None, status_code=None
+    ) -> None:
+        raise ValueError("synthetic ledger write failure")
+
+
 @pytest.mark.asyncio
 async def test_hosted_selection_reaches_chat_completions_with_config():
     observed = {}
@@ -101,6 +200,7 @@ async def test_hosted_selection_reaches_chat_completions_with_config():
     service = GenerationService(
         provider="openai", model="gpt-test-mini", api_key="test-secret-key",
         timeout=12.5, num_predict=123, temperature=0.25, seed=7,
+        dispatch_policy=MockDispatchPolicy("openai"),
         transport=httpx.MockTransport(handler),
     )
     result = await run_generation(service, make_request())
@@ -109,7 +209,10 @@ async def test_hosted_selection_reaches_chat_completions_with_config():
     payload = observed["payload"]
     assert payload["model"] == "gpt-test-mini"
     assert payload["temperature"] == 0.25
-    assert payload["max_tokens"] == 123
+    # OpenAI documents max_completion_tokens; the deprecated max_tokens name
+    # is deliberately absent.
+    assert payload["max_completion_tokens"] == 123
+    assert "max_tokens" not in payload
     assert payload["seed"] == 7
     assert [m["role"] for m in payload["messages"]] == ["system", "user"]
     assert payload["response_format"]["type"] == "json_schema"
@@ -121,30 +224,40 @@ async def test_hosted_selection_reaches_chat_completions_with_config():
 
 
 @pytest.mark.asyncio
-async def test_groq_and_mistral_use_default_endpoints_and_overrides_apply():
-    for provider, expected in (
-        ("groq", "https://api.groq.com/openai/v1/chat/completions"),
-        ("mistral", "https://api.mistral.ai/v1/chat/completions"),
+async def test_groq_and_mistral_use_default_endpoints_and_per_provider_token_keys():
+    for provider, expected_url, token_key in (
+        ("groq", "https://api.groq.com/openai/v1/chat/completions", "max_completion_tokens"),
+        ("mistral", "https://api.mistral.ai/v1/chat/completions", "max_tokens"),
     ):
         observed = {}
 
-        def handler(req, expected=expected, observed=observed):
+        def handler(req, observed=observed):
             observed["url"] = str(req.url)
+            observed["payload"] = json.loads(req.content)
             return httpx.Response(
                 200, json=completion_body(abstention_json()), request=req
             )
 
+        ledger = make_ledger(Path("/tmp"), state_path=Path(f"/tmp/q_{provider}.json"))
         service = GenerationService(
             provider=provider, model=f"{provider}-test-model",
-            api_key="test-secret-key", transport=httpx.MockTransport(handler),
+            api_key="test-secret-key",
+            dispatch_policy=MockDispatchPolicy(provider),
+            quota_ledger=ledger,
+            transport=httpx.MockTransport(handler),
         )
         result = await service.generate(make_request())
-        assert observed["url"] == expected
+        assert observed["url"] == expected_url
+        assert observed["payload"][token_key] == 512
+        assert "max_tokens" not in observed["payload"] or token_key == "max_tokens"
+        if token_key == "max_completion_tokens":
+            assert "max_tokens" not in observed["payload"]
         assert result.abstained and result.answer is None and result.cited_ids == []
     override_store = {}
     service = GenerationService(
         provider="openai", model="gpt-test-mini", api_key="test-secret-key",
         api_base_url="https://hosted.example/v7",
+        dispatch_policy=MockDispatchPolicy("openai"),
         transport=httpx.MockTransport(recording_handler(override_store)),
     )
     await service.generate(make_request())
@@ -162,6 +275,7 @@ async def test_missing_api_key_fails_configuration_before_any_provider_call(monk
 
     service = GenerationService(
         provider="groq", model="groq-test-model",
+        dispatch_policy=MockDispatchPolicy("groq"),
         transport=httpx.MockTransport(handler),
     )
     assert service.api_key is None
@@ -181,6 +295,7 @@ async def test_strict_response_schema_is_provider_compliant():
 
     await GenerationService(
         provider="openai", model="gpt-test-mini", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("openai"),
         transport=httpx.MockTransport(handler),
     ).generate(make_request())
     schema = captured["schema"]
@@ -190,6 +305,38 @@ async def test_strict_response_schema_is_provider_compliant():
     assert set(body["required"]) == set(body["properties"])
     for spec in body["properties"].values():
         assert "default" not in spec
+
+
+@pytest.mark.asyncio
+async def test_schema_structure_preserves_every_canonical_property():
+    """No recursive keyword filtering may drop fields, names or semantics.
+
+    The sent schema is byte-for-byte (object-for-object) the canonical strict
+    schema: property names, anyOf null-unions and the required list are all
+    preserved, and no batch/schema projection exists.
+    """
+    from app.services.generation.hosted_provider import strict_generation_schema
+
+    captured = {}
+
+    def handler(req):
+        captured["schema"] = json.loads(req.content)["response_format"]["json_schema"]
+        return httpx.Response(200, json=completion_body(answer_json()), request=req)
+
+    await hosted_service(handler).generate(make_request())
+    assert captured["schema"]["schema"] == strict_generation_schema()
+    properties = captured["schema"]["schema"]["properties"]
+    assert list(properties) == ["answer", "cited_ids", "abstained", "abstention_reason"]
+    answer_spec = properties["answer"]
+    # Documented-subset keywords and local constraints stay intact; structure
+    # (including anyOf null unions) is never silently dropped.
+    assert {"minLength": 1, "type": "string"} in answer_spec["anyOf"]
+    assert {"type": "null"} in answer_spec["anyOf"]
+    assert properties["abstained"]["type"] == "boolean"
+    assert properties["cited_ids"]["items"]["minimum"] == 1
+    assert properties["cited_ids"]["maxItems"] == 20
+    union = properties["abstention_reason"]["anyOf"]
+    assert {"type": "null"} in union
 
 
 @pytest.mark.asyncio
@@ -203,6 +350,7 @@ async def test_api_key_env_fallback_is_used(monkeypatch):
 
     service = GenerationService(
         provider="openai", model="gpt-test-mini",
+        dispatch_policy=MockDispatchPolicy("openai"),
         transport=httpx.MockTransport(handler),
     )
     await service.generate(make_request())
@@ -220,6 +368,7 @@ async def test_api_key_is_not_leaked_into_payload():
 
     await GenerationService(
         provider="openai", model="gpt-test-mini", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("openai"),
         transport=httpx.MockTransport(handler),
     ).generate(make_request())
     assert "test-secret-key" not in observed["raw"]
@@ -238,15 +387,340 @@ async def test_seed_only_reaches_the_payload_when_explicitly_set():
 
     await GenerationService(
         provider="openai", model="gpt-test-mini", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("openai"),
         transport=httpx.MockTransport(capture(without_seed)),
     ).generate(make_request())
     assert "seed" not in without_seed["payload"]
     with_seed = {}
     await GenerationService(
         provider="openai", model="gpt-test-mini", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("openai"),
         seed=42, transport=httpx.MockTransport(capture(with_seed)),
     ).generate(make_request())
     assert with_seed["payload"]["seed"] == 42
+
+
+@pytest.mark.asyncio
+async def test_reasoning_controls_reach_payload_only_when_configured():
+    store = {}
+
+    def capture(store):
+        def handler(req):
+            store["payload"] = json.loads(req.content)
+            return httpx.Response(200, json=completion_body(answer_json()), request=req)
+        return handler
+
+    dispatch = MockDispatchPolicy("openai")
+    await GenerationService(
+        provider="openai", model="gpt-test-mini", api_key="test-secret-key",
+        dispatch_policy=dispatch,
+        transport=httpx.MockTransport(capture(store)),
+    ).generate(make_request())
+    assert "reasoning_effort" not in store["payload"]
+    assert "include_reasoning" not in store["payload"]
+    store = {}
+    await GenerationService(
+        provider="openai", model="gpt-test-mini", api_key="test-secret-key",
+        dispatch_policy=dispatch,
+        reasoning_effort="low", include_reasoning=False,
+        transport=httpx.MockTransport(capture(store)),
+    ).generate(make_request())
+    assert store["payload"]["reasoning_effort"] == "low"
+    assert store["payload"]["include_reasoning"] is False
+
+
+def test_hosted_constructor_defaults_are_fail_closed(monkeypatch):
+    monkeypatch.delenv("GENERATION_API_KEY", raising=False)
+    # Hosted providers default to the blocked policy: no injected policy,
+    # no authorization. Keys, provider selection, or flags never change it.
+    service = GenerationService(provider="groq", model="groq-test-model")
+    assert isinstance(service.dispatch_policy, BlockedLiveDispatchPolicy)
+    assert service.quota_ledger is None
+    # Explicitly injected overrides are honored and passed through.
+    ledger = QuotaLedger(QuotaConfig(enabled=False, state_path=Path("unused.json")))
+    authorized = GenerationService(
+        provider="groq", model="groq-test-model",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+    )
+    assert isinstance(authorized.dispatch_policy, MockDispatchPolicy)
+    assert authorized.quota_ledger is ledger
+    # Ollama/fake legacy paths never carry a dispatch policy or ledger.
+    legacy = GenerationService(provider="fake")
+    assert legacy.dispatch_policy is None and legacy.quota_ledger is None
+
+
+def test_hosted_constructor_reasoning_and_ledger_validation():
+    with pytest.raises(GenerationConfigurationError, match="reasoning_effort"):
+        GenerationService(
+            provider="groq", model="m", reasoning_effort="maximum"
+        )
+    with pytest.raises(GenerationConfigurationError, match="include_reasoning"):
+        GenerationService(
+            provider="groq", model="m", include_reasoning="false"
+        )
+    # Valid documented values are accepted.
+    GenerationService(
+        provider="groq", model="m", reasoning_effort="low", include_reasoning=False
+    )
+
+
+@pytest.mark.asyncio
+async def test_default_dispatch_is_blocked_before_any_http_or_client_creation():
+    """Blocked by default: no HTTP client, no call, no key usage needed."""
+    called = []
+
+    def handler(req):
+        called.append(True)
+        return httpx.Response(200, json=completion_body(answer_json()), request=req)
+
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(LiveInferenceBlockedError, match="blocked"):
+        await service.generate(make_request())
+    assert not called
+    # MockDispatchPolicy scoped to another provider stays blocked for groq.
+    scoped = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("openai"),
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(LiveInferenceBlockedError):
+        await scoped.generate(make_request())
+    assert not called
+
+
+@pytest.mark.asyncio
+async def test_authorized_mock_dispatch_reserves_and_settles_success(tmp_path):
+    ledger = make_ledger(tmp_path)
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+        transport=httpx.MockTransport(
+            completion_handler(answer_json(), usage=usage_json())
+        ),
+    )
+    result = await service.generate(make_request())
+    assert result.cited_ids == [1]
+    records = settled_records(ledger)
+    assert len(records) == 1
+    record = records[0]
+    assert record["success"] is True
+    assert record["provider"] == "groq"
+    assert record["usage"] == {
+        "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15,
+    }
+    assert record["tokens_unresolved"] is False
+    # A single attempt was reserved; no duplicate settlement is possible.
+    assert len(record["attempt_id"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_usage_is_captured_even_when_output_is_invalid(tmp_path):
+    """Usage is settled before parsing/validation, never after legality."""
+    ledger = make_ledger(tmp_path)
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+        transport=httpx.MockTransport(
+            completion_handler(answer_json((99,), "Invented source [99]."),
+                               usage=usage_json())
+        ),
+    )
+    with pytest.raises(MalformedOutputError, match="generation contract"):
+        await service.generate(make_request())
+    records = settled_records(ledger)
+    assert len(records) == 1
+    record = records[0]
+    assert record["success"] is False
+    assert record["error"] == "citation_contract_violation"
+    assert record["usage"] == {
+        "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15,
+    }
+    assert record["tokens_unresolved"] is False
+
+
+@pytest.mark.asyncio
+async def test_settlement_failures_are_typed_and_never_swallowed(tmp_path):
+    failing = FailingSettleLedger()
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=failing,
+        transport=httpx.MockTransport(completion_handler(answer_json())),
+    )
+    with pytest.raises(GenerationSettlementError, match="outstanding reservation preserved"):
+        await service.generate(make_request())
+    # The attempt was still reserved before dispatch.
+    assert failing.reserved == 1
+
+    # On a failing output path the settlement error preserves the original
+    # provider-failure classification instead of masking it.
+    failing2 = FailingSettleLedger()
+    service2 = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=failing2,
+        transport=httpx.MockTransport(
+            completion_handler(answer_json((99,), "Invented source [99]."))
+        ),
+    )
+    with pytest.raises(GenerationSettlementError, match="citation_contract_violation"):
+        await service2.generate(make_request())
+    assert failing2.reserved == 1
+
+
+@pytest.mark.asyncio
+async def test_missing_or_malformed_usage_stays_unknown_never_zero(tmp_path):
+    ledger = make_ledger(tmp_path)
+    # No usage object in the body at all.
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+        transport=httpx.MockTransport(completion_handler(answer_json())),
+    )
+    await service.generate(make_request())
+    record = settled_records(ledger)[0]
+    assert record["usage"] is None
+    assert record["tokens_unresolved"] is True
+    assert record["success"] is True
+
+    # Malformed usage is likewise unresolved; zero is never invented.
+    ledger2 = make_ledger(tmp_path, state_path=tmp_path / "malformed.json")
+    service2 = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger2,
+        transport=httpx.MockTransport(
+            completion_handler(answer_json(),
+                               usage={"prompt_tokens": -1, "total_tokens": "x"})
+        ),
+    )
+    await service2.generate(make_request())
+    record = settled_records(ledger2)[0]
+    assert record["usage_valid"] is False
+    assert record["tokens_unresolved"] is True
+
+
+@pytest.mark.asyncio
+async def test_http_429_settles_the_tripwire_without_retry_or_fallback(tmp_path):
+    calls = []
+
+    def handler(req):
+        calls.append(True)
+        return httpx.Response(429, json={"error": {"message": "x"}}, request=req)
+
+    ledger = make_ledger(tmp_path)
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ProviderUnavailableError, match="HTTP 429"):
+        await service.generate(make_request())
+    assert len(calls) == 1  # exactly one attempt; no automatic retry
+    record = settled_records(ledger)[0]
+    assert record["status_code"] == 429 and record["success"] is False
+
+    # The published 429 scope tripwire is now permanent for this scope.
+    with pytest.raises(RateLimitExceededError, match="rate limit active"):
+        ledger.reserve_attempt("groq", "groq-test-model")
+
+
+@pytest.mark.asyncio
+async def test_external_cancellation_settles_without_usage_and_propagates(tmp_path):
+    started = asyncio.Event()
+
+    async def handler(request):
+        started.set()
+        await asyncio.Event().wait()
+
+    ledger = make_ledger(tmp_path)
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+        timeout=5.0, transport=httpx.MockTransport(handler),
+    )
+    task = asyncio.create_task(service.generate(make_request()))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await drain_cleanup_tasks()
+    records = settled_records(ledger)
+    assert len(records) == 1
+    record = records[0]
+    assert record["success"] is False
+    assert record["error"] == "cancelled"
+    assert record["usage"] is None and record["tokens_unresolved"] is True
+
+
+@pytest.mark.asyncio
+async def test_overall_deadline_cancellation_settles_and_maps_to_timeout(tmp_path):
+    started = asyncio.Event()
+
+    async def handler(request):
+        started.set()
+        await asyncio.Event().wait()
+
+    ledger = make_ledger(tmp_path)
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+        timeout=0.05, transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ProviderTimeoutError, match="overall timeout"):
+        await service.generate(make_request())
+    await drain_cleanup_tasks()
+    record = settled_records(ledger)[0]
+    assert record["success"] is False
+    assert record["usage"] is None
+
+
+@pytest.mark.asyncio
+async def test_truncated_finish_reason_fails_deliberately(tmp_path):
+    ledger = make_ledger(tmp_path)
+    truncated_answer = 'Truncated before completion'  # valid HTTP body, cut output
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("groq"), quota_ledger=ledger,
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(
+                200,
+                json=completion_body(
+                    truncated_answer, usage=usage_json(), finish_reason="length"
+                ),
+                request=req,
+            )
+        ),
+    )
+    with pytest.raises(MalformedOutputError, match="truncated"):
+        await service.generate(make_request())
+    record = settled_records(ledger)[0]
+    assert record["error"] == "finish_reason_length"
+    assert record["success"] is False and record["tokens_unresolved"] is False
+
+
+@pytest.mark.asyncio
+async def test_reasoning_only_and_prose_refusal_fail_distinctly():
+    # Reasoning present but no content: never parsed as an answer.
+    with pytest.raises(MalformedOutputError, match="reasoning without the required content"):
+        await hosted_service(
+            lambda req: httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {"message": {"role": "assistant", "reasoning": "thinking..."},
+                         "finish_reason": "stop"}
+                    ]
+                },
+                request=req,
+            )
+        ).generate(make_request())
+
+    # Prose refusal content is typed and never copied into the error text.
+    refusal = "I cannot comply with that request."
+    with pytest.raises(MalformedOutputError, match="required JSON result") as excinfo:
+        await hosted_service(completion_handler(refusal)).generate(make_request())
+    assert refusal not in str(excinfo.value)
 
 
 @pytest.mark.asyncio
@@ -285,6 +759,7 @@ async def test_malformed_provider_body_shapes_fail_typed():
         with pytest.raises(MalformedOutputError):
             await GenerationService(
                 provider="openai", model="gpt-test-mini", api_key="test-secret-key",
+                dispatch_policy=MockDispatchPolicy("openai"),
                 transport=httpx.MockTransport(handler),
             ).generate(make_request())
 
@@ -339,7 +814,8 @@ async def test_overall_deadline_covers_hosted_provider_work():
 
     service = GenerationService(
         provider="openai", model="gpt-test-mini", api_key="test-secret-key",
-        timeout=0.02, transport=httpx.MockTransport(handler),
+        timeout=0.02, dispatch_policy=MockDispatchPolicy("openai"),
+        transport=httpx.MockTransport(handler),
     )
     with pytest.raises(ProviderTimeoutError, match="overall timeout"):
         await service.generate(make_request())
@@ -356,7 +832,8 @@ async def test_external_cancellation_is_not_converted_to_provider_timeout():
 
     service = GenerationService(
         provider="openai", model="gpt-test-mini", api_key="test-secret-key",
-        timeout=5.0, transport=httpx.MockTransport(handler),
+        timeout=5.0, dispatch_policy=MockDispatchPolicy("openai"),
+        transport=httpx.MockTransport(handler),
     )
     task = asyncio.create_task(service.generate(make_request()))
     await started.wait()
@@ -377,6 +854,7 @@ async def test_evidence_is_supplied_verbatim_and_request_not_mutated():
 
     await GenerationService(
         provider="openai", model="gpt-test-mini", api_key="test-secret-key",
+        dispatch_policy=MockDispatchPolicy("openai"),
         transport=httpx.MockTransport(handler),
     ).generate(request)
     assert '"content":"User input: source label."' in captured["prompt"]
@@ -394,7 +872,8 @@ async def test_context_guard_fails_before_any_hosted_call():
 
     service = GenerationService(
         provider="openai", model="gpt-test-mini", api_key="test-secret-key",
-        max_prompt_chars=32, transport=httpx.MockTransport(handler),
+        max_prompt_chars=32, dispatch_policy=MockDispatchPolicy("openai"),
+        transport=httpx.MockTransport(handler),
     )
     with pytest.raises(ContextBudgetExceededError):
         await service.generate(make_request())
@@ -411,5 +890,141 @@ def test_hosted_constructor_configuration_validation(monkeypatch):
     with pytest.raises(GenerationConfigurationError, match="positive"):
         GenerationService(provider="openai", model="m", num_predict=0)
     # fake/ollama keep the OLLAMA_* env names; hosted uses GENERATION_*
-    confirmed = GenerationService(provider="ollama", model="llama3.2:3b")
+    confirmed = GenerationService(provider="fake")
     assert confirmed.temperature == 0.0 and confirmed.api_key is None
+
+
+def test_prompt_char_fallback_matches_settings_default(monkeypatch):
+    """Reconciled fallback: constructor default matches Settings (16000)."""
+    monkeypatch.delenv("GENERATION_MAX_PROMPT_CHARS", raising=False)
+    service = GenerationService(provider="fake")
+    assert service.max_prompt_chars == 16000
+
+
+# ==============================================================================
+# PINNED REGRESSION SUITE: CANCELLATION & TASK RETRIEVAL (DEFECTS A, B, C)
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_defect_a_caller_cancellation_after_reservation_finished_settles(tmp_path):
+    """Defect A: If reserve_task finishes before caller resumes from shield, caller schedules tracked settlement."""
+    ledger = make_ledger(tmp_path)
+    policy = MockDispatchPolicy("groq")
+
+    reserve_finished_event = asyncio.Event()
+    orig_areserve = ledger.areserve_attempt
+
+    async def mock_areserve(provider, model):
+        aid = await orig_areserve(provider, model)
+        reserve_finished_event.set()
+        return aid
+
+    ledger.areserve_attempt = mock_areserve
+
+    async def mock_handler(req):
+        await asyncio.Event().wait()
+
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="mock-key",
+        dispatch_policy=policy, quota_ledger=ledger,
+        transport=httpx.MockTransport(mock_handler),
+    )
+
+    task = asyncio.create_task(service.generate(make_request()))
+    # Deterministically wait until reserve_task has completely finished
+    await reserve_finished_event.wait()
+
+    # Now cancel the caller task
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # Drain tracked cleanup tasks deterministically without sleeps
+    await drain_cleanup_tasks()
+
+    # Verify that the reservation was NOT leaked and was settled as CancelledError
+    state = ledger._load_state()
+    active = state.get("active_reservations", {})
+    assert len(active) == 0, f"Leaked active reservation: {active}"
+    settled = state.get("settled_requests", [])
+    assert len(settled) == 1
+    assert settled[0]["success"] is False
+    assert settled[0]["error"] in {"CancelledError", "cancelled"}
+
+
+@pytest.mark.asyncio
+async def test_defect_b_abandoned_reservation_task_exception_retrieved(tmp_path, caplog):
+    """Defect B: If areserve_attempt raises after caller left, done-callback retrieves exception and logs sanitized warning."""
+    import logging
+    ledger = make_ledger(tmp_path)
+    policy = MockDispatchPolicy("groq")
+
+    caller_abandoned_event = asyncio.Event()
+    orig_areserve = ledger.areserve_attempt
+
+    async def failing_areserve(provider, model):
+        # Wait until caller has cancelled and abandoned
+        await caller_abandoned_event.wait()
+        raise QuotaExceededError("Synthesized quota limit reached in background")
+
+    ledger.areserve_attempt = failing_areserve
+
+    async def mock_handler(req):
+        return httpx.Response(200, json=completion_body(answer_json()), request=req)
+
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="mock-key",
+        dispatch_policy=policy, quota_ledger=ledger,
+        transport=httpx.MockTransport(mock_handler),
+    )
+
+    task = asyncio.create_task(service.generate(make_request()))
+    # Give control to the event loop so _do_reserve starts
+    await asyncio.sleep(0.001)
+
+    # Cancel the caller while areserve is waiting
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # Now allow the background areserve to resume and raise
+    with caplog.at_level(logging.WARNING):
+        caller_abandoned_event.set()
+        await drain_cleanup_tasks()
+
+    # Verify no unretrieved task exception warning was raised by asyncio,
+    # and sanitized warning was logged with exception type only
+    warnings = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("QuotaExceededError" in w for w in warnings)
+    # Ensure no raw internal error details leaked into logs
+    assert not any("Synthesized quota limit reached in background" in w for w in warnings)
+
+
+@pytest.mark.asyncio
+async def test_defect_c_drain_cleanup_tasks_synchronizes_background_settlements(tmp_path):
+    """Defect C: drain_cleanup_tasks gathers all tracked background tasks deterministically."""
+    ledger = make_ledger(tmp_path)
+    policy = MockDispatchPolicy("groq")
+
+    async def hanging_handler(req):
+        await asyncio.Event().wait()
+
+    service = GenerationService(
+        provider="groq", model="groq-test-model", api_key="mock-key",
+        dispatch_policy=policy, quota_ledger=ledger,
+        transport=httpx.MockTransport(hanging_handler),
+    )
+
+    task = asyncio.create_task(service.generate(make_request()))
+    await asyncio.sleep(0.005)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # Before drain, settlement may be pending in background
+    await drain_cleanup_tasks()
+
+    # After drain, all background cleanup tasks are guaranteed settled
+    state = ledger._load_state()
+    assert len(state.get("active_reservations", {})) == 0
+    assert len(state.get("settled_requests", [])) == 1

@@ -8,7 +8,15 @@ Employees ask questions over accessible documents; managers later review action 
 
 Phase 1 delivers a local synthetic PDF/DOCX upload-to-answer flow with a server-owned demo actor. It is not authenticated multi-tenant deployment. Phase 2 adds real identity, governance and audit before sensitive/shared data is accepted.
 
-The target remains hosted generation and embeddings. PR #13 has merged the hosted generation transport; draft PR #15 supplies the unmerged evaluation harness. PR #16 merged the offline hosted embedding dispatch foundation, and PR #19 merged hosted input token validation and candidate splitting. API wiring and live acceptance remain pending, and historical database vectors still use local MiniLM. No provider account access, paid expenditure or hosted embedding dimension is established by these docs. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior.
+### Model Policy
+- All real AI usage goes through hosted APIs, called by the backend with server-held keys:
+  - embeddings: Google gemini-embedding-001 at 384 dimensions via outputDimensionality, in backend/app/services/ingestion/embedding.py;
+  - generation: Groq openai/gpt-oss-120b.
+- The browser only calls the KNEXUS backend, never a provider, and holds no keys.
+- Local models (MiniLM sentence-transformers/all-MiniLM-L6-v2) and the fake generator are for tests, CI and local development only. They are not the demo or production path.
+- No automatic retries or fallback between providers. No paid usage without Hassan's approval.
+
+PR #13 merged hosted transport; PR #15 merged the generation evaluation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged hosted input validation; PR #21 wired generation into backend dependencies; PR #23 merged the frontend dashboard; PR #26 added CI tokenizer caching.
 
 ## Functional requirements
 

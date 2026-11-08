@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from datetime import datetime, timezone
 from pathlib import PurePath, PureWindowsPath
 from typing import Callable
 from uuid import UUID, uuid4
@@ -32,6 +34,8 @@ from app.services.ingestion.parsing import ParsedSection, parse_uploaded_documen
 from app.services.ingestion.processor import process_document
 from app.services.ingestion.storage import delete_upload, make_storage_key, write_upload
 
+logger = logging.getLogger("knexus.documents")
+
 
 router = APIRouter()
 
@@ -44,6 +48,15 @@ def _visible_document_predicate(actor: ActorContext):
     )
 
 
+def to_utc_datetime(dt: datetime | None) -> datetime | None:
+    """Normalize client-facing datetimes to timezone-aware UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _summary(document: Document) -> DocumentSummary:
     return DocumentSummary(
         id=document.id,
@@ -52,7 +65,7 @@ def _summary(document: Document) -> DocumentSummary:
         status=document.status,
         allowed_roles=document.allowed_roles,
         chunk_count=document.chunk_count,
-        created_at=document.created_at,
+        created_at=to_utc_datetime(document.created_at),
     )
 
 
@@ -185,9 +198,17 @@ async def upload_document(
         session.add(job)
         await session.flush()
         await session.commit()
-    except Exception:
+    except Exception as exc:
         await session.rollback()
         await asyncio.to_thread(delete_upload, storage_key)
+        req_id = getattr(request.state, "request_id", None) or request.headers.get("x-request-id") or "unknown"
+        logger.exception("Upload failed on database flush [request_id=%s]: %s", req_id, exc)
+        cause_text = f"{type(exc).__name__}: {exc}".lower()
+        if any(hint in cause_text for hint in ("organizations", "users", "foreign key", "foreignkey", "demo identity", "violates foreign key")):
+            logger.error(
+                "Upload failed because demo organization or user is missing. "
+                "Run the seed command from DEMO_RUNBOOK.md: python -m app.db.demo_seed"
+            )
         raise APIProblem(500, "INTERNAL_ERROR", "The upload could not be accepted.")
 
     background_tasks.add_task(

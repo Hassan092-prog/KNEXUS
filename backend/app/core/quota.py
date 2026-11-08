@@ -12,6 +12,7 @@ token counting is unresolved. Dispatch remains strictly blocked by default.
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass
 import json
 import math
@@ -22,11 +23,15 @@ import time
 from typing import Any
 import uuid
 
-from app.core.dispatch_policy import LiveInferenceBlockedError
+from app.core.dispatch_policy import BlockedLiveDispatchPolicy, LiveInferenceBlockedError
 
 
 class QuotaError(Exception):
     """Base exception for runtime quota enforcement."""
+
+
+class QuotaCampaignError(QuotaError, ValueError):
+    """Raised when dispatch is authorized but campaign ID is missing, blank, or 'default'."""
 
 
 class QuotaExceededError(QuotaError):
@@ -51,24 +56,32 @@ def _is_finite_number(val: Any) -> bool:
 
 @dataclass(frozen=True)
 class QuotaConfig:
-    """Configuration for durable quota management."""
+    """Configuration for durable quota management with campaign-scoped budgets."""
 
     enabled: bool = False
+    campaign_id: str = "default"
+    max_campaign_attempts: int | None = 500
     max_requests_per_minute: int = 30
     max_requests_per_day: int = 1000
-    max_total_attempts: int = 50
+    max_total_attempts: int | None = None
     min_request_interval_seconds: float = 2.0
     in_flight_timeout_seconds: float = 60.0
     lock_timeout_seconds: float = 10.0
     state_path: Path | None = None
 
     def __post_init__(self):
+        if not isinstance(self.campaign_id, str):
+            raise ValueError("campaign_id must be a string")
+        if self.max_campaign_attempts is not None:
+            if not _is_strict_int(self.max_campaign_attempts) or self.max_campaign_attempts < 0:
+                raise ValueError("max_campaign_attempts must be a non-negative integer (not boolean)")
         if not _is_strict_int(self.max_requests_per_minute) or self.max_requests_per_minute <= 0:
             raise ValueError("max_requests_per_minute must be a positive integer (not boolean)")
         if not _is_strict_int(self.max_requests_per_day) or self.max_requests_per_day <= 0:
             raise ValueError("max_requests_per_day must be a positive integer (not boolean)")
-        if not _is_strict_int(self.max_total_attempts) or self.max_total_attempts < 0:
-            raise ValueError("max_total_attempts must be a non-negative integer (not boolean)")
+        if self.max_total_attempts is not None:
+            if not _is_strict_int(self.max_total_attempts) or self.max_total_attempts < 0:
+                raise ValueError("max_total_attempts must be a non-negative integer (not boolean)")
         if not _is_finite_number(self.min_request_interval_seconds) or self.min_request_interval_seconds < 0:
             raise ValueError("min_request_interval_seconds must be a non-negative finite number")
         if not _is_finite_number(self.in_flight_timeout_seconds) or self.in_flight_timeout_seconds <= 0:
@@ -76,13 +89,36 @@ class QuotaConfig:
         if not _is_finite_number(self.lock_timeout_seconds) or self.lock_timeout_seconds <= 0:
             raise ValueError("lock_timeout_seconds must be a positive finite number")
 
+    def validate_against_deadlines(self, max_deadline: float, safety_margin: float = 5.0) -> None:
+        min_required = float(max_deadline) + float(safety_margin)
+        if float(self.in_flight_timeout_seconds) <= min_required:
+            raise ValueError(
+                f"in_flight_timeout_seconds ({self.in_flight_timeout_seconds}s) must be strictly "
+                f"greater than longest deadline ({max_deadline}s) + safety margin ({safety_margin}s) = {min_required}s "
+                f"to prevent concurrent dispatches while an active request is legitimately in flight."
+            )
+
 
 class QuotaLedger:
     """Durable quota authority with cross-process locking and single in-flight gating."""
 
-    def __init__(self, config: QuotaConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: QuotaConfig | None = None,
+        *,
+        time_func: Any | None = None,
+    ) -> None:
         self.config = config or QuotaConfig()
-        self._default_state_path = Path("/tmp/knexus_quota_ledger.json")
+        self.campaign_id = self.config.campaign_id
+        self._time = time_func or time.time
+        if self.config.state_path is not None:
+            self._default_state_path = self.config.state_path
+        else:
+            try:
+                from app.core.config import settings
+                self._default_state_path = settings.QUOTA_STATE_PATH
+            except Exception:
+                self._default_state_path = Path(".knexus-private-storage") / "quota_state.json"
 
     @property
     def state_path(self) -> Path:
@@ -156,6 +192,17 @@ class QuotaLedger:
     def _validate_state_schema(self, data: Any) -> dict[str, Any]:
         if not isinstance(data, dict):
             raise QuotaStateCorruptError("Quota state root is not a dict")
+        # Migrate legacy records on read without destructively modifying on-disk records
+        active_res = data.get("active_reservations")
+        if isinstance(active_res, dict):
+            for rec in active_res.values():
+                if isinstance(rec, dict) and ("campaign_id" not in rec or not rec["campaign_id"]):
+                    rec["campaign_id"] = "legacy"
+        settled_req = data.get("settled_requests")
+        if isinstance(settled_req, list):
+            for rec in settled_req:
+                if isinstance(rec, dict) and ("campaign_id" not in rec or not rec["campaign_id"]):
+                    rec["campaign_id"] = "legacy"
         if data.get("version") != 1 or not _is_strict_int(data.get("version")):
             raise QuotaStateCorruptError(f"Unsupported or non-integer quota state version: {data.get('version')}")
         if not _is_finite_number(data.get("created_at")) or data["created_at"] <= 0:
@@ -271,7 +318,7 @@ class QuotaLedger:
         if not self.state_path.exists():
             return {
                 "version": 1,
-                "created_at": time.time(),
+                "created_at": self._time(),
                 "scopes": {},
                 "active_reservations": {},
                 "settled_requests": [],
@@ -322,7 +369,7 @@ class QuotaLedger:
             should_retry = False
             try:
                 state = self._load_state()
-                now = time.time()
+                now = self._time()
 
                 scopes: dict[str, Any] = state.setdefault("scopes", {})
                 scope_info = scopes.setdefault(scope_key, {
@@ -339,6 +386,41 @@ class QuotaLedger:
                     )
 
                 active: dict[str, Any] = state.setdefault("active_reservations", {})
+                settled: list[dict[str, Any]] = state.setdefault("settled_requests", [])
+
+                # Enforce in_flight_timeout_seconds: transition stale active reservations
+                # to terminal expired_unresolved records under the lock at reserve time.
+                stale_ids = []
+                for aid, item in list(active.items()):
+                    reserved_at = item.get("reserved_at", 0.0)
+                    if now - reserved_at >= self.config.in_flight_timeout_seconds:
+                        stale_ids.append(aid)
+
+                for aid in stale_ids:
+                    res = active.pop(aid)
+                    scope_k = res.get("scope", f"{res.get('provider')}:{res.get('model')}")
+                    expired_record = {
+                        "attempt_id": aid,
+                        "scope": scope_k,
+                        "provider": res.get("provider"),
+                        "model": res.get("model"),
+                        "reserved_at": res.get("reserved_at"),
+                        "timestamp": now,
+                        "success": False,
+                        "error": "expired_unresolved",
+                        "terminal_state": "expired_unresolved",
+                        "status_code": None,
+                        "usage": None,
+                        "usage_valid": False,
+                        "tokens_unresolved": True,
+                        "expired_at": now,
+                        "campaign_id": res.get("campaign_id", "legacy"),
+                        "reason": (
+                            f"Active reservation exceeded in_flight_timeout_seconds "
+                            f"({self.config.in_flight_timeout_seconds}s)"
+                        ),
+                    }
+                    settled.append(expired_record)
 
                 if active:
                     in_flight_id = next(iter(active.keys()))
@@ -352,13 +434,36 @@ class QuotaLedger:
                         )
                     should_retry = True
                 else:
+                    settled: list[dict[str, Any]] = state.setdefault("settled_requests", [])
+
+                    # Count total attempts per (campaign_id, scope)
+                    campaign_id = self.campaign_id
+                    active_campaign = sum(
+                        1 for r in active.values()
+                        if r.get("scope") == scope_key and r.get("campaign_id", "legacy") == campaign_id
+                    )
+                    settled_campaign = sum(
+                        1 for r in settled
+                        if r.get("scope") == scope_key and r.get("campaign_id", "legacy") == campaign_id
+                    )
+                    total_campaign_attempts = active_campaign + settled_campaign
+                    if (
+                        self.config.max_campaign_attempts is not None
+                        and total_campaign_attempts >= self.config.max_campaign_attempts
+                    ):
+                        raise QuotaExceededError(
+                            f"Scope '{scope_key}' campaign '{campaign_id}' attempt limit "
+                            f"({total_campaign_attempts}/{self.config.max_campaign_attempts}) reached."
+                        )
+
                     total_attempts = scope_info.get("total_attempts", 0)
-                    if total_attempts >= self.config.max_total_attempts:
+                    if (
+                        self.config.max_total_attempts is not None
+                        and total_attempts >= self.config.max_total_attempts
+                    ):
                         raise QuotaExceededError(
                             f"Scope '{scope_key}' total attempt ceiling ({self.config.max_total_attempts}) reached."
                         )
-
-                    settled: list[dict[str, Any]] = state.setdefault("settled_requests", [])
                     recent_60s = 0
                     daily = 0
                     for rec in settled:
@@ -382,7 +487,7 @@ class QuotaLedger:
                     if now - last_dispatch < self.config.min_request_interval_seconds:
                         sleep_needed = self.config.min_request_interval_seconds - (now - last_dispatch)
                         time.sleep(sleep_needed)
-                        now = time.time()
+                        now = self._time()
 
                     attempt_id = str(uuid.uuid4())
                     active[attempt_id] = {
@@ -390,6 +495,7 @@ class QuotaLedger:
                         "provider": provider,
                         "model": model,
                         "scope": scope_key,
+                        "campaign_id": self.campaign_id,
                     }
                     scope_info["total_attempts"] = total_attempts + 1
                     scope_info["last_dispatch_time"] = now
@@ -421,9 +527,36 @@ class QuotaLedger:
             active: dict[str, Any] = state.setdefault("active_reservations", {})
             settled: list[dict[str, Any]] = state.setdefault("settled_requests", [])
 
-            # Reject duplicate settlements
+            # Reject duplicate settlements or handle late settlement for expired attempts
             for s in settled:
                 if s.get("attempt_id") == attempt_id:
+                    if s.get("terminal_state") == "expired_unresolved":
+                        # Late settlement for expired attempt: do not double-count!
+                        # Attach late usage if valid, without changing the terminal outcome (success remains False)
+                        if usage is not None and isinstance(usage, dict) and s.get("late_usage") is None:
+                            p_tok = usage.get("prompt_tokens")
+                            c_tok = usage.get("completion_tokens")
+                            t_tok = usage.get("total_tokens")
+                            if (
+                                _is_strict_int(p_tok) and p_tok >= 0
+                                and _is_strict_int(c_tok) and c_tok >= 0
+                                and _is_strict_int(t_tok) and t_tok >= 0
+                                and p_tok + c_tok == t_tok
+                            ):
+                                s["late_usage"] = {
+                                    "prompt_tokens": p_tok,
+                                    "completion_tokens": c_tok,
+                                    "total_tokens": t_tok,
+                                }
+                        # Late settlement carrying status 429 must still trip the rate-limit tripwire!
+                        if status_code == 429 or (error and "429" in str(error)):
+                            scope_k = s.get("scope") or f"{s.get('provider')}:{s.get('model')}"
+                            scopes = state.setdefault("scopes", {})
+                            scope_info = scopes.setdefault(scope_k, {})
+                            scope_info["rate_limited"] = True
+                            scope_info["rate_limit_reason"] = error or "HTTP 429 Too Many Requests (late settlement)"
+                        self._save_state(state)
+                        return
                     raise ValueError(f"Duplicate settlement: attempt '{attempt_id}' is already settled.")
 
             # Reject unknown attempts
@@ -432,7 +565,7 @@ class QuotaLedger:
 
             res = active.pop(attempt_id)
             scope_key = res.get("scope", f"{res.get('provider')}:{res.get('model')}")
-            now = time.time()
+            now = self._time()
 
             # Validate usage without inventing false counts
             parsed_usage: dict[str, Any] | None = None
@@ -475,6 +608,7 @@ class QuotaLedger:
                 "usage": parsed_usage,
                 "usage_valid": usage_valid,
                 "tokens_unresolved": not usage_valid,
+                "campaign_id": res.get("campaign_id", self.campaign_id),
             }
             settled.append(record)
 
@@ -511,3 +645,83 @@ class QuotaLedger:
             error=error,
             status_code=status_code,
         )
+def validate_dispatch_campaign(
+    dispatch_policy: Any,
+    quota_ledger: QuotaLedger | None = None,
+) -> str:
+    """Enforce explicit campaign identification and quota ledger when dispatch is authorized.
+
+    Whenever a dispatch policy permits network inference (can_dispatch is True):
+    1. A QuotaLedger instance is strictly required (cannot be None).
+    2. The campaign_id must be non-empty and must NOT be 'default'. Silent fallback
+       to unbudgeted 'default' campaigns is refused fail-closed.
+
+    Returns the validated campaign_id.
+    """
+    can_dispatch = bool(getattr(
+        dispatch_policy,
+        "can_dispatch",
+        not isinstance(dispatch_policy, BlockedLiveDispatchPolicy) if dispatch_policy is not None else False,
+    ))
+    if not can_dispatch:
+        campaign_id = getattr(quota_ledger, "campaign_id", "") if quota_ledger is not None else ""
+        return str(campaign_id or "blocked")
+
+    if quota_ledger is None:
+        raise QuotaCampaignError(
+            "A configured QuotaLedger is strictly required whenever provider dispatch is authorized."
+        )
+
+    campaign_id = getattr(quota_ledger, "campaign_id", None)
+    campaign_id_str = str(campaign_id or "").strip()
+    if not campaign_id_str:
+        raise QuotaCampaignError(
+            "QUOTA_CAMPAIGN_ID is required and must be non-empty whenever provider dispatch is authorized."
+        )
+    if campaign_id_str.lower() == "default":
+        raise QuotaCampaignError(
+            "Silent fallback to campaign 'default' is refused whenever provider dispatch is authorized. "
+            "An explicit, non-default QUOTA_CAMPAIGN_ID must be configured."
+        )
+
+    return campaign_id_str
+
+
+# ==============================================================================
+# Process-wide Shared Quota Ledger Singleton
+# ==============================================================================
+
+_process_ledger: QuotaLedger | None = None
+_process_ledger_lock = threading.Lock()
+
+
+def get_process_quota_ledger() -> QuotaLedger:
+    global _process_ledger
+    if _process_ledger is None:
+        with _process_ledger_lock:
+            if _process_ledger is None:
+                from app.core.config import settings
+
+                state_path = settings.QUOTA_STATE_PATH
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+                campaign_id = getattr(settings, "QUOTA_CAMPAIGN_ID", "").strip()
+                config = QuotaConfig(
+                    enabled=settings.QUOTA_ENABLED,
+                    campaign_id=campaign_id,
+                    max_campaign_attempts=settings.QUOTA_CAMPAIGN_MAX_ATTEMPTS,
+                    max_requests_per_minute=settings.QUOTA_MAX_REQUESTS_PER_MINUTE,
+                    max_requests_per_day=settings.QUOTA_MAX_REQUESTS_PER_DAY,
+                    max_total_attempts=settings.QUOTA_MAX_TOTAL_ATTEMPTS,
+                    min_request_interval_seconds=settings.QUOTA_MIN_REQUEST_INTERVAL_SECONDS,
+                    in_flight_timeout_seconds=settings.QUOTA_IN_FLIGHT_TIMEOUT_SECONDS,
+                    lock_timeout_seconds=settings.QUOTA_LOCK_TIMEOUT_SECONDS,
+                    state_path=state_path,
+                )
+                _process_ledger = QuotaLedger(config)
+    return _process_ledger
+
+
+def reset_process_quota_ledger() -> None:
+    global _process_ledger
+    with _process_ledger_lock:
+        _process_ledger = None

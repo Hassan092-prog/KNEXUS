@@ -4,6 +4,7 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 import stat
+import sys
 
 import pytest
 from docx import Document as WordDocument
@@ -187,6 +188,7 @@ def test_fake_embedder_is_explicit_deterministic_and_384_dimensional():
         validate_embeddings([[float("nan")] + [0.0] * 383], 1)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file permission bits (0o600/0o700) not enforced on Windows")
 def test_storage_uses_generated_private_keys_and_rejects_traversal(
     monkeypatch, tmp_path: Path
 ):

@@ -40,6 +40,7 @@ class HarnessCase:
     expected_abstained: bool
     expected_cited_ids: tuple[int, ...] = ()
     smoke: bool = False
+    group: str = "development"
 
 def make_evidence(citation_id: int, content: str) -> EvidenceChunk:
     return EvidenceChunk(
@@ -97,18 +98,32 @@ def _matches(case: HarnessCase, result: GenerationResult) -> bool:
     return set(case.expected_cited_ids) == set(result.cited_ids)
 
 def _service_config(service) -> dict[str, Any]:
-    """Configuration provenance read from the service; absent fields are None."""
-    return {
+    """Configuration provenance read from the service; absent fields are None.
+
+    Hosted providers never carry Ollama option semantics; their record keeps
+    the hosted runtime knob names (max_tokens/temperature) instead. API keys
+    are deliberately never recorded here.
+    """
+    config: dict[str, Any] = {
         "prompt_version": PROMPT_VERSION,
         "system_prompt_sha256": SYSTEM_PROMPT_SHA256,
+        "provider": getattr(service, "provider", "ollama"),
         "model": getattr(service, "model", None),
         "provider_url": getattr(service, "url", None),
-        "ollama_options": {
+    }
+    if config["provider"] in ("ollama", "fake"):
+        config["ollama_options"] = {
             "num_ctx": getattr(service, "num_ctx", None),
             "num_predict": getattr(service, "num_predict", None),
             "seed": getattr(service, "seed", None),
-        },
-    }
+        }
+    else:
+        config["hosted_options"] = {
+            "max_tokens": getattr(service, "num_predict", None),
+            "temperature": getattr(service, "temperature", None),
+            "seed": getattr(service, "seed", None),
+        }
+    return config
 
 def _record(stream, record: dict[str, Any]) -> None:
     stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
@@ -151,6 +166,7 @@ async def run_harness(
                     "run_index": run_index,
                     "repeat_count": repeat,
                     "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                    "case_group": case.group,
                     **config,
                     "case": case.name,
                     "question": case.request.question,

@@ -4,7 +4,15 @@ KNEXUS is a modular FastAPI application with PostgreSQL/pgvector persistence and
 
 ## Target versus implemented architecture
 
-The target remains hosted generation and embeddings. PR #13 has merged the hosted generation transport; draft PR #15 supplies the unmerged evaluation harness. PR #16 merged the offline hosted embedding dispatch foundation, and PR #19 merged hosted input token validation and candidate splitting. API wiring and live acceptance remain pending, and historical database vectors remain local MiniLM. No provider account access, paid expenditure or hosted embedding dimension is established by these docs. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior. The diagram is the hosted target; generation transport and embedding validation exist, while API configuration paths and corpus activation still need migration.
+### Model Policy
+- All real AI usage goes through hosted APIs, called by the backend with server-held keys:
+  - embeddings: Google gemini-embedding-001 at 384 dimensions via outputDimensionality, in backend/app/services/ingestion/embedding.py;
+  - generation: Groq openai/gpt-oss-120b.
+- The browser only calls the KNEXUS backend, never a provider, and holds no keys.
+- Local models (MiniLM sentence-transformers/all-MiniLM-L6-v2) and the fake generator are for tests, CI and local development only. They are not the demo or production path.
+- No automatic retries or fallback between providers. No paid usage without Hassan's approval.
+
+PR #13 merged hosted generation transport; PR #15 merged the generation evaluation harness; PR #16 merged offline dispatch protection and quota ledger; PR #19 merged hosted input token validation; PR #21 wired generation into backend dependencies; PR #23 merged the frontend dashboard; PR #26 added CI tokenizer caching.
 
 ## Implemented components
 
@@ -15,7 +23,7 @@ The target remains hosted generation and embeddings. PR #13 has merged the hoste
 - `run_generation` awaits an injected concrete service and validates result/evidence membership.
 - Generation implements explicit fake/Ollama providers, structured evidence, schema validation, typed errors and deadlines. The query endpoint integrates generation through the canonical `run_generation` boundary.
 - Six ORM tables, an initial Alembic revision and explicit seed helper implement persistence. Ingestion processing and pgvector retrieval run in-process; background tasks are not durable. Recovery marks queued/processing jobs only after the operator confirms all old workers stopped.
-- The frontend has no committed app, manifest or build.
+- The frontend application (frontend/app) is merged on origin/main (PR #23) with overview, documents, and chat views.
 
 ## Phase 1 flow
 
@@ -26,14 +34,14 @@ flowchart LR
     UI["Zaid: upload/chat/status UI"] --> API["Hassan: document/query API"]
     API --> JOB["Persist document + ingestion job"]
     JOB --> ING["Parse, preserve source, chunk"]
-    ING --> EMB["Hosted embedding API (offline dispatch & validation merged; activation pending)"]
+    ING --> EMB["Local MiniLM embedder (sentence-transformers, 384-d)"]
     EMB --> DB["PostgreSQL + pgvector"]
     API --> RET["Authorize and retrieve"]
-    RET --> QEMB["Hosted query embedding (same model/revision)"]
+    RET --> QEMB["Local query embedding (MiniLM, 384-d)"]
     RET --> DB
     RET --> BOUNDARY["H01 run_generation"]
     BOUNDARY --> GEN["Naveed: structured generator"]
-    GEN --> HOSTED["Hosted generation API (transport exists; wiring pending)"]
+    GEN --> HOSTED["Hosted Groq generation (openai/gpt-oss-120b)"]
     GEN --> API
     API --> UI
 ~~~
@@ -48,7 +56,7 @@ The [database document](DATABASE_SCHEMA.md) maps actual tables/constraints. Comp
 
 ## Deployment boundary
 
-Compose currently starts PostgreSQL only. The API runs as an explicitly started local process. The target makes outbound backend calls to hosted embedding/generation APIs, without local inference or model tunnels. Hosted transport exists, but API Settings wiring and hosted embedding integration still require migration. The browser talks only to the backend and never holds provider keys.
+Compose currently starts PostgreSQL only. The API runs as an explicitly started local process. The Phase 1 demo stack makes outbound backend calls to the Groq generation API, using local MiniLM for embeddings (Google embedder present in codebase but off for demo). No local LLM inference or model tunnels are required. The browser talks only to the backend and never holds provider keys.
 
 No live server/tunnel is assumed from a historical check. Keep synthetic local data until authentication and authorization are verified. Compose's current DB port publication and health diagnostics need hardening before external exposure.
 

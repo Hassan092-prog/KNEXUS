@@ -11,7 +11,7 @@ from sqlalchemy import Text, select
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.config import canonicalize_embedding_model_name, settings
 from app.models import Document, DocumentChunk, Embedding, VECTOR_DIMENSIONS
 from app.schemas import ActorContext, EvidenceChunk
 from app.core.token_counter import TokenCounter, get_default_token_counter, validate_token_count_result
@@ -31,6 +31,7 @@ def build_authorized_statement(
         raise ValueError("Query embedding must contain exactly 384 dimensions")
     distance = Embedding.embedding.cosine_distance(list(query_vector))
     similarity = (1.0 - distance).label("similarity")
+    canonical_model = canonicalize_embedding_model_name(model_name)
     return (
         select(Embedding, DocumentChunk, Document, similarity)
         .join(
@@ -51,7 +52,7 @@ def build_authorized_statement(
             Document.status == "complete",
             Document.is_deleted.is_(False),
             Embedding.is_active.is_(True),
-            Embedding.model_name == model_name,
+            Embedding.model_name == canonical_model,
             Embedding.model_revision == model_revision,
         )
         .order_by(distance.asc(), DocumentChunk.id.asc())
@@ -154,7 +155,7 @@ class RetrievalService:
                 or document.is_deleted
                 or not set(document.allowed_roles).intersection(actor.effective_roles)
                 or not embedding.is_active
-                or embedding.model_name != self.embedder.model_name
+                or canonicalize_embedding_model_name(embedding.model_name) != canonicalize_embedding_model_name(self.embedder.model_name)
                 or embedding.model_revision != self.embedder.model_revision
                 or chunk.id in seen_chunks
             ):

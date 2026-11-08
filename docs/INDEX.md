@@ -12,6 +12,7 @@ Read [project status](PROJECT_STATUS.md), [setup/workflow](../CONTRIBUTING.md), 
 | [TEAM_RESPONSIBILITIES](TEAM_RESPONSIBILITIES.md) | Identity and ownership |
 | [PHASE_1_TEAM_GUIDE](PHASE_1_TEAM_GUIDE.md) | H01-H07, N01-N06, Z01-Z06 and completion gates |
 | [PHASE_1_CONTRACT](PHASE_1_CONTRACT.md) | Accepted Phase 1 semantics, limits and boundaries |
+| [DEMO_RUNBOOK](DEMO_RUNBOOK.md) | Phase 1 demo execution runbook, env vars and verification |
 | [Contracts](../contracts/phase1/README.md) | Canonical models, schema, examples and checker |
 | [API_SPEC](API_SPEC.md) | Implemented routes and future API scope |
 | [DATABASE_SCHEMA](DATABASE_SCHEMA.md) | Tables, constraints, migration and seeding |

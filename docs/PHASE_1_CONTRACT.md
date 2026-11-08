@@ -6,7 +6,12 @@ For Phase 1 details below, this baseline narrows the broader [API proposal](API_
 
 ## Hosted migration decision
 
-The target remains hosted generation and embeddings. PR #13 has merged the hosted generation transport; draft PR #15 supplies the unmerged evaluation harness. PR #16 merged the offline hosted embedding dispatch foundation, and PR #19 merged hosted input token validation and candidate splitting. API wiring and live acceptance remain pending, and historical database vectors still use local MiniLM. No provider account access, paid expenditure or hosted embedding dimension is established by these docs. No local model hosting, downloads or model reverse tunnels are required. [TRD](TRD.md) owns the pinned source-reuse policy and coordinated embedding migration. This documentation decision does not implement hosted behavior. This revises deployment/provider policy only: canonical fields, validation, identity and H01 compatibility remain unchanged.
+- All real AI usage goes through hosted APIs, called by the backend with server-held keys:
+  - embeddings: Google gemini-embedding-001 at 384 dimensions via outputDimensionality, in backend/app/services/ingestion/embedding.py;
+  - generation: Groq openai/gpt-oss-120b.
+- The browser only calls the KNEXUS backend, never a provider, and holds no keys.
+- Local models (MiniLM sentence-transformers/all-MiniLM-L6-v2) and the fake generator are for tests, CI and local development only. They are not the demo or production path.
+- No automatic retries or fallback between providers. No paid usage without Hassan's approval.
 
 ## First vertical slice
 
@@ -36,23 +41,7 @@ QueryResponse always contains answer, citations, abstained, abstention_reason, s
 
 - Answered: nonempty answer, at least one citation, abstained=false, abstention_reason=null.
 - Abstained: answer=null, citations=[], abstained=true, nonempty reason. A successful abstention is HTTP 200, not a provider error.
-- Inline markers such as [1] must match the returned citation-ID set. Citation IDs are positive integers scoped to one query; chunk_id/document_id are stable storage UUIDs.
-- `session_id` is a fresh response/query correlation UUID for Phase 1. It does not promise stored conversation history, a stream endpoint or a resumable session.
-- `stream=true` is rejected as 422 / VALIDATION_ERROR until a separately reviewed streaming contract exists.
-
-See [answered example](../contracts/phase1/examples/query-answer.json) and [abstention example](../contracts/phase1/examples/query-abstention.json). These supersede the optional/missing abstention meta fields in older illustrative API examples for this slice.
-
-## Retrieval/generation boundary
-
-Hassan's retrieval service resolves the active actor, filters tenant/permissions, excludes deleted/incomplete documents and returns unique ranked EvidenceChunk objects. Use server-expanded effective roles: employee; manager+employee; orgadmin+manager+employee; superadmin+orgadmin+manager+employee. Even a superadmin is tenant-scoped by default.
-
-Evidence fields are citation_id, chunk_id, document_id, document_title, chunk_index, optional page, content and similarity_score. Similarity ranges from -1 to 1; chunk_index is zero-based and page is one-based when known. Keep original source IDs/provenance in storage metadata.
-
-Naveed's generator receives GenerationRequest with the question and 1-20 already-authorized chunks. Empty/weak evidence produces backend abstention before any model call. The initial 0.35 similarity cutoff is a development proposal to calibrate, not a proven quality threshold.
-
-The generator returns GenerationResult with answer, cited_ids, abstained and abstention_reason. It cannot invent document metadata, choose a tenant, grant permissions or execute tools. `validate_generation_result` rejects IDs outside the supplied evidence. The backend assembles public Citation records from its own retrieved objects, not model-provided filenames/excerpts. Inline marker consistency is checked too; actual claim support still requires evaluation.
-
-The context builder must respect the chosen LLM's real token/context budget; the per-field limits in reference types do not replace token counting. Use the agreed hosted embedding model with cosine retrieval. Storage currently enforces vector(384); historical chunk defaults are 240 tokens / overlap 32, pending validation against hosted limits. Any model change requires corpus re-embedding; a dimension change additionally requires schema/index migration. Do not mix old and new vector spaces.
+- Inline markers such as [1] must match the returned citations; non-bracketed parenthetical citations (1) or inline author references are rejected.
 
 ## Runtime imports and accepted generator handoff
 
@@ -79,8 +68,6 @@ Hassan owns the migration implementation. Use organizations/users for a server-o
 - Upload returns 202 only after a job/document record is committed. Failed/partial indexing cannot be presented as complete. Keep raw parser/DB/provider diagnostics out of public error fields.
 - Migrations are reviewed revisions, not SQL pasted manually into the shared development database. Test migration round trips only on a disposable database.
 
-The initial revision includes ingestion_jobs and tenant constraints and passed disposable verification. It has not been applied to the shared database; service orchestration remains pending. Refresh sessions, conversation history, controlled-action persistence and durable queues are outside this first slice.
-
 ## Error behavior
 
 | HTTP | ErrorResponse code | Use |
@@ -100,8 +87,8 @@ The public error shape is detail/code/request_id, with a server-owned correlatio
 
 ## Current handoffs
 
-- Hassan: H03-H06 backend capabilities merged into main via PR #7; test suite and opt-in database tests maintainable.
-- Naveed: preserve the reviewed provider boundary and complete context policy, live evaluation and the backend handoff.
-- Zaid: initialize frontend and use query/document/status/error fixtures as typed mocks, then integrate only the accepted APIs.
+- Hassan: Backend ingestion, generation wiring, atomic QuotaLedger, UTC normalization, CI + CODEOWNERS in PR #21 and PR #26 (both merged); Phase 1 demo runbook (`docs/DEMO_RUNBOOK.md`).
+- Naveed: Hosted generation evaluation harness in PR #15 (merged); PR #24 demo corpus and questions (in progress).
+- Zaid: Frontend application (`frontend/app`) merged in PR #23 with overview, documents, and chat UI; PR #25 fixes and live backend connection (in progress).
 
 Run [the contract check](../contracts/phase1/README.md) before changing shared fields. One member implements a contract change; the other two review their consumer impact. Do not silently change fields in parallel branches.

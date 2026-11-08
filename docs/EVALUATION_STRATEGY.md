@@ -4,9 +4,9 @@
 
 Offline boundary/generation/persistence coverage and a disposable database run exist. A full retrieval benchmark, frontend suite, load harness and CI workflow do not. Do not copy illustrative metrics or test pseudocode into a results report.
 
-## Current hosted handoff and quota controls (6 November 2026)
+## Current hosted handoff and quota controls (7 November 2026)
 
-Draft PR #15 adds the hosted development/held-out harness, not live acceptance or a budget grant. The latest user direction is free-first; the historical $5/100-attempt envelope and OpenAI-1536 configuration remain unapproved proposals. Free quotas are account-specific and a maximum allowance does not imply it must be consumed in one session or on a paid plan.
+PR #15 merged the hosted development/held-out evaluation harness; PR #21 merged backend generation wiring and atomic QuotaLedger controls. The latest user direction is free-first; the historical $5/100-attempt envelope and OpenAI-1536 configuration remain unapproved proposals. Free quotas are account-specific and a maximum allowance does not imply it must be consumed in one session or on a paid plan.
 
 Strict input-token enforcement is unresolved. chars/3, calibration and post-call usage are not guaranteed pre-call bounds for arbitrary inputs, schema and framing. Harmony tokenization does not prove the provider's exact server prompt representation. Keep live execution blocked pending an approved enforceable bound or explicit revised policy. Hiding reasoning does not establish that reasoning is outside completion/billing limits.
 

@@ -6,19 +6,22 @@ This is the source of truth for identity, ownership and persistent branches. [Pr
 |---|---|---|---|
 | 1 | Hassan / Hassan092-prog | `dev-hassan` | Architecture, backend/API, models/migrations, ingestion/embeddings/retrieval, identity/authorization, approval/audit persistence, data/runtime, integration and release |
 | 2 | Naveed / MrMax3757 | `dev-naveed` | Generation adapters, prompts/context, result/citation validation, model evaluation, typed tool definitions/handlers and research |
-| 3 | Zaid / MohammedZaid1946 | `dev-zaid` | Entire frontend, framework/build setup, API types/client/mocks, upload/chat/citations, later login/admin/approval screens, accessibility, UI evidence and user guidance |
+| 3 | Zaid / MohammedZaid1946 | `dev-zaid` | Entire frontend (`frontend/app`), framework/build setup, API types/client/mocks, upload/chat/citations, later login/admin/approval screens, accessibility, UI evidence and user guidance |
 
-The target is these branches plus `main`. Transitional branches follow [contribution guidance](../CONTRIBUTING.md); they do not change ownership.
+## Branch policy
+- The only remote branches are `main`, `dev-hassan`, `dev-naveed`, and `dev-zaid`.
+- Members open PRs from their own branch; only Hassan merges into `main` and teammate branches.
+- Temporary branches must be deleted once merged; the 4 branches above are permanent.
 
-## Hosted migration and source reuse
+## Model policy
+- All real AI usage goes through hosted APIs, called by the backend with server-held keys:
+  - embeddings: Google gemini-embedding-001 at 384 dimensions via outputDimensionality, in backend/app/services/ingestion/embedding.py;
+  - generation: Groq openai/gpt-oss-120b.
+- The browser only calls the KNEXUS backend, never a provider, and holds no keys.
+- Local models (MiniLM sentence-transformers/all-MiniLM-L6-v2) and the fake generator are for tests, CI and local development only. They are not the demo or production path.
+- No automatic retries or fallback between providers. No paid usage without Hassan's approval.
 
-All members inspect and selectively adapt the exact personal-project revision in [TRD](TRD.md), preserving licence notices and actual authorship. This instruction is not evidence that every reusable feature has been migrated.
-
-- Hassan: backend/ingestion/retrieval/API adaptation, hosted embeddings, token policy, vector model/dimension compatibility, migrations and integration.
-- Naveed: hosted generation/provider adaptation, structured results, deadlines/cancellation, safe errors and API-based quality evaluation.
-- Zaid: reusable frontend components with redesigned UI and typed KNEXUS backend client. No provider secrets or direct model API calls in the browser.
-
-No local inference, downloads or Ollama tunnels. Coordinate provider/model/settings and embedding dimensions before shared changes. Use mocked HTTP pending credential and spending authorization.
+No local inference for the product; local models and fake providers are allowed for testing, CI and offline verification only.
 
 ## File boundaries
 
@@ -26,7 +29,7 @@ No local inference, downloads or Ollama tunnels. Coordinate provider/model/setti
 |---|---|
 | Hassan | `backend/app/api/`, `core/`, `models/`, `db/`, `schemas/`, `backend/alembic/`, ingestion/retrieval, persistence/API/security tests, runtime/dependencies and corpus provenance |
 | Naveed | `backend/app/services/generation/`, generation tests, future typed tool handlers, prompt/evaluation cases and research |
-| Zaid | Entire `frontend/`, its dependencies/tests, UI screenshots/manual and presentation visuals |
+| Zaid | Entire `frontend/` (`frontend/app`), its dependencies/tests, UI screenshots/manual and presentation visuals |
 
 Hassan coordinates `contracts/phase1/` changes with both consumers reviewing impact. Ownership does not authorize silently changing an interface.
 

@@ -12,8 +12,16 @@
         "Review Cycle: Annual",
         "review cycle: annual",
         "REVIEW CYCLE: ANNUAL",
-        "Review Cycle - Annual"
-      ]
+        "Review Cycle - Annual",
+        "annually",
+        "reviewed annually",
+        "annual review",
+        "yearly",
+        "once a year",
+        "every year",
+        "every 12 months"
+      ],
+      "decoy_fact": "The enterprise security policy is reviewed monthly."
     },
     {
       "id": "demo_q02",
@@ -26,8 +34,12 @@
         "stored in source code, tickets, documentation, or unsecured files",
         "authentication credentials must never be stored",
         "must never be stored in source code, tickets",
-        "never be stored in source code, tickets"
-      ]
+        "never be stored in source code, tickets",
+        "must never be stored in code",
+        "never written into source code",
+        "not be stored in documentation or unsecured files"
+      ],
+      "decoy_fact": "Authentication credentials may be stored in an encrypted password manager."
     },
     {
       "id": "demo_q03",
@@ -73,8 +85,10 @@
       "expected_fact_any": [
         "3.5 liters",
         "3.5 L",
+        "3.5L",
         "exactly 3.5 liters",
-        "3.5 litres"
+        "3.5 litres",
+        "3.5 liters of water"
       ]
     },
     {
@@ -87,7 +101,9 @@
       "expected_fact_any": [
         "ACME-HALT-999",
         "ACME HALT 999",
-        "Emergency Override Code: ACME-HALT-999"
+        "Emergency Override Code: ACME-HALT-999",
+        "override code is ACME-HALT-999",
+        "code ACME-HALT-999"
       ]
     },
     {
@@ -101,7 +117,9 @@
         "47 minutes",
         "47 min",
         "forty-seven minutes",
-        "duration: 47 minutes"
+        "duration: 47 minutes",
+        "lasted 47 minutes",
+        "47-minute outage"
       ]
     },
     {
@@ -114,7 +132,10 @@
       "expected_fact_any": [
         "Level 4 (Classified)",
         "Level 4",
-        "level four"
+        "level four",
+        "security clearance level 4",
+        "cleared to Level 4",
+        "holds Level 4 clearance"
       ]
     },
     {

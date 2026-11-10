@@ -132,9 +132,26 @@ def _runner_module():
     return module
 
 
+def _number_tokens(runner, text: str) -> tuple[str, ...]:
+    """Canonical numbers of a text after run_demo normalization (scale words already applied)."""
+    import re
+
+    return tuple(re.findall(r"\d+(?:\.\d+)?", runner.normalize_text(text)))
+
+
 def test_every_expected_fact_any_variant_is_grounded_in_source_chunks(manifest, questions):
-    """No invented alternatives: every expected_fact_any phrasing must normalize
-    into the text of some chunk of the question's expected source document."""
+    """Grounding rules for accepted phrasings (no invented or too-loose variants):
+
+    - The exact expected_fact must normalize into the text of some chunk of the
+      expected source document (unchanged).
+    - Numeric facts (expected_fact contains numbers): every expected_fact_any
+      variant must normalize to a subset of the fact's numbers and share its
+      largest number ("11.2 million" and "$11,200,000 USD" both give 11200000;
+      a wrong number can never pass).
+    - Non-numeric facts: every variant is checked against a per-question decoy
+      wrong answer (``decoy_fact``); no variant may match the decoy, and the
+      decoy must not be matched by the accepted set either.
+    """
     runner = _runner_module()
     cache = _parsed_and_chunked()
     answerable = [question for question in questions if question["expected"] == "answer"]
@@ -145,18 +162,34 @@ def test_every_expected_fact_any_variant_is_grounded_in_source_chunks(manifest, 
         assert variants, f"{question['id']} must list accepted phrasings"
         source = question["expected_source"]
         _, _, chunks = cache[source]
-        chunk_texts = [chunk.content for chunk in chunks]
+        # Exact fact: still grounded in the source after normalization.
+        normalized_fact = runner.normalize_text(question["expected_fact"])
+        normalized_chunks = [runner.normalize_text(chunk.content) for chunk in chunks]
+        assert any(normalized_fact in text for text in normalized_chunks), (
+            f"{question['id']}: expected_fact {question['expected_fact']!r} not in any chunk of {source}"
+        )
         # The exact fact is always part of the accepted set.
         assert question["expected_fact"] in variants, question["id"]
-        for variant in variants:
-            normalized_variant = runner.normalize_text(variant)
-            assert normalized_variant, f"{question['id']}: empty normalization for {variant!r}"
-            grounded = any(normalized_variant in runner.normalize_text(text) for text in chunk_texts)
-            assert grounded, (
-                f"{question['id']}: expected_fact_any entry {variant!r} is not grounded "
-                f"in any chunk of {source}"
+        fact_numbers = _number_tokens(runner, question["expected_fact"])
+        if fact_numbers:
+            for variant in variants:
+                variant_numbers = _number_tokens(runner, variant)
+                assert (
+                    set(variant_numbers) <= set(fact_numbers)
+                    and max(float(n) for n in variant_numbers)
+                    == max(float(n) for n in fact_numbers)
+                ), (
+                    f"{question['id']}: variant {variant!r} does not normalize to the fact "
+                    f"numbers {fact_numbers} (got {variant_numbers})"
+                )
+        else:
+            decoy = question.get("decoy_fact")
+            assert decoy and decoy.strip(), f"{question['id']} needs a decoy fact"
+            decoy_match, _, _ = runner.match_accepted_facts(question, decoy)
+            assert not decoy_match, (
+                f"{question['id']}: an accepted phrasing also matches the wrong answer {decoy!r}"
             )
-            checked_variants += 1
+        checked_variants += len(variants)
     assert checked_variants >= len(answerable)
 
 

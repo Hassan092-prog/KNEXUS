@@ -144,6 +144,36 @@ def test_match_accepted_facts_any_variant_matches_reworded_answer() -> None:
     assert not matched
 
 
+def test_scoring_scores_saved_live_q01_answer_annual_pass_monthly_fail() -> None:
+    """The saved live Groq answer for q01 must pass; the monthly phrasing must fail."""
+    fixture_questions = json.loads((DEMO_DIR / "questions.json").read_text(encoding="utf-8"))["questions"]
+    q01 = next(question for question in fixture_questions if question["id"] == "demo_q01")
+    doc_ids = {"demo_security_policy.docx": str(DOC_ID)}
+    titles = {"demo_security_policy.docx": "Enterprise Information Security Policy"}
+
+    # Saved live answer: paraphrase (no variant is an exact substring), pass.
+    good = {
+        "abstained": False,
+        "answer": "The enterprise security policy is reviewed annually [1].",
+        "citations": [citation(DOC_ID, title="demo_security_policy.docx")],
+    }
+    status, reason = run_demo_module.score_case(q01, good, doc_ids, titles)
+    assert status == "pass" and "normalized match only" in reason
+    fact_ok, matched_fact, exact = run_demo_module.match_accepted_facts(q01, good["answer"])
+    assert fact_ok and matched_fact in ("annually", "reviewed annually") and not exact
+
+    # Monthly (the wrong cadence, same citation) must fail.
+    bad = {
+        "abstained": False,
+        "answer": "The enterprise security policy is reviewed monthly [1].",
+        "citations": [citation(DOC_ID, title="demo_security_policy.docx")],
+    }
+    fact_ok, _, _ = run_demo_module.match_accepted_facts(q01, bad["answer"])
+    assert not fact_ok
+    status, reason = run_demo_module.score_case(q01, bad, doc_ids, titles)
+    assert status == "fail" and "none of the accepted facts matched" in reason
+
+
 def test_scoring_accepts_reworded_but_correct_answer_and_flags_wrong_number() -> None:
     question = answer_case()
     question["expected_fact"] = "3.5 liters"

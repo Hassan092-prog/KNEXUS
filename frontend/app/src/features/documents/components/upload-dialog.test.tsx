@@ -49,12 +49,19 @@ describe("upload dialog", () => {
 
   it("rejects unsupported file formats before any request", async () => {
     renderWithProviders(<UploadDialog trigger={<button type="button">Upload document</button>} />)
-    const user = await openDialog("Upload document")
+    // applyAccept: false bypasses the file input's `accept` list so the
+    // .txt file actually reaches the component's own validation (the
+    // browser-level accept filter would silently drop it).
+    const user = userEvent.setup({ applyAccept: false })
+    await user.click(screen.getByRole("button", { name: "Upload document" }))
+    await screen.findByRole("dialog", { name: "Upload document" })
 
     await pickFile(user, INVALID_TXT)
-    await waitFor(() => screen.getByRole("alert", { name: /Unsupported file format/ }))
-    const errorAlert = screen.getByRole("alert", { name: /Unsupported file format/ })
-    expect(errorAlert).toBeInTheDocument()
+    // Both the dropzone hint and the dialog alert show the validation error.
+    const errorTexts = await screen.findAllByText(
+      /Unsupported file format. Only PDF and DOCX files are accepted/,
+    )
+    expect(errorTexts.length).toBeGreaterThanOrEqual(1)
     expect(navigateMock).not.toHaveBeenCalled()
   })
 
@@ -66,8 +73,10 @@ describe("upload dialog", () => {
     Object.defineProperty(tooLarge, "size", { value: 10 * 1024 * 1024 + 1 })
     await pickFile(user, tooLarge)
 
-    const errorAlert = screen.getByRole("alert", { name: /File is too large/ })
-    expect(errorAlert).toBeInTheDocument()
+    expect(
+      (await screen.findAllByText(/File is too large .+ limit is 10 MiB/)).length,
+    ).toBeGreaterThanOrEqual(1)
+    expect(navigateMock).not.toHaveBeenCalled()
   })
 
   it("submits a valid upload and navigates to the new document", async () => {

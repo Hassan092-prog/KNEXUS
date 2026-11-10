@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { screen } from "@testing-library/react"
+import { screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { DocumentLibraryPage } from "@/features/documents/components/document-library-page"
 import { registerUpload } from "@/mocks/store"
 import type { DocumentSummary } from "@/features/documents/types/document.types"
-import { renderWithProviders } from "@/test/utils"
+import { renderWithProviders, useFreshMockStore } from "@/test/utils"
 
 /**
  * Document library page tests on the real mock API: rendering, frontend
@@ -23,11 +23,15 @@ function syntheticDocuments(count: number, offset = 0): DocumentSummary[] {
     status: "complete",
     allowed_roles: ["employee"],
     chunk_count: 4,
-    created_at: `2025-01-0${(index % 9) + 1}T00:00:00Z`,
+    // Newest-first calendar dates (newer than every fixture document) so the
+    // synthetic titles lead the list exactly like "document 0" ordering.
+    created_at: `2026-12-${String(31 - (offset + index)).padStart(2, "0")}T00:00:00Z`,
   }))
 }
 
 describe("document library", () => {
+  useFreshMockStore()
+
   it("renders the accessible documents with status and roles", async () => {
     renderWithProviders(<DocumentLibraryPage />)
 
@@ -57,17 +61,22 @@ describe("document library", () => {
   })
 
   it("paginates beyond one page with 20-per-page slices", async () => {
-    for (const document of syntheticDocuments(27)) {
-      registerUpload(document, 8192)
+    // Register descending so the store keeps document-0-first order
+    // (registerUpload prepends); with the 6 fixture documents mixed in this
+    // is 33 records across 2 pages.
+    const documents = syntheticDocuments(27)
+    for (let index = 26; index >= 0; index -= 1) {
+      registerUpload(documents[index], 8192)
     }
     renderWithProviders(<DocumentLibraryPage />)
 
     await screen.findByText("Synthetic document 0")
-    const next = screen.getByRole("button", { name: "Go to next page" })
+    const pagination = screen.getByRole("navigation", { name: "Pagination" })
+    const next = within(pagination).getByRole("button", { name: "Next" })
     expect(next).toBeEnabled()
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument()
 
-    await waitFor(() => userEvent.click(next))
+    await userEvent.click(next)
     expect(await screen.findByText("Synthetic document 20")).toBeInTheDocument()
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument()
   })

@@ -54,14 +54,12 @@ export function normalizeRejection(error: unknown): ApiError {
   if (status !== undefined) {
     const envelope = apiErrorResponseSchema.safeParse(response?.data)
     if (envelope.success) {
-      let code = envelope.data.code
-      // Map HTTP status codes to canonical error codes
-      if (status === HTTP_STATUS.PROVIDER_UNAVAILABLE) {
-        code = "PROVIDER_UNAVAILABLE"
-      }
+      // The backend's own canonical `code` is authoritative: it is preserved
+      // verbatim (no status-based rewriting), so consumers key behavior off
+      // the contract code the backend actually sent.
       return new ApiError({
         status,
-        code,
+        code: envelope.data.code,
         detail: envelope.data.detail,
         requestId: envelope.data.request_id,
       })

@@ -159,7 +159,7 @@ export function UploadDialog({
         >
           <UploadDropzone file={form.file} error={form.fileError} onFileSelected={(file) => patchForm({ file, fileError: file === null ? null : validateUploadFile(file) })} disabled={isSubmitting} />
           {form.fileError ? (
-            <p role="alert" className="text-xs font-medium text-destructive" aria-label={form.fileError.kind === "unsupported" ? "Unsupported file format" : "File is too large"} >
+            <p role="alert" className="text-xs font-medium text-destructive">
               {form.fileError.detail}
             </p>
           ) : null}

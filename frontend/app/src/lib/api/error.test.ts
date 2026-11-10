@@ -79,11 +79,13 @@ describe("toApiError", () => {
 })
 
 describe("normalizeRejection (client interceptor path)", () => {
-  it("preserves status codes and the request_id envelope", () => {
+  it("preserves the backend's canonical code and the request_id envelope", () => {
+    // A 503 keeps the envelope's own code: the backend's code is authoritative
+    // (FILE_TOO_LARGE on 503 is not rewritten into PROVIDER_UNAVAILABLE).
     const result = normalizeRejection(axiosRejection(503, ENVELOPE))
     expect(result).toBeInstanceOf(ApiError)
     expect(result.status).toBe(503)
-    expect(result.code).toBe("PROVIDER_UNAVAILABLE")
+    expect(result.code).toBe("FILE_TOO_LARGE")
     expect(result.requestId).toBe(ENVELOPE.request_id)
   })
 

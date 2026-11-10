@@ -102,7 +102,7 @@ const documentSummaryFields = {
   allowed_roles: z.array(roleSchema).min(1),
   chunk_count: z.int().min(0),
   /** Timezone-aware UTC timestamp. */
-  created_at: z.iso.datetime(),
+  created_at: z.iso.datetime({ offset: true }),
 }
 
 export const documentSummarySchema = z.strictObject(documentSummaryFields)
@@ -189,7 +189,7 @@ export const citationSchema = z.strictObject({
   chunk_index: z.int().min(0),
   /** Page numbers exist for PDFs only; DOCX citations are null. */
   page: z.int().min(1).nullable(),
-  excerpt: z.string().trim().min(1).max(8000),
+  excerpt: z.string().trim().min(1),
   /** Cosine similarity, −1..1. */
   similarity_score: z.number().min(-1).max(1),
 })
@@ -240,6 +240,14 @@ export const queryResponseSchema = z.strictObject({
     ctx.addIssue({
       code: "custom",
       message: "inline citation markers must match the cited ID set",
+    })
+  }
+  // Citation IDs must be unique within the citations array.
+  const idArray = value.citations.map((c) => c.id)
+  if (new Set(idArray).size !== idArray.length) {
+    ctx.addIssue({
+      code: "custom",
+      message: "citation IDs must be unique",
     })
   }
 })

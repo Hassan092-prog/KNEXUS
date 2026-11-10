@@ -45,7 +45,7 @@ export function normalizeRejection(error: unknown): ApiError {
   if (error instanceof ApiError) return error
 
   const axiosError = axios.isAxiosError(error)
-    ? AxiosError.from(error)
+    ? error
     : new AxiosError(error instanceof Error ? error.message : "Request failed")
   const response = axiosError.response
   const status = response?.status
@@ -54,6 +54,9 @@ export function normalizeRejection(error: unknown): ApiError {
   if (status !== undefined) {
     const envelope = apiErrorResponseSchema.safeParse(response?.data)
     if (envelope.success) {
+      // The backend's own canonical `code` is authoritative: it is preserved
+      // verbatim (no status-based rewriting), so consumers key behavior off
+      // the contract code the backend actually sent.
       return new ApiError({
         status,
         code: envelope.data.code,

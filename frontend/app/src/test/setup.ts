@@ -1,6 +1,19 @@
 import "@testing-library/jest-dom/vitest"
 
 /**
+ * ResizeObserver stub for jsdom environment.
+ * jsdom does not natively implement ResizeObserver, causing errors in
+ * radix-ui and other UI libraries that depend on it.
+ */
+class ResizeObserverStub implements ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+globalThis.ResizeObserver = ResizeObserverStub;
+
+/**
  * Shared test setup. `globals: true` lets Testing Library auto-register
  * cleanup in afterEach. jsdom lacks `scrollIntoView`, touched by
  * interactive components (dialogs, tooltips).
@@ -13,5 +26,5 @@ beforeAll(() => {
   if (typeof Element.prototype.scrollIntoView !== "function") {
     Element.prototype.scrollIntoView = () => {}
   }
-  ;(global as Window).innerWidth = 1440
+  Object.defineProperty(window, "innerWidth", { value: 1440, configurable: true })
 })

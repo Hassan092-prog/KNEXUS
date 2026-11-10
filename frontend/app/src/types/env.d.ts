@@ -10,4 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string
   /** Optional Axios timeout override in milliseconds. */
   readonly VITE_API_TIMEOUT_MS?: string
+  /** API mode: "mock" serves from local fixtures, "live" queries the backend. */
+  readonly VITE_DATA_MODE?: "mock" | "live"
+  /** Artificial delay applied to mock-mode responses in milliseconds. */
+  readonly VITE_MOCK_DELAY_MS?: string
 }

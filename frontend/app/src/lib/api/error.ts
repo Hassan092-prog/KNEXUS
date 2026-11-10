@@ -2,6 +2,7 @@ import {
   apiErrorResponseSchema,
   API_ERROR_CODES,
   type ApiErrorCode,
+  HTTP_STATUS,
 } from "@/lib/api/contracts"
 
 /**
@@ -78,7 +79,8 @@ function transportDetail(code: string | undefined, message: string): string {
  *
  * Order of resolution:
  * 1. `ApiError`/`MockApiError` (already normalized; mock handlers throw these).
- * 2. Axios/HTTP-like error with a JSON body matching the canonical envelope.
+ * 2. Axios/HTTP-like error with `error.response` — extract status, code, detail,
+ *    and request_id from the response data envelope.
  * 3. Transport-level failures (network loss, timeout) — no status.
  * 4. Contract shape violations that already preserved the HTTP status.
  * 5. Anything else → neutral fallback, never exception internals.
@@ -89,14 +91,67 @@ export function toApiError(error: unknown): NormalizedApiError {
   }
 
   if (error instanceof Error) {
-    const candidate = error as Error & {
-      status?: number
-      code?: string
-      toJSON?: () => unknown
+    // Error with possible Axios response attachment, or with custom status/code
+     // properties thrown by the client interceptor or mock handlers.
+     const candidate = error as Error & {
+       code?: string | undefined
+       status?: number | undefined
+       response?: unknown
+       toJSON?: () => unknown
+     }
+
+    // Axios error with a response (HTTP error from the backend).
+    if (candidate.response !== undefined) {
+      const axiosError = candidate as Error & {
+        response: { status?: number; data?: unknown; statusText?: string; headers: unknown }
+        code?: string
+      }
+      const response = axiosError.response
+      if (typeof response?.status === "number" && response.status !== 0) {
+        const envelope = apiErrorResponseSchema.safeParse(response.data)
+        if (envelope.success) {
+          return {
+            status: response.status,
+            code: envelope.data.code,
+            detail: envelope.data.detail,
+            requestId: envelope.data.request_id,
+          }
+        }
+        // Response received but body doesn't match the contract shape.
+        if (response.status >= 500) {
+          return {
+            status: response.status,
+            detail: "The backend could not complete the request. Try again later.",
+          }
+        }
+        if (response.status === HTTP_STATUS.NOT_FOUND) {
+          return {
+            status: response.status,
+            detail: "The requested resource was not found.",
+          }
+        }
+        if (response.status === HTTP_STATUS.FORBIDDEN) {
+          return {
+            status: response.status,
+            detail: "This action is not permitted.",
+          }
+        }
+        return {
+          status: response.status,
+          detail: transportDetail(
+            axiosError.code,
+            "The backend returned an unexpected response.",
+          ),
+        }
+      }
+      // Status is not a valid number; treat as transport failure.
+      return {
+        detail: transportDetail(axiosError.code, "The request could not be completed."),
+      }
     }
 
-    // Same contract-shape-carrying error instance that the client interceptor
-    // would build, but thrown direction-agnostically (e.g. by timeout aborts).
+    // Non-Axios Error instance — check for a status property like a
+    // manually-thrown ApiError shape, then fall back to transport detail.
     if (typeof candidate.status === "number" && candidate.status !== 0) {
       const response = apiErrorResponseSchema.safeParse(candidate.toJSON?.())
       if (response.success) {

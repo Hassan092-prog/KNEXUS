@@ -32,7 +32,10 @@ export function useDocumentStatus(documentId: string) {
     queryFn: () => getDocumentApi().getDocumentStatus(documentId),
     refetchInterval: (query) => {
       const status = query.state.data?.status
+      const hasError = query.state.error instanceof Error
       if (status !== undefined && isTerminal(status)) return false
+      // Stop polling if the query has encountered an error.
+      if (hasError) return false
       return ACTIVE_POLL_MS
     },
     refetchIntervalInBackground: false,

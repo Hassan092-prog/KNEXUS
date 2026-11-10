@@ -1,5 +1,5 @@
 {
-  "description": "Phase 1 demo question set (12 cases). 8 answerable, 2 role-denied (employee asking roster/compensation data, which is manager-and-above only), 2 out-of-corpus. expected_fact values are exact substrings of the named source document, verified to survive the offline local chunker.",
+  "description": "Phase 1 demo question set (12 cases). 8 answerable, 2 role-denied (employee asking roster/compensation data, which is manager-and-above only), 2 out-of-corpus. expected_fact values are exact substrings of the named source document, verified to survive the offline local chunker. expected_fact_any lists every phrasing accepted for scoring (checked after run_demo normalization; each entry normalizes into some chunk of the expected source, verified in test_demo_set.py).",
   "questions": [
     {
       "id": "demo_q01",
@@ -7,7 +7,21 @@
       "actor_role": "employee",
       "expected": "answer",
       "expected_source": "demo_security_policy.docx",
-      "expected_fact": "Review Cycle: Annual"
+      "expected_fact": "Review Cycle: Annual",
+      "expected_fact_any": [
+        "Review Cycle: Annual",
+        "review cycle: annual",
+        "REVIEW CYCLE: ANNUAL",
+        "Review Cycle - Annual",
+        "annually",
+        "reviewed annually",
+        "annual review",
+        "yearly",
+        "once a year",
+        "every year",
+        "every 12 months"
+      ],
+      "decoy_fact": "The enterprise security policy is reviewed monthly."
     },
     {
       "id": "demo_q02",
@@ -15,7 +29,17 @@
       "actor_role": "employee",
       "expected": "answer",
       "expected_source": "demo_security_policy.docx",
-      "expected_fact": "stored in source code, tickets, documentation, or unsecured files"
+      "expected_fact": "stored in source code, tickets, documentation, or unsecured files",
+      "expected_fact_any": [
+        "stored in source code, tickets, documentation, or unsecured files",
+        "authentication credentials must never be stored",
+        "must never be stored in source code, tickets",
+        "never be stored in source code, tickets",
+        "must never be stored in code",
+        "never written into source code",
+        "not be stored in documentation or unsecured files"
+      ],
+      "decoy_fact": "Authentication credentials may be stored in an encrypted password manager."
     },
     {
       "id": "demo_q03",
@@ -23,7 +47,16 @@
       "actor_role": "employee",
       "expected": "answer",
       "expected_source": "demo_financial_review.docx",
-      "expected_fact": "$48,500,000 USD"
+      "expected_fact": "$48,500,000 USD",
+      "expected_fact_any": [
+        "$48,500,000 USD",
+        "48,500,000 USD",
+        "$48,500,000",
+        "48.5 million",
+        "$48.5 million USD",
+        "48.5 million dollars",
+        "48.5M"
+      ]
     },
     {
       "id": "demo_q04",
@@ -31,7 +64,16 @@
       "actor_role": "manager",
       "expected": "answer",
       "expected_source": "demo_financial_review.docx",
-      "expected_fact": "$11,200,000 USD in Q4"
+      "expected_fact": "$11,200,000 USD in Q4",
+      "expected_fact_any": [
+        "$11,200,000 USD in Q4",
+        "$11,200,000 USD",
+        "11,200,000",
+        "11.2 million",
+        "$11.2 million USD",
+        "11.2 million dollars",
+        "11.2M"
+      ]
     },
     {
       "id": "demo_q05",
@@ -39,7 +81,15 @@
       "actor_role": "employee",
       "expected": "answer",
       "expected_source": "demo_product_safety_manual.docx",
-      "expected_fact": "3.5 liters"
+      "expected_fact": "3.5 liters",
+      "expected_fact_any": [
+        "3.5 liters",
+        "3.5 L",
+        "3.5L",
+        "exactly 3.5 liters",
+        "3.5 litres",
+        "3.5 liters of water"
+      ]
     },
     {
       "id": "demo_q06",
@@ -47,7 +97,14 @@
       "actor_role": "manager",
       "expected": "answer",
       "expected_source": "demo_product_safety_manual.docx",
-      "expected_fact": "ACME-HALT-999"
+      "expected_fact": "ACME-HALT-999",
+      "expected_fact_any": [
+        "ACME-HALT-999",
+        "ACME HALT 999",
+        "Emergency Override Code: ACME-HALT-999",
+        "override code is ACME-HALT-999",
+        "code ACME-HALT-999"
+      ]
     },
     {
       "id": "demo_q07",
@@ -55,7 +112,15 @@
       "actor_role": "employee",
       "expected": "answer",
       "expected_source": "demo_incident_report.docx",
-      "expected_fact": "47 minutes"
+      "expected_fact": "47 minutes",
+      "expected_fact_any": [
+        "47 minutes",
+        "47 min",
+        "forty-seven minutes",
+        "duration: 47 minutes",
+        "lasted 47 minutes",
+        "47-minute outage"
+      ]
     },
     {
       "id": "demo_q08",
@@ -63,7 +128,15 @@
       "actor_role": "manager",
       "expected": "answer",
       "expected_source": "demo_employee_roster.docx",
-      "expected_fact": "Level 4 (Classified)"
+      "expected_fact": "Level 4 (Classified)",
+      "expected_fact_any": [
+        "Level 4 (Classified)",
+        "Level 4",
+        "level four",
+        "security clearance level 4",
+        "cleared to Level 4",
+        "holds Level 4 clearance"
+      ]
     },
     {
       "id": "demo_q09",

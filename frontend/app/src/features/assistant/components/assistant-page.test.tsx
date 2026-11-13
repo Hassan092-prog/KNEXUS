@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
@@ -87,5 +87,80 @@ describe("assistant workflow", () => {
     expect(screen.getByText(/The synthetic handbook allows 21 days/)).toBeInTheDocument()
     expect(screen.getByLabelText(COMPOSER_LABEL)).toBeEnabled()
     expect(screen.getByText(/Retrieval covers the assistant/)).toBeInTheDocument()
+    // The submitted question stays in the thread.
+    expect(screen.getByText(/first question about leave/)).toBeInTheDocument()
+  })
+
+  it("shows questions in correct order with newest just above input", async () => {
+    renderWithProviders(<AssistantPage />)
+    await ask("first question about leave")
+    // The composer is disabled while a request is in flight; wait for it to
+    // become usable again before sending the next question.
+    await waitFor(() => expect(screen.getByLabelText(COMPOSER_LABEL)).toBeEnabled())
+    await ask("second question about leave")
+
+    // Questions are ordered oldest-at-top, newest-just-above-input.
+    const questions = screen.getAllByText(/question about leave/)
+    expect(questions.length).toBe(2)
+    expect(questions.map((node) => node.textContent)).toEqual([
+      "first question about leave",
+      "second question about leave",
+    ])
+  })
+
+  it("places the second question after the first one in the thread", async () => {
+    renderWithProviders(<AssistantPage />)
+    await ask("first question about leave")
+    await waitFor(() => expect(screen.getByLabelText(COMPOSER_LABEL)).toBeEnabled())
+    await ask("second question about leave")
+
+    const first = screen.getByText(/first question about leave/)
+    const second = screen.getByText(/second question about leave/)
+    const composer = screen.getByLabelText(COMPOSER_LABEL)
+
+    // The first question precedes the second one in document order.
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // The newest question is rendered above the composer.
+    expect(second.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("scrolls the newest entry above the pinned composer when it is sent", async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView")
+    renderWithProviders(<AssistantPage />)
+    await ask("a freshly sent question")
+
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "end" })
+  })
+
+  it("scrolls again when the answer arrives so it is not hidden behind the composer", async () => {
+    // Track whether a scroll happened while the answer was already rendered.
+    let scrolledWithAnswerVisible = false
+    const scrollIntoView = vi
+      .spyOn(Element.prototype, "scrollIntoView")
+      .mockImplementation(() => {
+        if (screen.queryByText(/The synthetic handbook allows 21 days/)) {
+          scrolledWithAnswerVisible = true
+        }
+      })
+
+    renderWithProviders(<AssistantPage />)
+    await ask("a question whose answer must be revealed")
+    await screen.findByText(/The synthetic handbook allows 21 days/)
+
+    // The answer lands, and the thread scrolls again to reveal it above the
+    // pinned composer.
+    await waitFor(() => expect(scrolledWithAnswerVisible).toBe(true))
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "end" })
+  })
+
+  it("keeps the composer pinned to the bottom of the viewport", () => {
+    renderWithProviders(<AssistantPage />)
+
+    // The question box lives in a sticky bar so it never scrolls away.
+    const composer = screen.getByLabelText(COMPOSER_LABEL)
+    const stickyBar = composer.closest("div.sticky")
+    expect(stickyBar).not.toBeNull()
+    expect(stickyBar).toHaveClass("bottom-0")
   })
 })

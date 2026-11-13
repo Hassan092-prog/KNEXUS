@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react"
+import { useState, useRef, useEffect } from "react"
+import type { Ref } from "react"
 import { BotIcon, Loader2Icon, SparklesIcon } from "lucide-react"
 
 import { Card } from "@/components/ui/card"
@@ -81,7 +82,20 @@ function AssistantThread() {
       })
   }
 
-  const reversed = useMemo(() => [...entries].reverse(), [entries])
+  /**
+   * Points at the newest entry (question plus its answer). Questions are
+   * appended to the end of the thread (oldest first), so the newest one is the
+   * last rendered entry.
+   */
+  const newestEntryRef = useRef<HTMLDivElement>(null)
+  const newestStatus = entries.length > 0 ? entries[entries.length - 1].status : undefined
+
+  useEffect(() => {
+    // Align the newest entry just above the pinned composer. Runs when the
+    // question is sent and again when its answer (or abstention/error) lands,
+    // so the response is never hidden behind the input box.
+    newestEntryRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+  }, [entries.length, newestStatus])
 
   return (
     <section aria-label="Assistant conversation" className="flex flex-col gap-6">
@@ -102,26 +116,47 @@ function AssistantThread() {
           </div>
         )}
 
-        {reversed.map((entry) => (
-          <AssistantEntryCard key={entry.id} entry={entry} />
+        {entries.map((entry, index) => (
+          <AssistantEntryCard
+            key={entry.id}
+            entry={entry}
+            entryRef={index === entries.length - 1 ? newestEntryRef : undefined}
+          />
         ))}
       </div>
 
-      <Card className="p-4 sm:p-5">
-        <QueryComposer onSubmit={submitQuestion} pending={pending} />
-        <p className="mt-3 text-[11px] text-muted-foreground leading-relaxed">
-          One question at a time — Phase 1 answers are standalone (no
-          conversation history). Retrieval covers the assistant&apos;s
-          accessible documents only.
-        </p>
-      </Card>
+      {/*
+        Sticky composer: the bar stays pinned to the bottom of the viewport
+        while the thread scrolls behind it, so the question box never moves.
+        The negative margins + matching padding keep the card aligned with the
+        page container, and `-mb-6` cancels the container's bottom padding so
+        the pinned bar does not jump when the page reaches its end.
+      */}
+      <div className="sticky bottom-0 z-10 -mx-4 -mb-6 bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <Card className="p-4 sm:p-5">
+          <QueryComposer onSubmit={submitQuestion} pending={pending} />
+          <p className="mt-3 text-[11px] text-muted-foreground leading-relaxed">
+            One question at a time — Phase 1 answers are standalone (no
+            conversation history). Retrieval covers the assistant&apos;s
+            accessible documents only.
+          </p>
+        </Card>
+      </div>
     </section>
   )
 }
 
-function AssistantEntryCard({ entry }: { entry: QuestionEntry }) {
+function AssistantEntryCard({
+  entry,
+  entryRef,
+}: {
+  entry: QuestionEntry
+  entryRef?: Ref<HTMLDivElement>
+}) {
   return (
-    <div className="flex flex-col gap-2">
+    // `scroll-mb` reserves the space the pinned composer occupies, so
+    // scrolling this entry to the end parks it above the input box.
+    <div ref={entryRef} className="flex scroll-mb-64 flex-col gap-2">
       <MessageBubble variant="question" content={entry.question} />
 
       {entry.status === "pending" ? (

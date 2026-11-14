@@ -136,8 +136,8 @@ python backend/scripts/run_demo.py --base-url http://localhost:8002 --actor-role
 
 ## Part 2: Live Demo Mode (Hosted Providers)
 
-> [!WARNING]
-> **Status: UNVERIFIED**. Live demo mode requires approved server-held API credentials and has not yet been executed end-to-end live.
+> [!NOTE]
+> **Status: Verified 2026-11-14 (server rehearsal: 12/12 demo questions, browser UI, upload of a 45-page PDF)**.
 
 ### 1. Environment Configuration (from config.py)
 > [!IMPORTANT]
@@ -146,10 +146,10 @@ python backend/scripts/run_demo.py --base-url http://localhost:8002 --actor-role
 # Database settings (from docker-compose.yml)
 export POSTGRES_HOST="localhost"
 export POSTGRES_PORT=5435
-export POSTGRES_DB="knexus"
+export POSTGRES_DB="knexus_demo"
 export POSTGRES_USER="knexus_admin"
 export POSTGRES_PASSWORD="knexus_password"
-export DATABASE_URL="postgresql+asyncpg://knexus_admin:knexus_password@localhost:5435/knexus"
+export DATABASE_URL="postgresql+asyncpg://knexus_admin:knexus_password@localhost:5435/knexus_demo"
 
 # Google Hosted Embeddings (gemini-embedding-001 at 384 dimensions)
 export EMBEDDING_PROVIDER="google"
@@ -174,10 +174,21 @@ export GENERATION_MAX_PROMPT_CHARS=12000
 export GENERATION_MAX_TOKENS=400
 export QUOTA_RATE_LIMIT_COOLDOWN_SECONDS=60.0
 
+# Ingestion token-counting and deadline optimization for large documents
+# Bypasses remote countTokens when chunk UTF-8 bytes + overhead <= token ceiling; 45-page PDF drops from timing out at 30s to 11s
+export TOKEN_COUNT_BYTE_BOUND_SKIP=true
+# Extends per-document token validation deadline for large multi-page uploads
+export EMBEDDING_VALIDATION_DEADLINE_SECONDS=180
+# Preserves required >5s safety margin over longest provider deadline (180s) to prevent concurrent dispatches
+export QUOTA_IN_FLIGHT_TIMEOUT_SECONDS=200
+
+# CORS settings for browser LAN access
+export BACKEND_CORS_ORIGINS='["http://localhost:5173", "http://127.0.0.1:5173", "http://192.168.1.92:5173", "http://192.168.1.92:5174", "http://localhost:5174", "http://127.0.0.1:5174"]'
+
 # Demo Actor Role, Quota, Campaign and Module Resolution
 export DEMO_ACTOR_ROLE="orgadmin"
 export QUOTA_ENABLED=True
-export QUOTA_CAMPAIGN_ID="phase1-live-demo-20261107"
+export QUOTA_CAMPAIGN_ID="phase1-demo-final-20261114b"
 export PYTHONPATH=backend
 ```
 
@@ -195,9 +206,14 @@ python -m app.db.demo_seed
 # 4. Start backend (port 8002)
 uvicorn app.main:app --host 0.0.0.0 --port 8002
 
-# 5. In a separate shell, start the frontend
-cd frontend/app && VITE_API_BASE_URL=http://localhost:8002 VITE_DATA_MODE=live npm run dev
+# 5. In a separate shell, start the frontend (port 5174 on this server)
+cd frontend/app && VITE_API_BASE_URL=http://192.168.1.92:8002 VITE_DATA_MODE=live VITE_API_TIMEOUT_MS=90000 npx vite --host 0.0.0.0 --port 5174
 ```
 
 ### 3. Verification Queries
 Upload demo documents and query through the frontend or via `POST /api/v1/query`. Verify that citations link to the real chunk and document UUIDs, and that ungrounded questions result in structured abstentions.
+
+### 4. Known Phase 1 Limits
+- **Scanned/image PDFs**: Scanned and image-only PDFs are rejected at upload with `400 Bad Request` / `INVALID_FILE` ("The document contains no extractable text"); no OCR in Phase 1; recommend saving from the authoring app as a text-searchable PDF or DOCX.
+- **Provider rate limits**: ~30s minimum interval between questions on the Groq free tier to respect the 8,000 TPM limit.
+- **Processing error detail**: Background document processing failures display a safe generic message in the UI; specific error causes are written only to backend server logs.

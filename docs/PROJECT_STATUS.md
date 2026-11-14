@@ -8,11 +8,12 @@
 - **PR #21** (Hassan): Generation wiring, atomic QuotaLedger, UTC normalization, CI + CODEOWNERS, docs cleanup.
 - **PR #23** (Zaid): Vite/React 19 dashboard in `frontend/app` (documents and assistant views, mock mode).
 - **PR #26** (Hassan): CI Hugging Face tokenizer cache and pre-download step for offline tests.
-- **PR #27** (Hassan): Offline mock end-to-end integration test (`test_live_dispatch_e2e_mocked.py`).
-- **PR #28** (Naveed): Demo seed entry point and runbook port updates.
+- **PR #27** (Hassan): Demo runbook, status sync, and demo role setting.
+- **PR #28** (Naveed): Offline hosted end-to-end demo path test (Google + Groq, mocked HTTP).
+- **PR #29** (Hassan): Demo seed command (`python -m app.db.demo_seed`), port 8002, manager run.
 - **PR #30** (Hassan): Server-approved live dispatch policy and controlled opt-in mechanism.
 - **PR #31** (Hassan): Ingestion concurrency lock, rate-limit cooldown, and Groq pacing.
-- **PR #33** (Naveed): Free-tier 30s pacing and prompt character budgeting in DEMO_RUNBOOK.
+- **PR #33** (Naveed): Tolerant answer scoring (`expected_fact_any`) and similarity calibration for `run_demo.py`.
 - **PR #25** (Zaid): Frontend Phase 1 delivery (live API integration, contracts, TanStack Query, error boundaries).
 - **PR #35** (Zaid): Frontend assistant workspace and citation card UI polish.
 
